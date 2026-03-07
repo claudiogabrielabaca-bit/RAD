@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Rating {
+  id        String       @id @default(cuid())
+  anonId    String
+  day       String
+  stars     Int
+  review    String
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  likes     RatingLike[]
+
+  @@unique([anonId, day], name: "anonId_day")
+}
+
+model RatingLike {
+  id        String   @id @default(cuid())
+  ratingId  String
+  anonId    String
+  createdAt DateTime @default(now())
+
+  rating Rating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+
+  @@unique([ratingId, anonId], name: "rating_like_unique")
+}
+
+model DayHighlightCache {
+  id         String   @id @default(cuid())
+  day        String   @unique
+  type       String
+  year       Int?
+  title      String?
+  text       String
+  image      String?
+  articleUrl String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
