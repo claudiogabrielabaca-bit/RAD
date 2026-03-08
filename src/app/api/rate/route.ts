@@ -25,17 +25,17 @@ export async function POST(req: Request) {
   if (s < 1 || s > 5) {
     return NextResponse.json({ error: "Invalid stars" }, { status: 400 });
   }
-
+  
   const text = (review ?? "").toString().trim();
-  if (text.length < 3) {
-    return NextResponse.json({ error: "Review too short" }, { status: 400 });
-  }
-  if (text.length > 500) {
-    return NextResponse.json(
-      { error: "Review too long (max 500)" },
-      { status: 400 }
-    );
-  }
+
+if (text.length > 500) {
+  return NextResponse.json(
+    { error: "Review too long (max 500)" },
+    { status: 400 }
+  );
+}
+  
+
 
   // ✅ anonId se genera/lee desde cookie en SERVER (no lo manda el cliente)
   const anonId = await getOrCreateAnonId();

@@ -1,22 +1,62 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+
+type LegacyHighlightType =
+  | "selected"
+  | "events"
+  | "births"
+  | "deaths"
+  | "war"
+  | "disaster"
+  | "politics"
+  | "science"
+  | "culture"
+  | "sports"
+  | "discovery"
+  | "crime"
+  | "none";
+
+type HighlightKind = "selected" | "event" | "birth" | "death" | "none";
+
+type HighlightCategory =
+  | "general"
+  | "war"
+  | "disaster"
+  | "politics"
+  | "science"
+  | "culture"
+  | "sports"
+  | "discovery"
+  | "crime";
+
+type HighlightBadgeKey =
+  | LegacyHighlightType
+  | HighlightKind
+  | HighlightCategory;
+
+type HighlightItem = {
+  kind?: HighlightKind;
+  category?: HighlightCategory;
+  type?: LegacyHighlightType;
+  secondaryType?: LegacyHighlightType | null;
+  year: number | null;
+  text: string;
+  title: string | null;
+  image: string | null;
+  articleUrl: string | null;
+};
 
 type HighlightResponse = {
-  highlight?: {
-    type: "selected" | "events" | "births" | "deaths" | "none";
-    year: number | null;
-    text: string;
-    title: string | null;
-    image: string | null;
-    articleUrl: string | null;
-  };
+  highlight?: HighlightItem;
+  highlights?: HighlightItem[];
 };
 
 type DayResponse = {
   day: string;
   avg: number;
   count: number;
+  views?: number;
   reviews: {
     id: string;
     stars: number;
@@ -24,6 +64,7 @@ type DayResponse = {
     createdAt?: string;
     likesCount: number;
     likedByMe: boolean;
+    isMine?: boolean;
   }[];
 };
 
@@ -31,7 +72,173 @@ type TopItem = {
   day: string;
   avg: number;
   count: number;
+  title?: string | null;
 };
+
+type DiscoverCard = {
+  day: string;
+  title: string;
+  image: string | null;
+  avg: number;
+  count: number;
+  views: number;
+};
+
+const BADGE_LABELS: Record<HighlightBadgeKey, string> = {
+  selected: "Selected",
+  event: "Event",
+  birth: "Birth",
+  death: "Death",
+  events: "Event",
+  births: "Birth",
+  deaths: "Death",
+  war: "War",
+  disaster: "Disaster",
+  politics: "Politics",
+  science: "Science",
+  culture: "Culture",
+  sports: "Sports",
+  discovery: "Discovery",
+  crime: "Crime",
+  general: "General",
+  none: "No data",
+};
+
+const BADGE_STYLES: Record<
+  HighlightBadgeKey,
+  { pill: string; text: string; border: string }
+> = {
+  selected: {
+    pill: "bg-white/15",
+    text: "text-white",
+    border: "border-white/20",
+  },
+  event: {
+    pill: "bg-sky-500/20",
+    text: "text-sky-300",
+    border: "border-sky-400/30",
+  },
+  events: {
+    pill: "bg-sky-500/20",
+    text: "text-sky-300",
+    border: "border-sky-400/30",
+  },
+  birth: {
+    pill: "bg-emerald-500/20",
+    text: "text-emerald-300",
+    border: "border-emerald-400/30",
+  },
+  births: {
+    pill: "bg-emerald-500/20",
+    text: "text-emerald-300",
+    border: "border-emerald-400/30",
+  },
+  death: {
+    pill: "bg-rose-500/20",
+    text: "text-rose-300",
+    border: "border-rose-400/30",
+  },
+  deaths: {
+    pill: "bg-rose-500/20",
+    text: "text-rose-300",
+    border: "border-rose-400/30",
+  },
+  war: {
+    pill: "bg-amber-500/20",
+    text: "text-amber-300",
+    border: "border-amber-400/30",
+  },
+  disaster: {
+    pill: "bg-orange-500/20",
+    text: "text-orange-300",
+    border: "border-orange-400/30",
+  },
+  politics: {
+    pill: "bg-indigo-500/20",
+    text: "text-indigo-300",
+    border: "border-indigo-400/30",
+  },
+  science: {
+    pill: "bg-cyan-500/20",
+    text: "text-cyan-300",
+    border: "border-cyan-400/30",
+  },
+  culture: {
+    pill: "bg-fuchsia-500/20",
+    text: "text-fuchsia-300",
+    border: "border-fuchsia-400/30",
+  },
+  sports: {
+    pill: "bg-lime-500/20",
+    text: "text-lime-300",
+    border: "border-lime-400/30",
+  },
+  discovery: {
+    pill: "bg-teal-500/20",
+    text: "text-teal-300",
+    border: "border-teal-400/30",
+  },
+  crime: {
+    pill: "bg-red-500/20",
+    text: "text-red-300",
+    border: "border-red-400/30",
+  },
+  general: {
+    pill: "bg-zinc-500/20",
+    text: "text-zinc-300",
+    border: "border-zinc-400/30",
+  },
+  none: {
+    pill: "bg-zinc-500/20",
+    text: "text-zinc-300",
+    border: "border-zinc-400/30",
+  },
+};
+
+function getBadgeStyle(key: HighlightBadgeKey) {
+  return BADGE_STYLES[key] ?? BADGE_STYLES.none;
+}
+
+function getBadgeLabel(key: HighlightBadgeKey) {
+  return BADGE_LABELS[key] ?? "Unknown";
+}
+
+function normalizeLegacyTypeToBadges(
+  type?: LegacyHighlightType,
+  secondaryType?: LegacyHighlightType | null
+): HighlightBadgeKey[] {
+  const badges: HighlightBadgeKey[] = [];
+
+  if (type && type !== "none") {
+    badges.push(type);
+  }
+
+  if (secondaryType && secondaryType !== "none" && secondaryType !== type) {
+    badges.push(secondaryType);
+  }
+
+  return badges;
+}
+
+function getHighlightBadges(item?: HighlightItem | null): HighlightBadgeKey[] {
+  if (!item) return [];
+
+  const badges: HighlightBadgeKey[] = [];
+
+  if (item.kind && item.kind !== "none") {
+    badges.push(item.kind);
+  }
+
+  if (item.category && item.category !== "general") {
+    badges.push(item.category);
+  }
+
+  if (badges.length > 0) {
+    return badges;
+  }
+
+  return normalizeLegacyTypeToBadges(item.type, item.secondaryType);
+}
 
 function clamp(n: number, a: number, b: number) {
   return Math.max(a, Math.min(b, n));
@@ -48,6 +255,22 @@ function pad2(n: number | string) {
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
+}
+
+function getTodayInRandomYear(minYear = 1900) {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+
+  const randomYear =
+    Math.floor(Math.random() * (currentYear - minYear + 1)) + minYear;
+
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  const maxDayInMonth = new Date(randomYear, Number(month), 0).getDate();
+  const safeDay = String(Math.min(Number(day), maxDayInMonth)).padStart(2, "0");
+
+  return `${randomYear}-${month}-${safeDay}`;
 }
 
 function getRandomDay(
@@ -82,31 +305,65 @@ function formatDisplayDate(date: string) {
   });
 }
 
-function normalizeHighlightType(
-  type?: "selected" | "events" | "births" | "deaths" | "none"
-) {
-  switch (type) {
-    case "selected":
-      return "Seleccionado";
-    case "events":
-      return "Evento";
-    case "births":
-      return "Nacimiento";
-    case "deaths":
-      return "Muerte";
-    default:
-      return "Dato";
+function formatCompactViews(n: number) {
+  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+}
+
+async function loadDiscoverRandomDays(n = 5): Promise<DiscoverCard[]> {
+  const uniqueDays = new Set<string>();
+
+  while (uniqueDays.size < n) {
+    uniqueDays.add(getRandomDay());
   }
-}
 
-function shiftDay(date: string, amount: number) {
-  const d = new Date(`${date}T00:00:00`);
-  d.setDate(d.getDate() + amount);
-  return d.toISOString().slice(0, 10);
-}
+  const days = Array.from(uniqueDays);
 
-function isDateInRange(date: string, min: string, max: string) {
-  return date >= min && date <= max;
+  const results = await Promise.all(
+    days.map(async (day) => {
+      try {
+        const [highlightRes, dayRes] = await Promise.all([
+          fetch(`/api/highlight?day=${encodeURIComponent(day)}`, {
+            cache: "no-store",
+          }),
+          fetch(`/api/day?day=${encodeURIComponent(day)}`, {
+            cache: "no-store",
+          }),
+        ]);
+
+        if (!highlightRes.ok || !dayRes.ok) {
+          throw new Error("Failed discover fetch");
+        }
+
+        const highlightJson = (await highlightRes.json()) as HighlightResponse;
+        const dayJson = (await dayRes.json()) as DayResponse;
+
+        const first =
+          highlightJson.highlights?.[0] ?? highlightJson.highlight ?? null;
+
+        return {
+          day,
+          title: first?.title?.trim() || "Historical day",
+          image: first?.image ?? null,
+          avg: dayJson?.avg ?? 0,
+          count: dayJson?.count ?? 0,
+          views: dayJson?.views ?? 0,
+        };
+      } catch {
+        return {
+          day,
+          title: "Historical day",
+          image: null,
+          avg: 0,
+          count: 0,
+          views: 0,
+        };
+      }
+    })
+  );
+
+  return results;
 }
 
 const YEARS = Array.from(
@@ -150,7 +407,11 @@ function Star({
 export default function Page() {
   const minDay = "1900-01-01";
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  const rateBoxRef = useRef<HTMLDivElement | null>(null);
+
   const [day, setDay] = useState<string>(minDay);
+  const [hasPickedInitialDay, setHasPickedInitialDay] = useState(false);
 
   const [selectedYear, setSelectedYear] = useState("1900");
   const [selectedMonth, setSelectedMonth] = useState("01");
@@ -159,8 +420,10 @@ export default function Page() {
   const [data, setData] = useState<DayResponse | null>(null);
   const [loadingDay, setLoadingDay] = useState(false);
 
-  const [highlight, setHighlight] =
-    useState<HighlightResponse["highlight"] | null>(null);
+  const [highlight, setHighlight] = useState<HighlightItem | null>(null);
+  const [highlights, setHighlights] = useState<HighlightItem[]>([]);
+  const [activeHighlightIndex, setActiveHighlightIndex] = useState(0);
+  const [isHighlightPaused, setIsHighlightPaused] = useState(false);
   const [loadingHighlight, setLoadingHighlight] = useState(false);
 
   const [stars, setStars] = useState<number>(0);
@@ -182,6 +445,9 @@ export default function Page() {
   const [suggestSending, setSuggestSending] = useState(false);
   const [suggestToast, setSuggestToast] = useState("");
 
+  const [discoverDays, setDiscoverDays] = useState<DiscoverCard[]>([]);
+  const [loadingDiscover, setLoadingDiscover] = useState(false);
+
   const daysInSelectedMonth = getDaysInMonth(
     Number(selectedYear),
     Number(selectedMonth)
@@ -191,6 +457,31 @@ export default function Page() {
     { length: daysInSelectedMonth },
     (_, i) => pad2(i + 1)
   );
+
+  useEffect(() => {
+    const random = getRandomDay(minDay, today);
+    setDay(random);
+    setHasPickedInitialDay(true);
+  }, [today]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      setLoadingDiscover(true);
+      const items = await loadDiscoverRandomDays(5);
+      if (!cancelled) {
+        setDiscoverDays(items);
+        setLoadingDiscover(false);
+      }
+    }
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const [y, m, d] = day.split("-");
@@ -210,10 +501,16 @@ export default function Page() {
   async function loadDay(d: string) {
     setLoadingDay(true);
     setToast("");
+
     try {
       const res = await fetch(`/api/day?day=${encodeURIComponent(d)}`, {
         cache: "no-store",
       });
+
+      if (!res.ok) {
+        throw new Error("Failed to load day");
+      }
+
       const json = (await res.json()) as DayResponse;
       setData(json);
     } catch {
@@ -226,11 +523,29 @@ export default function Page() {
 
   async function loadHighlight(d: string) {
     setLoadingHighlight(true);
+
     try {
-      const res = await fetch(`/api/highlight?day=${encodeURIComponent(d)}`);
+      const res = await fetch(`/api/highlight?day=${encodeURIComponent(d)}`, {
+        cache: "no-store",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to load highlight");
+      }
+
       const json = (await res.json()) as HighlightResponse;
-      setHighlight(json.highlight ?? null);
+
+      const items = json.highlights?.length
+        ? json.highlights
+        : json.highlight
+        ? [json.highlight]
+        : [];
+
+      setHighlights(items);
+      setHighlight(items[0] ?? null);
+      setActiveHighlightIndex(0);
     } catch {
+      setHighlights([]);
       setHighlight(null);
     } finally {
       setLoadingHighlight(false);
@@ -239,35 +554,66 @@ export default function Page() {
 
   async function loadTop() {
     setLoadingTop(true);
+
     try {
       const res = await fetch(`/api/top`, {
         cache: "no-store",
       });
+
+      if (!res.ok) {
+        throw new Error("Failed to load top");
+      }
+
       const json = await res.json();
       setTop((json?.top ?? []) as TopItem[]);
       setLow((json?.low ?? []) as TopItem[]);
     } catch {
-      // no toast acá
+      setTop([]);
+      setLow([]);
     } finally {
       setLoadingTop(false);
     }
   }
 
   useEffect(() => {
+    if (!hasPickedInitialDay) return;
+
+    fetch("/api/day-view", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ day }),
+    }).catch(() => {});
+
     loadDay(day);
     loadHighlight(day);
-    loadTop();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [day, hasPickedInitialDay]);
 
   useEffect(() => {
-    loadDay(day);
-    loadHighlight(day);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [day]);
+    if (!hasPickedInitialDay) return;
+    loadTop();
+  }, [hasPickedInitialDay]);
+
+  useEffect(() => {
+    if (highlights.length <= 1 || isHighlightPaused) return;
+
+    const interval = setInterval(() => {
+      setActiveHighlightIndex((prev) => {
+        const next = prev + 1;
+        return next >= highlights.length ? 0 : next;
+      });
+    }, 6000);
+
+    return () => clearInterval(interval);
+  }, [highlights, isHighlightPaused]);
+
+  useEffect(() => {
+    setHighlight(highlights[activeHighlightIndex] ?? null);
+  }, [activeHighlightIndex, highlights]);
 
   function goToToday() {
-    setDay(today);
+    setDay(getTodayInRandomYear(1900));
   }
 
   function goToManualDay() {
@@ -295,21 +641,101 @@ export default function Page() {
     }
   }
 
+  function shiftYearBy(delta: number) {
+    const [y, m, d] = day.split("-");
+    const year = Number(y);
+    const month = Number(m);
+    const currentDay = Number(d);
+
+    const targetYear = year + delta;
+    const currentRealYear = new Date().getFullYear();
+
+    if (targetYear < 1900 || targetYear > currentRealYear) return;
+
+    const maxDay = getDaysInMonth(targetYear, month);
+    const safeDay = Math.min(currentDay, maxDay);
+
+    const nextDay = `${targetYear}-${pad2(month)}-${pad2(safeDay)}`;
+
+    if (nextDay < minDay || nextDay > today) return;
+
+    setDay(nextDay);
+  }
+
+  function goToPreviousYear() {
+    shiftYearBy(-1);
+  }
+
+  function goToNextYear() {
+    shiftYearBy(1);
+  }
+
+  function goToPrevHighlight() {
+    if (highlights.length <= 1) return;
+    setActiveHighlightIndex((prev) =>
+      prev === 0 ? highlights.length - 1 : prev - 1
+    );
+  }
+
+  function goToNextHighlight() {
+    if (highlights.length <= 1) return;
+    setActiveHighlightIndex((prev) =>
+      prev === highlights.length - 1 ? 0 : prev + 1
+    );
+  }
+
   const isAtMinDay = day <= minDay;
   const isAtToday = day >= today;
 
+  const [currentYear] = today.split("-").map(Number);
+  const [selectedYearNum, selectedMonthNum, selectedDayNum] = day
+    .split("-")
+    .map(Number);
 
+  const prevYearCandidate = `${selectedYearNum - 1}-${pad2(
+    selectedMonthNum
+  )}-${pad2(
+    Math.min(
+      selectedDayNum,
+      getDaysInMonth(selectedYearNum - 1, selectedMonthNum)
+    )
+  )}`;
+
+  const nextYearCandidate = `${selectedYearNum + 1}-${pad2(
+    selectedMonthNum
+  )}-${pad2(
+    Math.min(
+      selectedDayNum,
+      getDaysInMonth(selectedYearNum + 1, selectedMonthNum)
+    )
+  )}`;
+
+  const isAtMinYear = selectedYearNum <= 1900 || prevYearCandidate < minDay;
+  const isAtMaxYear =
+    selectedYearNum >= currentYear || nextYearCandidate > today;
+
+  const shownStars = hoverStars || stars;
+  const activeBadges = getHighlightBadges(highlight);
+  const myReview = (data?.reviews ?? []).find((r) => r.isMine);
+
+  useEffect(() => {
+    if (!myReview) {
+      setStars(0);
+      setHoverStars(0);
+      setReview("");
+      return;
+    }
+
+    setStars(myReview.stars);
+    setHoverStars(0);
+    setReview(myReview.review);
+  }, [myReview?.id, day]);
 
   async function submit() {
     const s = clamp(hoverStars || stars, 1, 5);
 
     if (!s) {
       setToast("Elegí de 1 a 5 estrellas.");
-      return;
-    }
-
-    if (!review.trim()) {
-      setToast("Escribí una reseña.");
       return;
     }
 
@@ -333,14 +759,10 @@ export default function Page() {
         return;
       }
 
-      setReview("");
-      setStars(0);
-      setHoverStars(0);
-      setToast("Guardado ✅");
-
       await loadDay(day);
       await loadHighlight(day);
       await loadTop();
+      setToast("Guardado");
     } catch {
       setToast("Error guardando.");
     } finally {
@@ -425,8 +847,6 @@ export default function Page() {
     }
   }
 
-  const shownStars = hoverStars || stars;
-
   return (
     <main className="min-h-screen bg-[#0b1220] text-zinc-100">
       <div className="mx-auto max-w-6xl px-6 py-10">
@@ -456,7 +876,7 @@ export default function Page() {
                 onClick={goToToday}
                 className="rounded-lg border border-white/10 bg-black/20 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-black/30"
               >
-                Today
+                Today in the history
               </button>
             </div>
 
@@ -510,22 +930,102 @@ export default function Page() {
               </button>
             </div>
           </div>
+
+          <div>
+            <div className="mb-3 text-sm font-semibold text-zinc-200">
+              Discover random days
+            </div>
+
+            {loadingDiscover ? (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+                {Array.from({ length: 5 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="h-72 animate-pulse rounded-2xl border border-white/10 bg-white/5"
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
+                {discoverDays.map((card, index) => (
+                  <button
+                    key={`${card.day}-${index}`}
+                    type="button"
+                    onClick={() => setDay(card.day)}
+                    className="group relative h-72 overflow-hidden rounded-2xl border border-white/10 bg-black/20 text-left transition hover:-translate-y-1 hover:border-white/20"
+                  >
+                    {card.image ? (
+                      <img
+                        src={card.image}
+                        alt={card.title}
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 via-zinc-900 to-black" />
+                    )}
+
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/10 transition group-hover:from-black/95 group-hover:via-black/50 group-hover:to-black/25" />
+
+                    <div className="absolute left-3 right-3 bottom-3 z-10">
+                      <div className="line-clamp-1 text-xs text-zinc-300">
+                        {card.day}
+                      </div>
+                      <div className="mt-1 line-clamp-2 text-sm font-semibold text-white">
+                        {card.title}
+                      </div>
+                    </div>
+
+                    <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 transition duration-200 group-hover:opacity-100">
+                      <div className="rounded-2xl border border-white/10 bg-black/55 px-5 py-5 backdrop-blur-md">
+                        <div className="flex items-center justify-center gap-2 text-white">
+                          <span className="text-lg">👁</span>
+                          <span className="text-2xl font-semibold">
+                            {formatCompactViews(card.views)}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-center gap-2 text-white">
+                          <span className="text-lg">★</span>
+                          <span className="text-2xl font-semibold">
+                            {formatAvg(card.avg)}
+                          </span>
+                        </div>
+
+                        <div className="mt-2 text-center text-xs text-zinc-200">
+                          {card.count} vote{card.count === 1 ? "" : "s"}
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
           <section className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0 flex-1">
                 <div className="text-sm text-zinc-300">Selected day</div>
 
-                <div className="mt-2 flex flex-wrap items-center gap-3">
+                <div className="mt-2 flex flex-wrap items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={goToPreviousYear}
+                    disabled={isAtMinYear}
+                    className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    «
+                  </button>
+
                   <button
                     type="button"
                     onClick={goToPreviousDay}
                     disabled={isAtMinDay}
                     className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    ← Prev
+                    ‹
                   </button>
 
                   <div className="text-xl font-semibold">{day}</div>
@@ -536,26 +1036,38 @@ export default function Page() {
                     disabled={isAtToday}
                     className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
                   >
-                    Next →
+                    ›
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={goToNextYear}
+                    disabled={isAtMaxYear}
+                    className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    »
                   </button>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <div className="text-right">
-                  <div className="text-xs text-zinc-300">Community avg</div>
-                  <div className="text-lg font-semibold">
-                    {data ? formatAvg(data.avg) : "—"}
-                    <span className="text-xs font-normal text-zinc-300">
-                      {" "}
-                      ({data?.count ?? 0})
-                    </span>
-                  </div>
+              <div className="shrink-0 text-right">
+                <div className="text-xs text-zinc-300">Community avg</div>
+                <div className="text-lg font-semibold">
+                  {data ? formatAvg(data.avg) : "—"}
+                  <span className="text-xs font-normal text-zinc-300">
+                    {" "}
+                    ({data?.count ?? 0})
+                  </span>
+                </div>
+
+                <div className="mt-2 text-xs text-zinc-400">Views</div>
+                <div className="text-sm font-medium text-zinc-200">
+                  {formatCompactViews(data?.views ?? 0)}
                 </div>
               </div>
             </div>
 
-            {loadingHighlight ? (
+            {!hasPickedInitialDay || loadingHighlight ? (
               <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-5">
                 <div className="animate-pulse">
                   <div className="h-4 w-28 rounded bg-white/10" />
@@ -566,7 +1078,11 @@ export default function Page() {
                 </div>
               </div>
             ) : highlight ? (
-              <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-black/20">
+              <div
+                className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+                onMouseEnter={() => setIsHighlightPaused(true)}
+                onMouseLeave={() => setIsHighlightPaused(false)}
+              >
                 <div className="relative min-h-[320px]">
                   {highlight.image ? (
                     <img
@@ -581,7 +1097,7 @@ export default function Page() {
                   <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/55 to-black/20" />
 
                   <div className="relative flex h-full min-h-[320px] flex-col justify-end p-5 sm:p-6">
-                    <div className="text-sm text-zinc-200/90">En este día</div>
+                    <div className="text-sm text-zinc-200/90">In this day</div>
                     <div className="text-2xl font-semibold text-white">
                       {formatDisplayDate(day)}
                     </div>
@@ -593,9 +1109,18 @@ export default function Page() {
                         </span>
                       ) : null}
 
-                      <span className="rounded-md bg-white/15 px-2.5 py-1 text-xs font-medium uppercase tracking-wide text-white backdrop-blur-sm">
-                        {normalizeHighlightType(highlight.type)}
-                      </span>
+                      {activeBadges.map((badge) => {
+                        const style = getBadgeStyle(badge);
+
+                        return (
+                          <span
+                            key={badge}
+                            className={`rounded-md border px-2.5 py-1 text-xs font-medium uppercase tracking-wide backdrop-blur-sm ${style.pill} ${style.text} ${style.border}`}
+                          >
+                            {getBadgeLabel(badge)}
+                          </span>
+                        );
+                      })}
                     </div>
 
                     {highlight.title ? (
@@ -608,33 +1133,88 @@ export default function Page() {
                       {highlight.text}
                     </div>
 
-                    {highlight.articleUrl ? (
-                      <a
-                        href={highlight.articleUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-4 inline-flex w-fit items-center rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
-                      >
-                        Read on Wikipedia
-                      </a>
-                    ) : null}
+                    <div className="mt-4 flex flex-col items-start gap-2">
+                      {highlight.articleUrl ? (
+                        <a
+                          href={highlight.articleUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex w-fit items-center rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
+                        >
+                          Read on Wikipedia
+                        </a>
+                      ) : null}
 
-                    {highlight.type === "none" ? (
+                      <div className="text-sm text-zinc-200/85">
+                        Think we&apos;re missing an important event?
+                      </div>
+
                       <button
                         type="button"
                         onClick={() => setShowSuggestModal(true)}
-                        className="mt-4 inline-flex w-fit items-center rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
+                        className="inline-flex w-fit items-center rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
                       >
                         Suggest an event
                       </button>
+                    </div>
+
+                    {highlights.length > 1 ? (
+                      <div className="mt-5 flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={goToPrevHighlight}
+                            className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-white transition hover:bg-white/20"
+                          >
+                            ←
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={goToNextHighlight}
+                            className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-white transition hover:bg-white/20"
+                          >
+                            →
+                          </button>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {highlights.map((_, index) => (
+                            <button
+                              key={index}
+                              type="button"
+                              onClick={() => setActiveHighlightIndex(index)}
+                              className={`h-2.5 w-2.5 rounded-full transition ${
+                                index === activeHighlightIndex
+                                  ? "bg-white"
+                                  : "bg-white/30"
+                              }`}
+                              aria-label={`Go to highlight ${index + 1}`}
+                            />
+                          ))}
+                        </div>
+
+                        <div className="text-xs text-zinc-300">
+                          {activeHighlightIndex + 1}/{highlights.length}
+                        </div>
+                      </div>
                     ) : null}
                   </div>
                 </div>
               </div>
             ) : null}
 
-              <div className="mt-6 rounded-2xl border border-white/10 bg-black/20 p-5">
+            <div
+              ref={rateBoxRef}
+              className="mt-6 scroll-mt-24 rounded-2xl border border-white/10 bg-black/20 p-5"
+            >
               <div className="text-sm text-zinc-300">Rate this day</div>
+
+              {myReview ? (
+                <div className="mt-2 text-xs text-emerald-300">
+                  You already rated this day. You can update your review below.
+                </div>
+              ) : null}
 
               <div className="mt-3 flex items-center gap-1">
                 {Array.from({ length: 5 }).map((_, i) => {
@@ -661,7 +1241,7 @@ export default function Page() {
                 <textarea
                   value={review}
                   onChange={(e) => setReview(e.target.value)}
-                  placeholder="Dejá una reseña corta…"
+                  placeholder="Optional review…"
                   className="mt-2 h-24 w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-white/20"
                 />
               </div>
@@ -672,7 +1252,11 @@ export default function Page() {
                   disabled={saving}
                   className="rounded-xl bg-white px-5 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
                 >
-                  {saving ? "Saving..." : "Rate this day"}
+                  {saving
+                    ? "Saving..."
+                    : myReview
+                    ? "Update your review"
+                    : "Rate this day"}
                 </button>
 
                 {toast ? (
@@ -695,9 +1279,13 @@ export default function Page() {
                 {(data?.reviews ?? []).slice(0, 8).map((r) => (
                   <div
                     key={r.id}
-                    className="rounded-xl border border-white/10 bg-black/20 p-4"
+                    className={`rounded-xl border p-4 ${
+                      r.isMine
+                        ? "border-emerald-400/20 bg-emerald-500/5"
+                        : "border-white/10 bg-black/20"
+                    }`}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <div className="text-yellow-400">
                         {"★".repeat(clamp(r.stars, 0, 5))}
                         <span className="text-zinc-600">
@@ -705,9 +1293,35 @@ export default function Page() {
                         </span>
                       </div>
 
+                      {r.isMine ? (
+                        <span className="rounded-md border border-emerald-400/30 bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300">
+                          Your review
+                        </span>
+                      ) : null}
+
                       <div className="text-xs text-zinc-400">
-                        {r.createdAt ? new Date(r.createdAt).toLocaleString() : ""}
+                        {r.createdAt
+                          ? new Date(r.createdAt).toLocaleString()
+                          : ""}
                       </div>
+
+                      {r.isMine ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStars(r.stars);
+                            setHoverStars(0);
+                            setReview(r.review);
+                            rateBoxRef.current?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
+                          }}
+                          className="text-xs text-zinc-300 underline underline-offset-4 transition hover:text-white"
+                        >
+                          Edit
+                        </button>
+                      ) : null}
                     </div>
 
                     <div className="mt-2 text-sm text-zinc-200">
@@ -745,48 +1359,101 @@ export default function Page() {
           <aside className="space-y-6">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
               <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold">Top Rated Days</div>
+                <div>
+                  <div className="text-sm font-semibold">Most Loved Days</div>
+                  <div className="text-xs text-zinc-400">
+                    Best scored by the community
+                  </div>
+                </div>
+
                 {loadingTop ? (
                   <div className="text-xs text-zinc-400">Loading…</div>
                 ) : null}
               </div>
 
               <div className="mt-4 space-y-3">
-                {top.slice(0, 6).map((item) => (
+                {top.slice(0, 6).map((item, index) => (
                   <button
                     key={item.day}
                     onClick={() => setDay(item.day)}
-                    className="w-full rounded-xl border border-white/10 bg-black/20 p-3 text-left transition hover:bg-black/30"
+                    className="w-full rounded-xl border border-white/10 bg-black/20 p-4 text-left transition hover:bg-black/30"
                   >
-                    <div className="text-sm font-semibold">{item.day}</div>
-                    <div className="mt-1 text-xs text-zinc-300">
-                      {formatAvg(item.avg)} avg • {item.count} votes
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-yellow-500/20 text-xs font-semibold text-yellow-400">
+                          #{index + 1}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold">{item.day}</div>
+                          <div className="mt-1 line-clamp-2 text-xs text-zinc-400">
+                            {item.title?.trim() || "Historical day"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-sm font-semibold text-yellow-400">
+                        ★ {formatAvg(item.avg)}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-xs text-zinc-500">
+                      {item.count} votes
                     </div>
                   </button>
                 ))}
 
-                {top.length === 0 ? <div className="text-sm text-zinc-400"></div> : null}
+                {top.length === 0 ? (
+                  <div className="text-sm text-zinc-400"></div>
+                ) : null}
               </div>
             </div>
 
             <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
-              <div className="text-sm font-semibold">Lowest Rated Days</div>
+              <div>
+                <div className="text-sm font-semibold">
+                  Most Controversial Days
+                </div>
+                <div className="text-xs text-zinc-400">
+                  Days people rated the lowest
+                </div>
+              </div>
 
               <div className="mt-4 space-y-3">
-                {low.slice(0, 6).map((item) => (
+                {low.slice(0, 6).map((item, index) => (
                   <button
                     key={item.day}
                     onClick={() => setDay(item.day)}
-                    className="w-full rounded-xl border border-white/10 bg-black/20 p-3 text-left transition hover:bg-black/30"
+                    className="w-full rounded-xl border border-white/10 bg-black/20 p-4 text-left transition hover:bg-black/30"
                   >
-                    <div className="text-sm font-semibold">{item.day}</div>
-                    <div className="mt-1 text-xs text-zinc-300">
-                      {formatAvg(item.avg)} avg • {item.count} votes
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-start gap-3">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-red-500/20 text-xs font-semibold text-red-400">
+                          #{index + 1}
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold">{item.day}</div>
+                          <div className="mt-1 line-clamp-2 text-xs text-zinc-400">
+                            {item.title?.trim() || "Historical day"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-sm font-semibold text-red-400">
+                        ★ {formatAvg(item.avg)}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 text-xs text-zinc-500">
+                      {item.count} votes
                     </div>
                   </button>
                 ))}
 
-                {low.length === 0 ? <div className="text-sm text-zinc-400"></div> : null}
+                {low.length === 0 ? (
+                  <div className="text-sm text-zinc-400"></div>
+                ) : null}
               </div>
             </div>
           </aside>
@@ -820,7 +1487,9 @@ export default function Page() {
 
             <div className="mt-5 space-y-4">
               <div>
-                <label className="mb-2 block text-sm text-zinc-300">Event</label>
+                <label className="mb-2 block text-sm text-zinc-300">
+                  Event
+                </label>
                 <input
                   value={suggestEvent}
                   onChange={(e) => setSuggestEvent(e.target.value)}
