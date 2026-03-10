@@ -8,15 +8,17 @@ datasource db {
 }
 
 model Rating {
-  id        String       @id @default(cuid())
+  id        String         @id @default(cuid())
   anonId    String
   day       String
   stars     Int
   review    String
-  createdAt DateTime     @default(now())
-  updatedAt DateTime     @updatedAt
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
 
   likes     RatingLike[]
+  reports   ReviewReport[]
+  replies   RatingReply[]
 
   @@unique([anonId, day], name: "anonId_day")
 }
@@ -30,6 +32,31 @@ model RatingLike {
   rating Rating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
 
   @@unique([ratingId, anonId], name: "rating_like_unique")
+}
+
+model ReviewReport {
+  id        String   @id @default(cuid())
+  ratingId  String
+  anonId    String
+  reason    String
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rating Rating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+
+  @@unique([ratingId, anonId], name: "review_report_unique")
+}
+
+model RatingReply {
+  id        String   @id @default(cuid())
+  ratingId  String
+  anonId    String
+  text      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  rating Rating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
 }
 
 model DayHighlightCache {

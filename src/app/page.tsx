@@ -311,6 +311,15 @@ function formatCompactViews(n: number) {
   return String(n);
 }
 
+function formatReviewDate(date?: string) {
+  if (!date) return "";
+  return new Date(date).toLocaleString();
+}
+
+function hasReviewText(text?: string) {
+  return !!text && text.trim().length > 0;
+}
+
 async function loadDiscoverRandomDays(n = 5): Promise<DiscoverCard[]> {
   const uniqueDays = new Set<string>();
 
@@ -409,6 +418,8 @@ export default function Page() {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const rateBoxRef = useRef<HTMLDivElement | null>(null);
+  const dayRequestRef = useRef(0);
+  const highlightRequestRef = useRef(0);
 
   const [day, setDay] = useState<string>(minDay);
   const [hasPickedInitialDay, setHasPickedInitialDay] = useState(false);
@@ -432,6 +443,14 @@ export default function Page() {
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string>("");
+
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
+  const [reportingReviewId, setReportingReviewId] = useState<string | null>(
+    null
+  );
+  const [reviewsSort, setReviewsSort] = useState<"helpful" | "newest">(
+    "helpful"
+  );
 
   const [top, setTop] = useState<TopItem[]>([]);
   const [low, setLow] = useState<TopItem[]>([]);
@@ -499,6 +518,7 @@ export default function Page() {
   }, [daysInSelectedMonth, selectedDay]);
 
   async function loadDay(d: string) {
+    const requestId = ++dayRequestRef.current;
     setLoadingDay(true);
     setToast("");
 
@@ -512,16 +532,22 @@ export default function Page() {
       }
 
       const json = (await res.json()) as DayResponse;
+
+      if (requestId !== dayRequestRef.current) return;
       setData(json);
     } catch {
+      if (requestId !== dayRequestRef.current) return;
       setToast("Error cargando el día.");
       setData(null);
     } finally {
-      setLoadingDay(false);
+      if (requestId === dayRequestRef.current) {
+        setLoadingDay(false);
+      }
     }
   }
 
   async function loadHighlight(d: string) {
+    const requestId = ++highlightRequestRef.current;
     setLoadingHighlight(true);
 
     try {
@@ -541,14 +567,20 @@ export default function Page() {
         ? [json.highlight]
         : [];
 
+      if (requestId !== highlightRequestRef.current) return;
+
       setHighlights(items);
       setHighlight(items[0] ?? null);
       setActiveHighlightIndex(0);
     } catch {
+      if (requestId !== highlightRequestRef.current) return;
+
       setHighlights([]);
       setHighlight(null);
     } finally {
-      setLoadingHighlight(false);
+      if (requestId === highlightRequestRef.current) {
+        setLoadingHighlight(false);
+      }
     }
   }
 
@@ -718,6 +750,39 @@ export default function Page() {
   const activeBadges = getHighlightBadges(highlight);
   const myReview = (data?.reviews ?? []).find((r) => r.isMine);
 
+  const allReviews = data?.reviews ?? [];
+  const ratingsCount = allReviews.length;
+
+  const starDistribution = [5, 4, 3, 2, 1].map((value) => ({
+    stars: value,
+    count: allReviews.filter((r) => r.stars === value).length,
+  }));
+
+  const maxDistributionCount = Math.max(
+    1,
+    ...starDistribution.map((item) => item.count)
+  );
+
+  const otherReviews = allReviews.filter((r) => !r.isMine);
+
+  const sortedOtherReviews = [...otherReviews].sort((a, b) => {
+    if (reviewsSort === "helpful") {
+      if (b.likesCount !== a.likesCount) return b.likesCount - a.likesCount;
+
+      const aHasText = hasReviewText(a.review) ? 1 : 0;
+      const bHasText = hasReviewText(b.review) ? 1 : 0;
+      if (bHasText !== aHasText) return bHasText - aHasText;
+
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    }
+
+    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return bTime - aTime;
+  });
+
   useEffect(() => {
     if (!myReview) {
       setStars(0);
@@ -762,12 +827,95 @@ export default function Page() {
       await loadDay(day);
       await loadHighlight(day);
       await loadTop();
-      setToast("Guardado");
+      setToast("");
     } catch {
       setToast("Error guardando.");
     } finally {
       setSaving(false);
       setTimeout(() => setToast(""), 2000);
+    }
+  }
+
+  async function deleteReview(ratingId: string) {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete your review?"
+    );
+
+    if (!confirmed) return;
+
+    setDeletingReviewId(ratingId);
+    setToast("");
+
+    try {
+      const res = await fetch("/api/review-delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ratingId }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setToast(json?.error ?? "Could not delete review.");
+        return;
+      }
+
+      if (myReview?.id === ratingId) {
+        setStars(0);
+        setHoverStars(0);
+        setReview("");
+      }
+
+      await loadDay(day);
+      await loadTop();
+      setToast("Review deleted.");
+    } catch {
+      setToast("Could not delete review.");
+    } finally {
+      setDeletingReviewId(null);
+    }
+  }
+
+  async function reportReview(ratingId: string) {
+    const reason = window.prompt(
+      "Why are you reporting this review?",
+      "Spam or abusive content"
+    );
+
+    if (!reason || reason.trim().length < 3) {
+      setToast("Report reason must be at least 3 characters.");
+      return;
+    }
+
+    setReportingReviewId(ratingId);
+    setToast("");
+
+    try {
+      const res = await fetch("/api/review-report", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ratingId,
+          reason: reason.trim(),
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setToast(json?.error ?? "Could not report review.");
+        return;
+      }
+
+      setToast("Review reported.");
+    } catch {
+      setToast("Could not report review.");
+    } finally {
+      setReportingReviewId(null);
     }
   }
 
@@ -1232,7 +1380,7 @@ export default function Page() {
                 })}
 
                 <div className="ml-3 text-sm text-zinc-300">
-                  {shownStars ? `${shownStars}/5` : "—"}
+                  {shownStars ? `${shownStars}/5` : ""}
                 </div>
               </div>
 
@@ -1265,93 +1413,237 @@ export default function Page() {
               </div>
             </div>
 
-            <div className="mt-6">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-zinc-300">
-                  Latest reviews ({data?.reviews?.length ?? 0})
+            <div className="mt-6 rounded-2xl border border-white/10 bg-black/10 p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-lg font-semibold text-zinc-100">
+                    Community reactions
+                  </div>
+                  <div className="mt-1 text-sm text-zinc-400">
+                    See how people rated this day
+                  </div>
                 </div>
-                {loadingDay ? (
-                  <div className="text-xs text-zinc-400">Loading…</div>
-                ) : null}
-              </div>
 
-              <div className="mt-3 space-y-3">
-                {(data?.reviews ?? []).slice(0, 8).map((r) => (
-                  <div
-                    key={r.id}
-                    className={`rounded-xl border p-4 ${
-                      r.isMine
-                        ? "border-emerald-400/20 bg-emerald-500/5"
-                        : "border-white/10 bg-black/20"
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setReviewsSort("helpful")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                      reviewsSort === "helpful"
+                        ? "border border-white/10 bg-white/10 text-white"
+                        : "text-zinc-400 hover:text-zinc-200"
                     }`}
                   >
-                    <div className="flex items-center gap-2 flex-wrap">
+                    Most helpful
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setReviewsSort("newest")}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                      reviewsSort === "newest"
+                        ? "border border-white/10 bg-white/10 text-white"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    Newest
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="text-3xl font-semibold text-white">
+                    ★ {formatAvg(data?.avg ?? 0)}
+                  </div>
+                  <div className="text-sm text-zinc-400">
+                    ({ratingsCount} rating{ratingsCount === 1 ? "" : "s"})
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {starDistribution.map((item) => (
+                    <div key={item.stars} className="flex items-center gap-3">
+                      <div className="w-12 shrink-0 text-sm text-zinc-300">
+                        {item.stars} ★
+                      </div>
+
+                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-yellow-400"
+                          style={{
+                            width: `${(item.count / maxDistributionCount) * 100}%`,
+                          }}
+                        />
+                      </div>
+
+                      <div className="w-6 shrink-0 text-right text-sm text-zinc-400">
+                        {item.count}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {myReview ? (
+                <div className="mt-5">
+                  <div className="mb-2 text-sm font-medium text-zinc-200">
+                    Your rating
+                  </div>
+
+                  <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/5 p-4">
+                    <div className="flex flex-wrap items-center gap-2">
                       <div className="text-yellow-400">
-                        {"★".repeat(clamp(r.stars, 0, 5))}
+                        {"★".repeat(clamp(myReview.stars, 0, 5))}
                         <span className="text-zinc-600">
-                          {"★".repeat(5 - clamp(r.stars, 0, 5))}
+                          {"★".repeat(5 - clamp(myReview.stars, 0, 5))}
                         </span>
                       </div>
 
-                      {r.isMine ? (
-                        <span className="rounded-md border border-emerald-400/30 bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300">
-                          Your review
-                        </span>
-                      ) : null}
+                      <span className="rounded-md border border-emerald-400/30 bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300">
+                        Your review
+                      </span>
 
                       <div className="text-xs text-zinc-400">
-                        {r.createdAt
-                          ? new Date(r.createdAt).toLocaleString()
-                          : ""}
+                        {formatReviewDate(myReview.createdAt)}
                       </div>
 
-                      {r.isMine ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStars(r.stars);
-                            setHoverStars(0);
-                            setReview(r.review);
-                            rateBoxRef.current?.scrollIntoView({
-                              behavior: "smooth",
-                              block: "start",
-                            });
-                          }}
-                          className="text-xs text-zinc-300 underline underline-offset-4 transition hover:text-white"
-                        >
-                          Edit
-                        </button>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-2 text-sm text-zinc-200">
-                      {r.review || <span className="text-zinc-500">—</span>}
-                    </div>
-
-                    <div className="mt-3">
                       <button
                         type="button"
-                        onClick={() => toggleLike(r.id)}
+                        onClick={() => {
+                          setStars(myReview.stars);
+                          setHoverStars(0);
+                          setReview(myReview.review);
+                          rateBoxRef.current?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          });
+                        }}
+                        className="text-xs text-zinc-300 underline underline-offset-4 transition hover:text-white"
+                      >
+                        
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => deleteReview(myReview.id)}
+                        disabled={deletingReviewId === myReview.id}
+                        className="text-xs text-red-300 underline underline-offset-4 transition hover:text-red-200 disabled:opacity-50"
+                      >
+                        {deletingReviewId === myReview.id
+                          ? "Deleting..."
+                          : "Delete"}
+                      </button>
+                    </div>
+
+                    {hasReviewText(myReview.review) ? (
+                      <div className="mt-3 text-sm leading-6 text-zinc-200">
+                        {myReview.review}
+                      </div>
+                    ) : null}
+
+                    <div
+                      className={`${
+                        hasReviewText(myReview.review) ? "mt-3" : "mt-2"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleLike(myReview.id)}
                         className="inline-flex items-center gap-2 text-sm text-zinc-400 transition hover:text-zinc-200"
                       >
                         <span
                           className={`text-base ${
-                            r.likedByMe ? "text-pink-400" : "text-zinc-500"
+                            myReview.likedByMe ? "text-pink-400" : "text-zinc-500"
                           }`}
                         >
                           ♥
                         </span>
-                        <span>{r.likesCount}</span>
+                        <span>{myReview.likesCount}</span>
                       </button>
                     </div>
                   </div>
-                ))}
+                </div>
+              ) : null}
 
-                {(data?.reviews?.length ?? 0) === 0 ? (
-                  <div className="rounded-xl border border-white/10 bg-black/10 p-4 text-sm text-zinc-400">
-                    No reviews yet. Be the first.
-                  </div>
+              <div className="mt-5">
+                <div className="mb-2 text-sm font-medium text-zinc-200">
+                  Latest reviews ({otherReviews.length})
+                </div>
+
+                {loadingDay ? (
+                  <div className="mb-3 text-xs text-zinc-400">Loading…</div>
                 ) : null}
+
+                <div className="space-y-3">
+                  {sortedOtherReviews.slice(0, 8).map((r) => {
+                    const compact = !hasReviewText(r.review);
+
+                    return (
+                      <div
+                        key={r.id}
+                        className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                      >
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-yellow-400">
+                            {"★".repeat(clamp(r.stars, 0, 5))}
+                            <span className="text-zinc-600">
+                              {"★".repeat(5 - clamp(r.stars, 0, 5))}
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-zinc-400">
+                            {formatReviewDate(r.createdAt)}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => reportReview(r.id)}
+                            disabled={reportingReviewId === r.id}
+                            className="ml-auto text-xs text-amber-300 underline underline-offset-4 transition hover:text-amber-200 disabled:opacity-50"
+                          >
+                            {reportingReviewId === r.id
+                              ? "Reporting..."
+                              : "Report"}
+                          </button>
+                        </div>
+
+                        {!compact ? (
+                          <div className="mt-3 text-sm leading-6 text-zinc-200">
+                            {r.review}
+                          </div>
+                        ) : null}
+
+                        <div
+                          className={`${
+                            compact ? "mt-2" : "mt-3"
+                          } flex items-center justify-between`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => toggleLike(r.id)}
+                            className="inline-flex items-center gap-2 text-sm text-zinc-400 transition hover:text-zinc-200"
+                          >
+                            <span
+                              className={`text-base ${
+                                r.likedByMe ? "text-pink-400" : "text-zinc-500"
+                              }`}
+                            >
+                              ♥
+                            </span>
+                            <span>{r.likesCount}</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {otherReviews.length === 0 && !myReview ? (
+                    <div className="rounded-xl border border-white/10 bg-black/10 p-4 text-sm text-zinc-400">
+                      No reviews yet. Be the first.
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </div>
           </section>
