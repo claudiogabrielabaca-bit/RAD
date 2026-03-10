@@ -65,6 +65,14 @@ type DayResponse = {
     likesCount: number;
     likedByMe: boolean;
     isMine?: boolean;
+    authorLabel: string;
+    replies: {
+      id: string;
+      text: string;
+      createdAt?: string;
+      isMine?: boolean;
+      authorLabel: string;
+    }[];
   }[];
 };
 
@@ -448,6 +456,12 @@ export default function Page() {
   const [reportingReviewId, setReportingReviewId] = useState<string | null>(
     null
   );
+  const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  const [replyTextByRating, setReplyTextByRating] = useState<
+    Record<string, string>
+  >({});
+  const [sendingReplyId, setSendingReplyId] = useState<string | null>(null);
+  const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
   const [reviewsSort, setReviewsSort] = useState<"helpful" | "newest">(
     "helpful"
   );
@@ -938,6 +952,86 @@ export default function Page() {
       await loadDay(day);
     } catch {
       setToast("Error dando like.");
+    }
+  }
+
+  async function submitReply(ratingId: string) {
+    const text = (replyTextByRating[ratingId] ?? "").trim();
+
+    if (!text) {
+      setToast("Reply cannot be empty.");
+      return;
+    }
+
+    setSendingReplyId(ratingId);
+    setToast("");
+
+    try {
+      const res = await fetch("/api/review-reply", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ratingId,
+          text,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setToast(json?.error ?? "Could not send reply.");
+        return;
+      }
+
+      setReplyTextByRating((prev) => ({
+        ...prev,
+        [ratingId]: "",
+      }));
+      setReplyingToId(null);
+
+      await loadDay(day);
+      setToast("Reply sent.");
+    } catch {
+      setToast("Could not send reply.");
+    } finally {
+      setSendingReplyId(null);
+    }
+  }
+
+  async function deleteReply(replyId: string) {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete your reply?"
+    );
+
+    if (!confirmed) return;
+
+    setDeletingReplyId(replyId);
+    setToast("");
+
+    try {
+      const res = await fetch("/api/reply-delete", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ replyId }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setToast(json?.error ?? "Could not delete reply.");
+        return;
+      }
+
+      await loadDay(day);
+      setToast("Reply deleted.");
+    } catch {
+      setToast("Could not delete reply.");
+    } finally {
+      setDeletingReplyId(null);
     }
   }
 
@@ -1521,7 +1615,7 @@ export default function Page() {
                         }}
                         className="text-xs text-zinc-300 underline underline-offset-4 transition hover:text-white"
                       >
-                        
+                        Edit
                       </button>
 
                       <button
@@ -1545,7 +1639,7 @@ export default function Page() {
                     <div
                       className={`${
                         hasReviewText(myReview.review) ? "mt-3" : "mt-2"
-                      }`}
+                      } flex flex-wrap items-center gap-4`}
                     >
                       <button
                         type="button"
@@ -1554,14 +1648,103 @@ export default function Page() {
                       >
                         <span
                           className={`text-base ${
-                            myReview.likedByMe ? "text-pink-400" : "text-zinc-500"
+                            myReview.likedByMe
+                              ? "text-pink-400"
+                              : "text-zinc-500"
                           }`}
                         >
                           ♥
                         </span>
                         <span>{myReview.likesCount}</span>
                       </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setReplyingToId((prev) =>
+                            prev === myReview.id ? null : myReview.id
+                          )
+                        }
+                        className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
+                      >
+                        Reply
+                      </button>
                     </div>
+
+                    {myReview.replies?.length ? (
+                      <div className="mt-4 space-y-3 border-l border-white/10 pl-4">
+                        {myReview.replies.map((reply) => (
+                          <div
+                            key={reply.id}
+                            className="rounded-xl border border-white/10 bg-black/20 p-3"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-zinc-300">
+                                {reply.authorLabel}
+                              </span>
+
+                              <div className="text-xs text-zinc-400">
+                                {formatReviewDate(reply.createdAt)}
+                              </div>
+
+                              {reply.isMine ? (
+                                <button
+                                  type="button"
+                                  onClick={() => deleteReply(reply.id)}
+                                  disabled={deletingReplyId === reply.id}
+                                  className="text-xs text-red-300 underline underline-offset-4 transition hover:text-red-200 disabled:opacity-50"
+                                >
+                                  {deletingReplyId === reply.id
+                                    ? "Deleting..."
+                                    : "Delete"}
+                                </button>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-2 text-sm leading-6 text-zinc-200">
+                              {reply.text}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    {replyingToId === myReview.id ? (
+                      <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                        <textarea
+                          value={replyTextByRating[myReview.id] ?? ""}
+                          onChange={(e) =>
+                            setReplyTextByRating((prev) => ({
+                              ...prev,
+                              [myReview.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Write a reply..."
+                          className="h-24 w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-white/20"
+                        />
+
+                        <div className="mt-3 flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => submitReply(myReview.id)}
+                            disabled={sendingReplyId === myReview.id}
+                            className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
+                          >
+                            {sendingReplyId === myReview.id
+                              ? "Sending..."
+                              : "Send reply"}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setReplyingToId(null)}
+                            className="text-sm text-zinc-400 transition hover:text-zinc-200"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -1592,6 +1775,10 @@ export default function Page() {
                             </span>
                           </div>
 
+                          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-zinc-300">
+                            {r.authorLabel}
+                          </span>
+
                           <div className="text-xs text-zinc-400">
                             {formatReviewDate(r.createdAt)}
                           </div>
@@ -1617,7 +1804,7 @@ export default function Page() {
                         <div
                           className={`${
                             compact ? "mt-2" : "mt-3"
-                          } flex items-center justify-between`}
+                          } flex flex-wrap items-center gap-4`}
                         >
                           <button
                             type="button"
@@ -1633,7 +1820,94 @@ export default function Page() {
                             </span>
                             <span>{r.likesCount}</span>
                           </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setReplyingToId((prev) =>
+                                prev === r.id ? null : r.id
+                              )
+                            }
+                            className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
+                          >
+                            Reply
+                          </button>
                         </div>
+
+                        {r.replies?.length ? (
+                          <div className="mt-4 space-y-3 border-l border-white/10 pl-4">
+                            {r.replies.map((reply) => (
+                              <div
+                                key={reply.id}
+                                className="rounded-xl border border-white/10 bg-black/20 p-3"
+                              >
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-zinc-300">
+                                    {reply.authorLabel}
+                                  </span>
+
+                                  <div className="text-xs text-zinc-400">
+                                    {formatReviewDate(reply.createdAt)}
+                                  </div>
+
+                                  {reply.isMine ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => deleteReply(reply.id)}
+                                      disabled={deletingReplyId === reply.id}
+                                      className="text-xs text-red-300 underline underline-offset-4 transition hover:text-red-200 disabled:opacity-50"
+                                    >
+                                      {deletingReplyId === reply.id
+                                        ? "Deleting..."
+                                        : "Delete"}
+                                    </button>
+                                  ) : null}
+                                </div>
+
+                                <div className="mt-2 text-sm leading-6 text-zinc-200">
+                                  {reply.text}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {replyingToId === r.id ? (
+                          <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
+                            <textarea
+                              value={replyTextByRating[r.id] ?? ""}
+                              onChange={(e) =>
+                                setReplyTextByRating((prev) => ({
+                                  ...prev,
+                                  [r.id]: e.target.value,
+                                }))
+                              }
+                              placeholder="Write a reply..."
+                              className="h-24 w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-white/20"
+                            />
+
+                            <div className="mt-3 flex items-center gap-3">
+                              <button
+                                type="button"
+                                onClick={() => submitReply(r.id)}
+                                disabled={sendingReplyId === r.id}
+                                className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
+                              >
+                                {sendingReplyId === r.id
+                                  ? "Sending..."
+                                  : "Send reply"}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setReplyingToId(null)}
+                                className="text-sm text-zinc-400 transition hover:text-zinc-200"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })}

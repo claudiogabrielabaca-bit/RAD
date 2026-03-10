@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getOrCreateAnonId } from "@/app/lib/anon";
+import { getAnonLabel } from "@/app/lib/anon-label";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -49,11 +50,14 @@ export async function GET(req: Request) {
         likesCount: r.likes.length,
         likedByMe: r.likes.some((like) => like.anonId === anonId),
         isMine: r.anonId === anonId,
+        authorLabel: r.anonId === anonId ? "You" : getAnonLabel(r.anonId),
         replies: r.replies.map((reply) => ({
           id: reply.id,
           text: reply.text,
           createdAt: reply.createdAt.toISOString(),
           isMine: reply.anonId === anonId,
+          authorLabel:
+            reply.anonId === anonId ? "You" : getAnonLabel(reply.anonId),
         })),
       }))
       .sort((a, b) => {
