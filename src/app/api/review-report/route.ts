@@ -1,9 +1,12 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getOrCreateAnonId } from "@/app/lib/anon";
+import { Resend } from "resend";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(req: Request) {
   try {
@@ -27,6 +30,9 @@ export async function POST(req: Request) {
         id: true,
         anonId: true,
         day: true,
+        stars: true,
+        review: true,
+        createdAt: true,
       },
     });
 
@@ -85,6 +91,43 @@ export async function POST(req: Request) {
           createdAt: true,
           updatedAt: true,
         },
+      });
+    }
+
+    const reportsToEmail = process.env.REPORTS_TO_EMAIL;
+
+    if (process.env.RESEND_API_KEY && reportsToEmail) {
+      await resend.emails.send({
+        from: "RAD Reports <onboarding@resend.dev>",
+        to: reportsToEmail,
+        subject: `New review report on RAD - ${rating.day}`,
+        html: `
+          <div style="font-family: Arial, Helvetica, sans-serif; line-height: 1.6; color: #111;">
+            <h2>New review report</h2>
+
+            <p><strong>Day:</strong> ${rating.day}</p>
+            <p><strong>Rating ID:</strong> ${rating.id}</p>
+            <p><strong>Report ID:</strong> ${report.id}</p>
+            <p><strong>Reported by anonId:</strong> ${anonId}</p>
+            <p><strong>Review author anonId:</strong> ${rating.anonId}</p>
+            <p><strong>Stars:</strong> ${rating.stars}/5</p>
+            <p><strong>Reason:</strong> ${reason.trim()}</p>
+            <p><strong>Status:</strong> ${report.status}</p>
+
+            <p><strong>Review text:</strong></p>
+            <div style="padding: 12px; background: #f5f5f5; border-radius: 8px; border: 1px solid #ddd;">
+              ${
+                rating.review?.trim()
+                  ? rating.review
+                      .replace(/&/g, "&amp;")
+                      .replace(/</g, "&lt;")
+                      .replace(/>/g, "&gt;")
+                      .replace(/\n/g, "<br />")
+                  : "<em>No written review</em>"
+              }
+            </div>
+          </div>
+        `,
       });
     }
 

@@ -21,6 +21,11 @@ export async function GET(req: Request) {
         orderBy: { createdAt: "desc" },
         include: {
           likes: true,
+          replies: {
+            orderBy: {
+              createdAt: "asc",
+            },
+          },
         },
       }),
       prisma.dayStats.findUnique({
@@ -44,6 +49,12 @@ export async function GET(req: Request) {
         likesCount: r.likes.length,
         likedByMe: r.likes.some((like) => like.anonId === anonId),
         isMine: r.anonId === anonId,
+        replies: r.replies.map((reply) => ({
+          id: reply.id,
+          text: reply.text,
+          createdAt: reply.createdAt.toISOString(),
+          isMine: reply.anonId === anonId,
+        })),
       }))
       .sort((a, b) => {
         if (a.isMine && !b.isMine) return -1;
