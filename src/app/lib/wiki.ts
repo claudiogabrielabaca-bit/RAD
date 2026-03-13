@@ -144,8 +144,9 @@ function preferHighlight(a: DayHighlight, b: DayHighlight) {
 function scoreItem(item: WikiItem) {
   let score = 0;
   if (item.pages?.[0]?.thumbnail?.source) score += 25;
-  if (item.pages?.[0]?.titles?.display || item.pages?.[0]?.titles?.normalized)
+  if (item.pages?.[0]?.titles?.display || item.pages?.[0]?.titles?.normalized) {
     score += 15;
+  }
   if (item.pages?.[0]?.content_urls?.desktop?.page) score += 10;
   if (item.text && item.text.length > 80) score += 5;
   return score;
@@ -248,15 +249,11 @@ function detectPrimaryType(
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase();
 
-  if (
-    /\bborn\b|\bgives birth\b|\bis born\b|\bbirth\b/.test(content)
-  ) {
+  if (/\bborn\b|\bgives birth\b|\bis born\b|\bbirth\b/.test(content)) {
     return "births";
   }
 
-  if (
-    /\bdies\b|\bdied\b|\bdeath\b|\bdeceased\b|\bpasses away\b/.test(content)
-  ) {
+  if (/\bdies\b|\bdied\b|\bdeath\b|\bdeceased\b|\bpasses away\b/.test(content)) {
     return "deaths";
   }
 
@@ -388,11 +385,13 @@ function getDatePageTitle(lang: WikiLang, month: string, day: string) {
 
 function getSectionCandidates(type: WikiType, lang: WikiLang) {
   if (lang === "es") {
-    if (type === "events" || type === "selected")
+    if (type === "events" || type === "selected") {
       return ["Acontecimientos", "Eventos"];
+    }
     if (type === "births") return ["Nacimientos"];
-    if (type === "deaths")
+    if (type === "deaths") {
       return ["Fallecimientos", "Muertes", "Defunciones"];
+    }
   }
 
   if (lang === "en") {
@@ -667,7 +666,103 @@ function sortHighlights(items: DayHighlight[]) {
   });
 }
 
+function buildNoneHighlight(): DayHighlight {
+  return {
+    type: "none",
+    secondaryType: null,
+    year: null,
+    text: "No exact historical match was found for this date.",
+    title: null,
+    image: null,
+    articleUrl: null,
+  };
+}
+
+async function getCachedHighlights(date: string): Promise<DayHighlight[] | null> {
+  const cached = await prisma.dayHighlightCache.findUnique({
+    where: { day: date },
+  });
+
+  if (!cached) return null;
+
+  const rawItems = Array.isArray((cached as { highlights?: unknown[] }).highlights)
+    ? ((cached as { highlights?: unknown[] }).highlights as Array<{
+        type?: HighlightType;
+        secondaryType?: HighlightType | null;
+        year?: number | null;
+        text?: string;
+        title?: string | null;
+        image?: string | null;
+        articleUrl?: string | null;
+      }>)
+    : null;
+
+  if (rawItems && rawItems.length > 0) {
+    const mapped = rawItems
+      .map((item) => ({
+        type: item.type ?? "none",
+        secondaryType: item.secondaryType ?? null,
+        year: item.year ?? null,
+        text: item.text ?? "No description available.",
+        title: item.title ?? null,
+        image: item.image ?? null,
+        articleUrl: item.articleUrl ?? null,
+      }))
+      .filter((item) => item.text);
+
+    if (mapped.length > 0) {
+      return mapped.slice(0, MAX_HIGHLIGHTS);
+    }
+  }
+
+  const legacySingle: DayHighlight = {
+    type: cached.type as HighlightType,
+    secondaryType: null,
+    year: cached.year,
+    text: cached.text,
+    title: cached.title,
+    image: cached.image,
+    articleUrl: cached.articleUrl,
+  };
+
+  return [legacySingle];
+}
+
+async function saveHighlightsToCache(date: string, highlights: DayHighlight[]) {
+  const safeHighlights = highlights
+    .filter((item) => item.type !== "none")
+    .slice(0, MAX_HIGHLIGHTS);
+
+  if (safeHighlights.length === 0) return;
+
+  await prisma.dayHighlightCache.upsert({
+    where: { day: date },
+    update: {
+      type: safeHighlights[0].type,
+      year: safeHighlights[0].year,
+      title: safeHighlights[0].title,
+      text: safeHighlights[0].text,
+      image: safeHighlights[0].image,
+      articleUrl: safeHighlights[0].articleUrl,
+      highlights: safeHighlights,
+    },
+    create: {
+      day: date,
+      type: safeHighlights[0].type,
+      year: safeHighlights[0].year,
+      title: safeHighlights[0].title,
+      text: safeHighlights[0].text,
+      image: safeHighlights[0].image,
+      articleUrl: safeHighlights[0].articleUrl,
+      highlights: safeHighlights,
+    },
+  });
+}
+
 export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
+  const cached = await getCachedHighlights(date);
+  if (cached) return cached;
+
   const [yearStr, month, day] = date.split("-");
   const selectedYear = Number(yearStr);
 
@@ -700,46 +795,15 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
   all = sortHighlights(uniqueHighlights(all)).slice(0, MAX_HIGHLIGHTS);
 
   if (all.length === 0) {
-    all = [
-      {
-        type: "none",
-        secondaryType: null,
-        year: null,
-        text: "No exact historical match was found for this date.",
-        title: null,
-        image: null,
-        articleUrl: null,
-      },
-    ];
+    return [buildNoneHighlight()];
   }
 
-  const first = all[0];
-
-  await prisma.dayHighlightCache.upsert({
-    where: { day: date },
-    update: {
-      type: first.type,
-      year: first.year,
-      title: first.title,
-      text: first.text,
-      image: first.image,
-      articleUrl: first.articleUrl,
-    },
-    create: {
-      day: date,
-      type: first.type,
-      year: first.year,
-      title: first.title,
-      text: first.text,
-      image: first.image,
-      articleUrl: first.articleUrl,
-    },
-  });
+  await saveHighlightsToCache(date, all);
 
   return all;
 }
 
 export async function getDayHighlight(date: string): Promise<DayHighlight> {
   const items = await getDayHighlights(date);
-  return items[0];
+  return items[0] ?? buildNoneHighlight();
 }

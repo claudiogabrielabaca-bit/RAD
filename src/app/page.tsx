@@ -1,95 +1,38 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import RatingDistribution from "@/app/components/rad/rating-distribution";
+import ReplyList from "@/app/components/rad/reply-list";
+import ReplyComposer from "@/app/components/rad/reply-composer";
+import AuthModal, { type AuthView } from "@/app/components/rad/auth-modal";
+import CosmicLoading from "@/app/components/rad/cosmic-loading";
+import type {
+  DayResponse,
+  DiscoverCard,
+  FavoriteDayResponse,
+  HighlightBadgeKey,
+  HighlightItem,
+  HighlightResponse,
+  LegacyHighlightType,
+  TopItem,
+} from "@/app/lib/rad-types";
 
-type LegacyHighlightType =
-  | "selected"
-  | "events"
-  | "births"
-  | "deaths"
-  | "war"
-  | "disaster"
-  | "politics"
-  | "science"
-  | "culture"
-  | "sports"
-  | "discovery"
-  | "crime"
-  | "none";
+const REVIEW_MAX_LENGTH = 280;
+const REPLY_MAX_LENGTH = 220;
+const HIGHLIGHT_SCROLL_OFFSET = 350;
+const FORCE_FRESH_MODE = true;
 
-type HighlightKind = "selected" | "event" | "birth" | "death" | "none";
+type CurrentUser = {
+  id: string;
+  email: string;
+  username: string;
+  emailVerified?: boolean;
+} | null;
 
-type HighlightCategory =
-  | "general"
-  | "war"
-  | "disaster"
-  | "politics"
-  | "science"
-  | "culture"
-  | "sports"
-  | "discovery"
-  | "crime";
-
-type HighlightBadgeKey =
-  | LegacyHighlightType
-  | HighlightKind
-  | HighlightCategory;
-
-type HighlightItem = {
-  kind?: HighlightKind;
-  category?: HighlightCategory;
-  type?: LegacyHighlightType;
-  secondaryType?: LegacyHighlightType | null;
-  year: number | null;
-  text: string;
-  title: string | null;
-  image: string | null;
-  articleUrl: string | null;
-};
-
-type HighlightResponse = {
-  highlight?: HighlightItem;
-  highlights?: HighlightItem[];
-};
-
-type DayResponse = {
-  day: string;
-  avg: number;
-  count: number;
-  views?: number;
-  reviews: {
-    id: string;
-    stars: number;
-    review: string;
-    createdAt?: string;
-    likesCount: number;
-    likedByMe: boolean;
-    isMine?: boolean;
-    authorLabel: string;
-    replies: {
-      id: string;
-      text: string;
-      createdAt?: string;
-      isMine?: boolean;
-      authorLabel: string;
-    }[];
-  }[];
-};
-
-type TopItem = {
-  day: string;
-  avg: number;
-  count: number;
-  title?: string | null;
-};
-
-type DiscoverCard = {
-  day: string;
-  title: string;
-  image: string | null;
-  avg: number;
-  count: number;
-  views: number;
+type CurrentUserResponse = {
+  user: CurrentUser;
 };
 
 const BADGE_LABELS: Record<HighlightBadgeKey, string> = {
@@ -117,89 +60,89 @@ const BADGE_STYLES: Record<
   { pill: string; text: string; border: string }
 > = {
   selected: {
-    pill: "bg-white/15",
+    pill: "bg-white/12",
     text: "text-white",
-    border: "border-white/20",
+    border: "border-white/15",
   },
   event: {
-    pill: "bg-sky-500/20",
-    text: "text-sky-300",
-    border: "border-sky-400/30",
+    pill: "bg-sky-500/18",
+    text: "text-sky-200",
+    border: "border-sky-400/25",
   },
   events: {
-    pill: "bg-sky-500/20",
-    text: "text-sky-300",
-    border: "border-sky-400/30",
+    pill: "bg-sky-500/18",
+    text: "text-sky-200",
+    border: "border-sky-400/25",
   },
   birth: {
-    pill: "bg-emerald-500/20",
-    text: "text-emerald-300",
-    border: "border-emerald-400/30",
+    pill: "bg-emerald-500/18",
+    text: "text-emerald-200",
+    border: "border-emerald-400/25",
   },
   births: {
-    pill: "bg-emerald-500/20",
-    text: "text-emerald-300",
-    border: "border-emerald-400/30",
+    pill: "bg-emerald-500/18",
+    text: "text-emerald-200",
+    border: "border-emerald-400/25",
   },
   death: {
-    pill: "bg-rose-500/20",
-    text: "text-rose-300",
-    border: "border-rose-400/30",
+    pill: "bg-rose-500/18",
+    text: "text-rose-200",
+    border: "border-rose-400/25",
   },
   deaths: {
-    pill: "bg-rose-500/20",
-    text: "text-rose-300",
-    border: "border-rose-400/30",
+    pill: "bg-rose-500/18",
+    text: "text-rose-200",
+    border: "border-rose-400/25",
   },
   war: {
-    pill: "bg-amber-500/20",
-    text: "text-amber-300",
-    border: "border-amber-400/30",
+    pill: "bg-amber-500/18",
+    text: "text-amber-200",
+    border: "border-amber-400/25",
   },
   disaster: {
-    pill: "bg-orange-500/20",
-    text: "text-orange-300",
-    border: "border-orange-400/30",
+    pill: "bg-orange-500/18",
+    text: "text-orange-200",
+    border: "border-orange-400/25",
   },
   politics: {
-    pill: "bg-indigo-500/20",
-    text: "text-indigo-300",
-    border: "border-indigo-400/30",
+    pill: "bg-indigo-500/18",
+    text: "text-indigo-200",
+    border: "border-indigo-400/25",
   },
   science: {
-    pill: "bg-cyan-500/20",
-    text: "text-cyan-300",
-    border: "border-cyan-400/30",
+    pill: "bg-cyan-500/18",
+    text: "text-cyan-200",
+    border: "border-cyan-400/25",
   },
   culture: {
-    pill: "bg-fuchsia-500/20",
-    text: "text-fuchsia-300",
-    border: "border-fuchsia-400/30",
+    pill: "bg-fuchsia-500/18",
+    text: "text-fuchsia-200",
+    border: "border-fuchsia-400/25",
   },
   sports: {
-    pill: "bg-lime-500/20",
-    text: "text-lime-300",
-    border: "border-lime-400/30",
+    pill: "bg-lime-500/18",
+    text: "text-lime-200",
+    border: "border-lime-400/25",
   },
   discovery: {
-    pill: "bg-teal-500/20",
-    text: "text-teal-300",
-    border: "border-teal-400/30",
+    pill: "bg-teal-500/18",
+    text: "text-teal-200",
+    border: "border-teal-400/25",
   },
   crime: {
-    pill: "bg-red-500/20",
-    text: "text-red-300",
-    border: "border-red-400/30",
+    pill: "bg-red-500/18",
+    text: "text-red-200",
+    border: "border-red-400/25",
   },
   general: {
-    pill: "bg-zinc-500/20",
-    text: "text-zinc-300",
-    border: "border-zinc-400/30",
+    pill: "bg-zinc-500/18",
+    text: "text-zinc-200",
+    border: "border-zinc-400/25",
   },
   none: {
-    pill: "bg-zinc-500/20",
-    text: "text-zinc-300",
-    border: "border-zinc-400/30",
+    pill: "bg-zinc-500/18",
+    text: "text-zinc-200",
+    border: "border-zinc-400/25",
   },
 };
 
@@ -265,48 +208,11 @@ function getDaysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
 }
 
-function getTodayInRandomYear(minYear = 1900) {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-
-  const randomYear =
-    Math.floor(Math.random() * (currentYear - minYear + 1)) + minYear;
-
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-
-  const maxDayInMonth = new Date(randomYear, Number(month), 0).getDate();
-  const safeDay = String(Math.min(Number(day), maxDayInMonth)).padStart(2, "0");
-
-  return `${randomYear}-${month}-${safeDay}`;
-}
-
-function getRandomDay(
-  min = "1900-01-01",
-  max = new Date().toISOString().slice(0, 10)
-) {
-  const minDate = new Date(`${min}T00:00:00`);
-  const maxDate = new Date(`${max}T00:00:00`);
-
-  const minTime = minDate.getTime();
-  const maxTime = maxDate.getTime();
-
-  const randomTime =
-    Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
-  const randomDate = new Date(randomTime);
-
-  const year = randomDate.getFullYear();
-  const month = String(randomDate.getMonth() + 1).padStart(2, "0");
-  const day = String(randomDate.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
 function formatDisplayDate(date: string) {
   const [year, month, day] = date.split("-");
   const localDate = new Date(Number(year), Number(month) - 1, Number(day));
 
-  return localDate.toLocaleDateString("es-AR", {
+  return localDate.toLocaleDateString("en-US", {
     day: "numeric",
     month: "long",
     year: "numeric",
@@ -328,59 +234,93 @@ function hasReviewText(text?: string) {
   return !!text && text.trim().length > 0;
 }
 
-async function loadDiscoverRandomDays(n = 5): Promise<DiscoverCard[]> {
-  const uniqueDays = new Set<string>();
-
-  while (uniqueDays.size < n) {
-    uniqueDays.add(getRandomDay());
+function getDiscoverTypeLabel(type?: DiscoverCard["type"]) {
+  switch (type) {
+    case "births":
+      return "Birth";
+    case "deaths":
+      return "Death";
+    case "events":
+      return "Event";
+    case "war":
+      return "War";
+    case "disaster":
+      return "Disaster";
+    case "politics":
+      return "Politics";
+    case "science":
+      return "Science";
+    case "culture":
+      return "Culture";
+    case "sports":
+      return "Sports";
+    case "discovery":
+      return "Discovery";
+    case "crime":
+      return "Crime";
+    case "selected":
+      return "Selected";
+    default:
+      return "History";
   }
+}
 
-  const days = Array.from(uniqueDays);
+function getDiscoverTypeClasses(type?: DiscoverCard["type"]) {
+  switch (type) {
+    case "births":
+      return "border-emerald-400/25 bg-emerald-500/18 text-emerald-200";
+    case "deaths":
+      return "border-rose-400/25 bg-rose-500/18 text-rose-200";
+    case "events":
+      return "border-sky-400/25 bg-sky-500/18 text-sky-200";
+    case "war":
+      return "border-amber-400/25 bg-amber-500/18 text-amber-200";
+    case "disaster":
+      return "border-orange-400/25 bg-orange-500/18 text-orange-200";
+    case "politics":
+      return "border-indigo-400/25 bg-indigo-500/18 text-indigo-200";
+    case "science":
+      return "border-cyan-400/25 bg-cyan-500/18 text-cyan-200";
+    case "culture":
+      return "border-fuchsia-400/25 bg-fuchsia-500/18 text-fuchsia-200";
+    case "sports":
+      return "border-lime-400/25 bg-lime-500/18 text-lime-200";
+    case "discovery":
+      return "border-teal-400/25 bg-teal-500/18 text-teal-200";
+    case "crime":
+      return "border-red-400/25 bg-red-500/18 text-red-200";
+    default:
+      return "border-white/10 bg-black/45 text-white";
+  }
+}
 
-  const results = await Promise.all(
-    days.map(async (day) => {
-      try {
-        const [highlightRes, dayRes] = await Promise.all([
-          fetch(`/api/highlight?day=${encodeURIComponent(day)}`, {
-            cache: "no-store",
-          }),
-          fetch(`/api/day?day=${encodeURIComponent(day)}`, {
-            cache: "no-store",
-          }),
-        ]);
+function truncateText(text: string, max = 78) {
+  if (!text) return "";
+  if (text.length <= max) return text;
+  return `${text.slice(0, max).trim()}...`;
+}
 
-        if (!highlightRes.ok || !dayRes.ok) {
-          throw new Error("Failed discover fetch");
-        }
-
-        const highlightJson = (await highlightRes.json()) as HighlightResponse;
-        const dayJson = (await dayRes.json()) as DayResponse;
-
-        const first =
-          highlightJson.highlights?.[0] ?? highlightJson.highlight ?? null;
-
-        return {
-          day,
-          title: first?.title?.trim() || "Historical day",
-          image: first?.image ?? null,
-          avg: dayJson?.avg ?? 0,
-          count: dayJson?.count ?? 0,
-          views: dayJson?.views ?? 0,
-        };
-      } catch {
-        return {
-          day,
-          title: "Historical day",
-          image: null,
-          avg: 0,
-          count: 0,
-          views: 0,
-        };
+async function loadDiscoverRandomDays(
+  n = 5,
+  fresh = FORCE_FRESH_MODE
+): Promise<DiscoverCard[]> {
+  try {
+    const res = await fetch(
+      `/api/discover?count=${n}${fresh ? "&fresh=1" : ""}`,
+      {
+        cache: "no-store",
       }
-    })
-  );
+    );
 
-  return results;
+    if (!res.ok) {
+      throw new Error("Failed to load discover cards");
+    }
+
+    const json = await res.json();
+    return (json.cards ?? []) as DiscoverCard[];
+  } catch {
+    return [];
+  }
 }
 
 const YEARS = Array.from(
@@ -416,16 +356,104 @@ function Star({
       className="text-3xl leading-none transition-transform hover:scale-105"
       aria-label={title ?? "star"}
     >
-      <span className={filled ? "text-yellow-400" : "text-zinc-600"}>★</span>
+      <span className={filled ? "text-yellow-400" : "text-zinc-700"}>★</span>
+    </button>
+  );
+}
+
+function DiscoverDayCard({
+  card,
+  onSelect,
+}: {
+  card: DiscoverCard;
+  onSelect: (day: string) => void;
+}) {
+  const badgeLabel = getDiscoverTypeLabel(card.type);
+  const badgeClasses = getDiscoverTypeClasses(card.type);
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(card.day)}
+      className="group relative h-[360px] overflow-hidden rounded-[30px] border border-white/8 bg-[#121212]/70 text-left shadow-[0_18px_70px_rgba(0,0,0,0.45)] transition duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:border-white/14"
+    >
+      {card.image ? (
+        <img
+          src={card.image}
+          alt={card.title}
+          className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] via-[#121212] to-black" />
+      )}
+
+      <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/90" />
+
+      <div className="absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-2">
+        <span className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white backdrop-blur-xl">
+          Discovery
+        </span>
+
+        <span
+          className={`rounded-md border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] backdrop-blur-xl ${badgeClasses}`}
+        >
+          {badgeLabel}
+        </span>
+      </div>
+
+      <div className="absolute bottom-0 left-0 right-0 z-20 p-4">
+        <div className="min-h-[156px] rounded-[24px] border border-white/10 bg-black/58 p-4 backdrop-blur-2xl">
+          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-300">
+            {card.day}
+          </div>
+
+          <div className="mt-2 line-clamp-2 min-h-[56px] text-[32px] leading-[1.05] font-semibold text-white">
+            <div className="text-xl leading-tight">{card.title}</div>
+          </div>
+
+          <div className="mt-2 line-clamp-2 min-h-[40px] text-sm leading-5 text-zinc-300">
+            {truncateText(card.text, 88)}
+          </div>
+
+          <div className="mt-4 flex items-end justify-between gap-3">
+            <div className="flex items-center gap-2 text-zinc-200">
+              <span className="text-sm">★</span>
+              <span className="text-sm font-semibold">
+                {formatAvg(card.avg)}
+              </span>
+            </div>
+
+            <div className="text-xs text-zinc-300">
+              {card.count} vote{card.count === 1 ? "" : "s"}
+            </div>
+
+            <div className="text-xs text-zinc-400">
+              {formatCompactViews(card.views)} views
+            </div>
+          </div>
+        </div>
+      </div>
     </button>
   );
 }
 
 export default function Page() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const minDay = "1900-01-01";
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const rateBoxRef = useRef<HTMLDivElement | null>(null);
+  const myReviewBlockRef = useRef<HTMLDivElement | null>(null);
+  const highlightBlockRef = useRef<HTMLDivElement | null>(null);
+  const pendingScrollToHighlightRef = useRef(false);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const consumedProfileJumpRef = useRef(false);
+  const didInitDayRef = useRef(false);
+  const transitionIdRef = useRef(0);
+
   const dayRequestRef = useRef(0);
   const highlightRequestRef = useRef(0);
 
@@ -436,6 +464,13 @@ export default function Page() {
   const [selectedMonth, setSelectedMonth] = useState("01");
   const [selectedDay, setSelectedDay] = useState("01");
 
+  const [currentUser, setCurrentUser] = useState<CurrentUser>(null);
+  const [loadingCurrentUser, setLoadingCurrentUser] = useState(true);
+
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authView, setAuthView] = useState<AuthView>("login");
+  const [authEmail, setAuthEmail] = useState("");
+
   const [data, setData] = useState<DayResponse | null>(null);
   const [loadingDay, setLoadingDay] = useState(false);
 
@@ -444,6 +479,9 @@ export default function Page() {
   const [activeHighlightIndex, setActiveHighlightIndex] = useState(0);
   const [isHighlightPaused, setIsHighlightPaused] = useState(false);
   const [loadingHighlight, setLoadingHighlight] = useState(false);
+
+  const [isFavoriteDay, setIsFavoriteDay] = useState(false);
+  const [loadingFavoriteDay, setLoadingFavoriteDay] = useState(false);
 
   const [stars, setStars] = useState<number>(0);
   const [hoverStars, setHoverStars] = useState<number>(0);
@@ -481,6 +519,8 @@ export default function Page() {
   const [discoverDays, setDiscoverDays] = useState<DiscoverCard[]>([]);
   const [loadingDiscover, setLoadingDiscover] = useState(false);
 
+  const [isDayTransitioning, setIsDayTransitioning] = useState(false);
+
   const daysInSelectedMonth = getDaysInMonth(
     Number(selectedYear),
     Number(selectedMonth)
@@ -491,18 +531,198 @@ export default function Page() {
     (_, i) => pad2(i + 1)
   );
 
+  const profileHref =
+    hasPickedInitialDay && /^\d{4}-\d{2}-\d{2}$/.test(day)
+      ? `/profile?fromDay=${day}`
+      : "/profile";
+
+  function openAuthModal(view: AuthView = "login", nextEmail = "") {
+    setAuthView(view);
+    setAuthEmail(nextEmail);
+    setAuthModalOpen(true);
+  }
+
+  function closeAuthModal() {
+    setAuthModalOpen(false);
+  }
+
+  async function refreshCurrentUser() {
+    try {
+      const res = await fetch("/api/me", {
+        cache: "no-store",
+      });
+
+      const json = (await res.json().catch(() => null)) as
+        | CurrentUserResponse
+        | null;
+
+      if (!res.ok) {
+        setCurrentUser(null);
+        return;
+      }
+
+      setCurrentUser(json?.user ?? null);
+    } catch {
+      setCurrentUser(null);
+    } finally {
+      setLoadingCurrentUser(false);
+    }
+  }
+
+  function requireVerifiedEmail() {
+    if (!currentUser) {
+      openAuthModal("login");
+      return true;
+    }
+
+    if (currentUser.emailVerified === false) {
+      openAuthModal("verify-email", currentUser.email);
+      return true;
+    }
+
+    return false;
+  }
+
+  function showToast(message: string, duration = 2500) {
+    setToast(message);
+
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+
+    toastTimeoutRef.current = setTimeout(() => {
+      setToast("");
+      toastTimeoutRef.current = null;
+    }, duration);
+  }
+
+  function scrollToHighlightBlock(offset = HIGHLIGHT_SCROLL_OFFSET) {
+    if (!highlightBlockRef.current) return;
+
+    const elementTop =
+      highlightBlockRef.current.getBoundingClientRect().top + window.scrollY;
+
+    window.scrollTo({
+      top: elementTop - offset,
+      behavior: "smooth",
+    });
+  }
+
+  function beginDayTransition() {
+    transitionIdRef.current += 1;
+    setIsDayTransitioning(true);
+    setLoadingDay(true);
+    setLoadingHighlight(true);
+    setData(null);
+    setHighlight(null);
+    setHighlights([]);
+    setActiveHighlightIndex(0);
+    setIsFavoriteDay(false);
+  }
+
+  function finishDayTransition(transitionId: number) {
+    if (transitionIdRef.current !== transitionId) return;
+    setIsDayTransitioning(false);
+  }
+
+  function openDay(nextDay: string, options?: { scrollToHighlight?: boolean }) {
+    const shouldScrollToHighlight = !!options?.scrollToHighlight;
+
+    if (nextDay === day) {
+      setIsDayTransitioning(false);
+
+      if (shouldScrollToHighlight && highlight && highlightBlockRef.current) {
+        pendingScrollToHighlightRef.current = false;
+        requestAnimationFrame(() => {
+          scrollToHighlightBlock();
+        });
+      }
+
+      return;
+    }
+
+    pendingScrollToHighlightRef.current = shouldScrollToHighlight;
+    beginDayTransition();
+    setDay(nextDay);
+  }
+
   useEffect(() => {
-    const random = getRandomDay(minDay, today);
-    setDay(random);
-    setHasPickedInitialDay(true);
-  }, [today]);
+    return () => {
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    refreshCurrentUser();
+  }, []);
+
+  useEffect(() => {
+    if (!hasPickedInitialDay) return;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+
+    try {
+      window.localStorage.setItem("rad:lastDay", day);
+    } catch {
+      //
+    }
+  }, [day, hasPickedInitialDay]);
+
+  useEffect(() => {
+    if (didInitDayRef.current) return;
+    didInitDayRef.current = true;
+
+    let cancelled = false;
+
+    async function run() {
+      const queryDay = searchParams.get("day");
+
+      setIsDayTransitioning(false);
+      setLoadingDay(false);
+      setLoadingHighlight(false);
+
+      if (queryDay && /^\d{4}-\d{2}-\d{2}$/.test(queryDay)) {
+        if (!cancelled) {
+          setDay(queryDay);
+          setHasPickedInitialDay(true);
+        }
+        return;
+      }
+
+      try {
+        const res = await fetch(
+          `/api/random-valid-day${FORCE_FRESH_MODE ? "?fresh=1" : ""}`,
+          {
+            cache: "no-store",
+          }
+        );
+
+        const json = await res.json().catch(() => null);
+
+        if (!cancelled && res.ok && json?.day) {
+          setDay(json.day);
+        }
+      } finally {
+        if (!cancelled) {
+          setHasPickedInitialDay(true);
+        }
+      }
+    }
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
       setLoadingDiscover(true);
-      const items = await loadDiscoverRandomDays(5);
+      const items = await loadDiscoverRandomDays(5, FORCE_FRESH_MODE);
       if (!cancelled) {
         setDiscoverDays(items);
         setLoadingDiscover(false);
@@ -531,6 +751,38 @@ export default function Page() {
     }
   }, [daysInSelectedMonth, selectedDay]);
 
+  useEffect(() => {
+    const queryDay = searchParams.get("day");
+    const focus = searchParams.get("focus");
+
+    const hasProfileJumpParams =
+      !!queryDay &&
+      /^\d{4}-\d{2}-\d{2}$/.test(queryDay) &&
+      focus === "my-review";
+
+    if (!hasProfileJumpParams) {
+      consumedProfileJumpRef.current = false;
+      return;
+    }
+
+    if (consumedProfileJumpRef.current) return;
+    if (day !== queryDay) return;
+    if (!myReviewBlockRef.current) return;
+
+    consumedProfileJumpRef.current = true;
+
+    const timeout = setTimeout(() => {
+      myReviewBlockRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+      router.replace(pathname, { scroll: false });
+    }, 500);
+
+    return () => clearTimeout(timeout);
+  }, [searchParams, day, pathname, router]);
+
   async function loadDay(d: string) {
     const requestId = ++dayRequestRef.current;
     setLoadingDay(true);
@@ -541,9 +793,7 @@ export default function Page() {
         cache: "no-store",
       });
 
-      if (!res.ok) {
-        throw new Error("Failed to load day");
-      }
+      if (!res.ok) throw new Error("Failed to load day");
 
       const json = (await res.json()) as DayResponse;
 
@@ -551,7 +801,7 @@ export default function Page() {
       setData(json);
     } catch {
       if (requestId !== dayRequestRef.current) return;
-      setToast("Error cargando el día.");
+      showToast("Error cargando el día.");
       setData(null);
     } finally {
       if (requestId === dayRequestRef.current) {
@@ -569,17 +819,15 @@ export default function Page() {
         cache: "no-store",
       });
 
-      if (!res.ok) {
-        throw new Error("Failed to load highlight");
-      }
+      if (!res.ok) throw new Error("Failed to load highlight");
 
       const json = (await res.json()) as HighlightResponse;
 
       const items = json.highlights?.length
         ? json.highlights
         : json.highlight
-        ? [json.highlight]
-        : [];
+          ? [json.highlight]
+          : [];
 
       if (requestId !== highlightRequestRef.current) return;
 
@@ -588,13 +836,74 @@ export default function Page() {
       setActiveHighlightIndex(0);
     } catch {
       if (requestId !== highlightRequestRef.current) return;
-
       setHighlights([]);
       setHighlight(null);
     } finally {
       if (requestId === highlightRequestRef.current) {
         setLoadingHighlight(false);
       }
+    }
+  }
+
+  async function loadFavoriteDayStatus(d: string) {
+    if (!currentUser) {
+      setIsFavoriteDay(false);
+      return;
+    }
+
+    setLoadingFavoriteDay(true);
+
+    try {
+      const res = await fetch(`/api/favorite-day?day=${encodeURIComponent(d)}`, {
+        cache: "no-store",
+      });
+
+      if (!res.ok) throw new Error("Failed to load favorite day status");
+
+      const json = (await res.json()) as FavoriteDayResponse;
+      setIsFavoriteDay(!!json.isFavorite);
+    } catch {
+      setIsFavoriteDay(false);
+    } finally {
+      setLoadingFavoriteDay(false);
+    }
+  }
+
+  async function toggleFavoriteDay() {
+    if (!currentUser) {
+      openAuthModal("login");
+      return;
+    }
+
+    if (requireVerifiedEmail()) return;
+
+    try {
+      setLoadingFavoriteDay(true);
+
+      const res = await fetch("/api/favorite-day", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ day }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        showToast(json?.error ?? "Could not update favorite day.");
+        return;
+      }
+
+      setIsFavoriteDay(!!json?.isFavorite);
+      showToast(
+        json?.message ??
+          (json?.isFavorite ? "Favorite day saved." : "Removed from favorites.")
+      );
+    } catch {
+      showToast("Could not update favorite day.");
+    } finally {
+      setLoadingFavoriteDay(false);
     }
   }
 
@@ -606,9 +915,7 @@ export default function Page() {
         cache: "no-store",
       });
 
-      if (!res.ok) {
-        throw new Error("Failed to load top");
-      }
+      if (!res.ok) throw new Error("Failed to load top");
 
       const json = await res.json();
       setTop((json?.top ?? []) as TopItem[]);
@@ -621,25 +928,135 @@ export default function Page() {
     }
   }
 
+  async function goToSurpriseDay(scrollToResult = false) {
+    beginDayTransition();
+    const transitionId = transitionIdRef.current;
+
+    try {
+      const res = await fetch(
+        `/api/random-valid-day${FORCE_FRESH_MODE ? "?fresh=1" : ""}`,
+        {
+          cache: "no-store",
+        }
+      );
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.day) {
+        showToast("No random day available.");
+        finishDayTransition(transitionId);
+        return;
+      }
+
+      if (json.day === day) {
+        finishDayTransition(transitionId);
+
+        if (scrollToResult && highlight && highlightBlockRef.current) {
+          requestAnimationFrame(() => {
+            scrollToHighlightBlock();
+          });
+        }
+        return;
+      }
+
+      pendingScrollToHighlightRef.current = scrollToResult;
+      setDay(json.day);
+    } catch {
+      showToast("Could not load a random day.");
+      finishDayTransition(transitionId);
+    }
+  }
+
+  async function goToTodayInHistory(scrollToResult = false) {
+    beginDayTransition();
+    const transitionId = transitionIdRef.current;
+
+    try {
+      const res = await fetch(
+        `/api/today-valid-day${FORCE_FRESH_MODE ? "?fresh=1" : ""}`,
+        {
+          cache: "no-store",
+        }
+      );
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok || !json?.day) {
+        showToast("No valid 'today in history' day available yet.");
+        finishDayTransition(transitionId);
+        return;
+      }
+
+      if (json.day === day) {
+        finishDayTransition(transitionId);
+
+        if (scrollToResult && highlight && highlightBlockRef.current) {
+          requestAnimationFrame(() => {
+            scrollToHighlightBlock();
+          });
+        }
+        return;
+      }
+
+      pendingScrollToHighlightRef.current = scrollToResult;
+      setDay(json.day);
+    } catch {
+      showToast("Could not load today in history.");
+      finishDayTransition(transitionId);
+    }
+  }
+
   useEffect(() => {
     if (!hasPickedInitialDay) return;
 
-    fetch("/api/day-view", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ day }),
-    }).catch(() => {});
+    let cancelled = false;
+    const transitionId = transitionIdRef.current;
 
-    loadDay(day);
-    loadHighlight(day);
+    async function run() {
+      fetch("/api/day-view", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ day }),
+      }).catch(() => {});
+
+      await Promise.allSettled([loadDay(day), loadHighlight(day)]);
+
+      if (cancelled) return;
+      finishDayTransition(transitionId);
+    }
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
   }, [day, hasPickedInitialDay]);
 
   useEffect(() => {
     if (!hasPickedInitialDay) return;
     loadTop();
   }, [hasPickedInitialDay]);
+
+  useEffect(() => {
+    if (!hasPickedInitialDay) return;
+    loadFavoriteDayStatus(day);
+  }, [day, hasPickedInitialDay, currentUser]);
+
+  useEffect(() => {
+    if (
+      !loadingHighlight &&
+      pendingScrollToHighlightRef.current &&
+      highlight &&
+      highlightBlockRef.current
+    ) {
+      pendingScrollToHighlightRef.current = false;
+      requestAnimationFrame(() => {
+        scrollToHighlightBlock();
+      });
+    }
+  }, [loadingHighlight, highlight]);
 
   useEffect(() => {
     if (highlights.length <= 1 || isHighlightPaused) return;
@@ -658,13 +1075,9 @@ export default function Page() {
     setHighlight(highlights[activeHighlightIndex] ?? null);
   }, [activeHighlightIndex, highlights]);
 
-  function goToToday() {
-    setDay(getTodayInRandomYear(1900));
-  }
-
   function goToManualDay() {
     const nextDay = `${selectedYear}-${selectedMonth}-${selectedDay}`;
-    setDay(nextDay);
+    openDay(nextDay, { scrollToHighlight: true });
   }
 
   function goToPreviousDay() {
@@ -673,7 +1086,7 @@ export default function Page() {
     const prev = d.toISOString().slice(0, 10);
 
     if (prev >= minDay) {
-      setDay(prev);
+      openDay(prev, { scrollToHighlight: false });
     }
   }
 
@@ -683,7 +1096,7 @@ export default function Page() {
     const next = d.toISOString().slice(0, 10);
 
     if (next <= today) {
-      setDay(next);
+      openDay(next, { scrollToHighlight: false });
     }
   }
 
@@ -705,7 +1118,7 @@ export default function Page() {
 
     if (nextDay < minDay || nextDay > today) return;
 
-    setDay(nextDay);
+    openDay(nextDay, { scrollToHighlight: false });
   }
 
   function goToPreviousYear() {
@@ -762,40 +1175,10 @@ export default function Page() {
 
   const shownStars = hoverStars || stars;
   const activeBadges = getHighlightBadges(highlight);
-  const myReview = (data?.reviews ?? []).find((r) => r.isMine);
 
-  const allReviews = data?.reviews ?? [];
-  const ratingsCount = allReviews.length;
+  const allReviews = useMemo(() => data?.reviews ?? [], [data?.reviews]);
 
-  const starDistribution = [5, 4, 3, 2, 1].map((value) => ({
-    stars: value,
-    count: allReviews.filter((r) => r.stars === value).length,
-  }));
-
-  const maxDistributionCount = Math.max(
-    1,
-    ...starDistribution.map((item) => item.count)
-  );
-
-  const otherReviews = allReviews.filter((r) => !r.isMine);
-
-  const sortedOtherReviews = [...otherReviews].sort((a, b) => {
-    if (reviewsSort === "helpful") {
-      if (b.likesCount !== a.likesCount) return b.likesCount - a.likesCount;
-
-      const aHasText = hasReviewText(a.review) ? 1 : 0;
-      const bHasText = hasReviewText(b.review) ? 1 : 0;
-      if (bHasText !== aHasText) return bHasText - aHasText;
-
-      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return bTime - aTime;
-    }
-
-    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return bTime - aTime;
-  });
+  const myReview = useMemo(() => allReviews.find((r) => r.isMine), [allReviews]);
 
   useEffect(() => {
     if (!myReview) {
@@ -810,11 +1193,59 @@ export default function Page() {
     setReview(myReview.review);
   }, [myReview?.id, day]);
 
+  const ratingsCount = allReviews.length;
+
+  const starDistribution = useMemo(
+    () =>
+      [5, 4, 3, 2, 1].map((value) => ({
+        stars: value,
+        count: allReviews.filter((r) => r.stars === value).length,
+      })),
+    [allReviews]
+  );
+
+  const otherReviews = useMemo(
+    () => allReviews.filter((r) => !r.isMine),
+    [allReviews]
+  );
+
+  const sortedOtherReviews = useMemo(() => {
+    return [...otherReviews].sort((a, b) => {
+      if (reviewsSort === "helpful") {
+        if (b.likesCount !== a.likesCount) return b.likesCount - a.likesCount;
+
+        const aHasText = hasReviewText(a.review) ? 1 : 0;
+        const bHasText = hasReviewText(b.review) ? 1 : 0;
+        if (bHasText !== aHasText) return bHasText - aHasText;
+
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bTime - aTime;
+      }
+
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [otherReviews, reviewsSort]);
+
   async function submit() {
+    if (!currentUser) {
+      openAuthModal("login");
+      return;
+    }
+
+    if (requireVerifiedEmail()) return;
+
     const s = clamp(hoverStars || stars, 1, 5);
 
     if (!s) {
-      setToast("Elegí de 1 a 5 estrellas.");
+      showToast("Elegí de 1 a 5 estrellas.");
+      return;
+    }
+
+    if (review.length > REVIEW_MAX_LENGTH) {
+      showToast(`Review is too long (max ${REVIEW_MAX_LENGTH} chars).`);
       return;
     }
 
@@ -832,21 +1263,21 @@ export default function Page() {
         }),
       });
 
+      const json = await res.json().catch(() => null);
+
       if (!res.ok) {
-        const t = await res.text();
-        setToast(`Error guardando: ${t}`);
+        showToast(json?.error ?? "Error saving review.");
         return;
       }
 
       await loadDay(day);
       await loadHighlight(day);
       await loadTop();
-      setToast("");
+      showToast("Review saved.");
     } catch {
-      setToast("Error guardando.");
+      showToast("Error guardando.");
     } finally {
       setSaving(false);
-      setTimeout(() => setToast(""), 2000);
     }
   }
 
@@ -872,7 +1303,7 @@ export default function Page() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setToast(json?.error ?? "Could not delete review.");
+        showToast(json?.error ?? "Could not delete review.");
         return;
       }
 
@@ -884,22 +1315,29 @@ export default function Page() {
 
       await loadDay(day);
       await loadTop();
-      setToast("Review deleted.");
+      showToast("Review deleted.");
     } catch {
-      setToast("Could not delete review.");
+      showToast("Could not delete review.");
     } finally {
       setDeletingReviewId(null);
     }
   }
 
   async function reportReview(ratingId: string) {
+    if (!currentUser) {
+      openAuthModal("login");
+      return;
+    }
+
+    if (requireVerifiedEmail()) return;
+
     const reason = window.prompt(
       "Why are you reporting this review?",
       "Spam or abusive content"
     );
 
     if (!reason || reason.trim().length < 3) {
-      setToast("Report reason must be at least 3 characters.");
+      showToast("Report reason must be at least 3 characters.");
       return;
     }
 
@@ -921,19 +1359,26 @@ export default function Page() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setToast(json?.error ?? "Could not report review.");
+        showToast(json?.error ?? "Could not report review.");
         return;
       }
 
-      setToast("Review reported.");
+      showToast("Review reported.");
     } catch {
-      setToast("Could not report review.");
+      showToast("Could not report review.");
     } finally {
       setReportingReviewId(null);
     }
   }
 
   async function toggleLike(ratingId: string) {
+    if (!currentUser) {
+      openAuthModal("login");
+      return;
+    }
+
+    if (requireVerifiedEmail()) return;
+
     try {
       const res = await fetch("/api/review-like", {
         method: "POST",
@@ -943,23 +1388,36 @@ export default function Page() {
         body: JSON.stringify({ ratingId }),
       });
 
+      const json = await res.json().catch(() => null);
+
       if (!res.ok) {
-        const text = await res.text();
-        setToast(`Error dando like: ${text}`);
+        showToast(json?.error ?? "Error giving like.");
         return;
       }
 
       await loadDay(day);
     } catch {
-      setToast("Error dando like.");
+      showToast("Error dando like.");
     }
   }
 
   async function submitReply(ratingId: string) {
+    if (!currentUser) {
+      openAuthModal("login");
+      return;
+    }
+
+    if (requireVerifiedEmail()) return;
+
     const text = (replyTextByRating[ratingId] ?? "").trim();
 
     if (!text) {
-      setToast("Reply cannot be empty.");
+      showToast("Reply cannot be empty.");
+      return;
+    }
+
+    if (text.length > REPLY_MAX_LENGTH) {
+      showToast(`Reply is too long (max ${REPLY_MAX_LENGTH} chars).`);
       return;
     }
 
@@ -981,7 +1439,7 @@ export default function Page() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setToast(json?.error ?? "Could not send reply.");
+        showToast(json?.error ?? "Could not send reply.");
         return;
       }
 
@@ -992,15 +1450,20 @@ export default function Page() {
       setReplyingToId(null);
 
       await loadDay(day);
-      setToast("Reply sent.");
+      showToast("Reply sent.");
     } catch {
-      setToast("Could not send reply.");
+      showToast("Could not send reply.");
     } finally {
       setSendingReplyId(null);
     }
   }
 
-  async function deleteReply(replyId: string) {
+  async function deleteReply(replyId?: string | null) {
+    if (!replyId || typeof replyId !== "string") {
+      showToast("Invalid replyId.");
+      return;
+    }
+
     const confirmed = window.confirm(
       "Are you sure you want to delete your reply?"
     );
@@ -1022,14 +1485,14 @@ export default function Page() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setToast(json?.error ?? "Could not delete reply.");
+        showToast(json?.error ?? "Could not delete reply.");
         return;
       }
 
       await loadDay(day);
-      setToast("Reply deleted.");
+      showToast("Reply deleted.");
     } catch {
-      setToast("Could not delete reply.");
+      showToast("Could not delete reply.");
     } finally {
       setDeletingReplyId(null);
     }
@@ -1090,173 +1553,252 @@ export default function Page() {
   }
 
   return (
-    <main className="min-h-screen bg-[#0b1220] text-zinc-100">
+    <main className="min-h-screen bg-[#050505] text-zinc-100">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="flex flex-col gap-6">
-          <div>
-            <h1 className="text-3xl font-semibold tracking-tight">
-              Rate Any Day in Human History
-            </h1>
-          </div>
+          <section className="overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.02))] shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
+            <div className="relative">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.07),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.035),transparent_28%)]" />
 
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <div className="text-lg font-semibold text-zinc-100">
-              Explore a day
-            </div>
+              <div className="absolute right-6 top-6 z-20">
+                {loadingCurrentUser ? (
+                  <div className="rounded-xl border border-white/8 bg-white/[0.06] px-4 py-2 text-sm text-zinc-400 backdrop-blur-xl">
+                    Loading...
+                  </div>
+                ) : currentUser ? (
+                  <div className="flex items-center gap-2">
+                    {currentUser.emailVerified === false ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          openAuthModal("verify-email", currentUser.email)
+                        }
+                        className="rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200 transition hover:bg-amber-500/15"
+                      >
+                        Verify email
+                      </button>
+                    ) : null}
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => setDay(getRandomDay(minDay, today))}
-                className="rounded-lg border border-white/10 bg-black/20 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-black/30"
-              >
-                Surprise me
-              </button>
+                    <Link
+                      href={profileHref}
+                      className="rounded-xl border border-white/8 bg-white/[0.08] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.12] backdrop-blur-xl"
+                    >
+                      @{currentUser.username}
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openAuthModal("login")}
+                      className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.09] backdrop-blur-xl"
+                    >
+                      Log in
+                    </button>
 
-              <button
-                type="button"
-                onClick={goToToday}
-                className="rounded-lg border border-white/10 bg-black/20 px-4 py-2 text-sm font-medium text-zinc-200 transition hover:bg-black/30"
-              >
-                Today in the history
-              </button>
-            </div>
-
-            <div className="mt-5 text-sm text-zinc-300">
-              or select manually:
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
-                className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-white/20"
-              >
-                {YEARS.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-white/20"
-              >
-                {MONTHS.map((month) => (
-                  <option key={month.value} value={month.value}>
-                    {month.label}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={selectedDay}
-                onChange={(e) => setSelectedDay(e.target.value)}
-                className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-white/20"
-              >
-                {DAYS.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                type="button"
-                onClick={goToManualDay}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200"
-              >
-                Go
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <div className="mb-3 text-sm font-semibold text-zinc-200">
-              Discover random days
-            </div>
-
-            {loadingDiscover ? (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-                {Array.from({ length: 5 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="h-72 animate-pulse rounded-2xl border border-white/10 bg-white/5"
-                  />
-                ))}
+                    <button
+                      type="button"
+                      onClick={() => openAuthModal("register")}
+                      className="rounded-xl border border-white/8 bg-white/[0.1] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.14] backdrop-blur-xl"
+                    >
+                      Register
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-                {discoverDays.map((card, index) => (
+
+              <div className="relative p-6 sm:p-8">
+                <div className="max-w-2xl">
+                  <div className="text-sm font-medium uppercase tracking-[0.18em] text-zinc-500">
+                    Explore a day
+                  </div>
+
+                  <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                    Discover what happened on any day in human history
+                  </h2>
+
+                  <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-300 sm:text-base">
+                    Jump to a random moment, revisit this day in another year,
+                    or choose an exact date to explore births, deaths, and key
+                    historical events.
+                  </p>
+                </div>
+
+                <div className="mt-8 grid gap-3 sm:grid-cols-2">
                   <button
-                    key={`${card.day}-${index}`}
                     type="button"
-                    onClick={() => setDay(card.day)}
-                    className="group relative h-72 overflow-hidden rounded-2xl border border-white/10 bg-black/20 text-left transition hover:-translate-y-1 hover:border-white/20"
+                    onClick={() => goToSurpriseDay(true)}
+                    className="group rounded-2xl border border-white/8 bg-white/[0.05] px-5 py-4 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl"
                   >
-                    {card.image ? (
-                      <img
-                        src={card.image}
-                        alt={card.title}
-                        className="absolute inset-0 h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 via-zinc-900 to-black" />
-                    )}
-
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-black/10 transition group-hover:from-black/95 group-hover:via-black/50 group-hover:to-black/25" />
-
-                    <div className="absolute left-3 right-3 bottom-3 z-10">
-                      <div className="line-clamp-1 text-xs text-zinc-300">
-                        {card.day}
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.07] text-lg text-white">
+                        ✦
                       </div>
-                      <div className="mt-1 line-clamp-2 text-sm font-semibold text-white">
-                        {card.title}
-                      </div>
-                    </div>
 
-                    <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 transition duration-200 group-hover:opacity-100">
-                      <div className="rounded-2xl border border-white/10 bg-black/55 px-5 py-5 backdrop-blur-md">
-                        <div className="flex items-center justify-center gap-2 text-white">
-                          <span className="text-lg">👁</span>
-                          <span className="text-2xl font-semibold">
-                            {formatCompactViews(card.views)}
-                          </span>
+                      <div>
+                        <div className="text-base font-semibold text-white">
+                          Surprise me
                         </div>
-
-                        <div className="mt-3 flex items-center justify-center gap-2 text-white">
-                          <span className="text-lg">★</span>
-                          <span className="text-2xl font-semibold">
-                            {formatAvg(card.avg)}
-                          </span>
-                        </div>
-
-                        <div className="mt-2 text-center text-xs text-zinc-200">
-                          {card.count} vote{card.count === 1 ? "" : "s"}
+                        <div className="mt-1 text-sm text-zinc-400">
+                          Jump into a random day and see what history gives you.
                         </div>
                       </div>
                     </div>
                   </button>
-                ))}
+
+                  <button
+                    type="button"
+                    onClick={() => goToTodayInHistory(true)}
+                    className="group rounded-2xl border border-white/8 bg-white/[0.05] px-5 py-4 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.07] text-lg text-white">
+                        🗓
+                      </div>
+
+                      <div>
+                        <div className="text-base font-semibold text-white">
+                          Today in history
+                        </div>
+                        <div className="mt-1 text-sm text-zinc-400">
+                          See what happened on this same month and day in a
+                          different year.
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                <div className="mt-8 rounded-2xl border border-white/8 bg-black/25 p-5 backdrop-blur-xl">
+                  <div className="text-sm font-medium text-zinc-200">
+                    Pick an exact date
+                  </div>
+                  <div className="mt-1 text-sm text-zinc-400">
+                    Choose a specific day between 1900 and today.
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <select
+                      value={selectedYear}
+                      onChange={(e) => setSelectedYear(e.target.value)}
+                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+                    >
+                      {YEARS.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={selectedMonth}
+                      onChange={(e) => setSelectedMonth(e.target.value)}
+                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+                    >
+                      {MONTHS.map((month) => (
+                        <option key={month.value} value={month.value}>
+                          {month.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={selectedDay}
+                      onChange={(e) => setSelectedDay(e.target.value)}
+                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+                    >
+                      {DAYS.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+
+                    <button
+                      type="button"
+                      onClick={goToManualDay}
+                      className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+                    >
+                      Go
+                    </button>
+                  </div>
+
+                  {toast ? (
+                    <div className="mt-4 text-sm text-zinc-300">{toast}</div>
+                  ) : null}
+                </div>
               </div>
-            )}
-          </div>
+            </div>
+          </section>
         </div>
 
         <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
-          <section className="rounded-2xl border border-white/10 bg-white/5 p-6 shadow-xl">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="text-sm text-zinc-300">Selected day</div>
+          <section className="rounded-2xl border border-white/8 bg-white/[0.04] p-6 shadow-[0_18px_60px_rgba(0,0,0,0.34)] backdrop-blur-2xl">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+                    Now exploring
+                  </div>
+                  <div className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
+                    {day}
+                  </div>
+                </div>
 
-                <div className="mt-2 flex flex-wrap items-center gap-1">
+                <div className="shrink-0 text-right">
+                  <div className="text-xs text-zinc-400">Community avg</div>
+                  <div className="text-lg font-semibold text-white">
+                    {data ? formatAvg(data.avg) : "—"}
+                    <span className="text-xs font-normal text-zinc-300">
+                      {" "}
+                      ({data?.count ?? 0})
+                    </span>
+                  </div>
+
+                  <div className="mt-2 text-xs text-zinc-500">Views</div>
+                  <div className="text-sm font-medium text-zinc-200">
+                    {formatCompactViews(data?.views ?? 0)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 rounded-2xl border border-white/8 bg-black/20 p-3 sm:p-4 backdrop-blur-xl">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
+                    Quick actions
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => goToSurpriseDay(false)}
+                    className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
+                  >
+                    Surprise me
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => goToTodayInHistory(false)}
+                    className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
+                  >
+                    Today in history
+                  </button>
+                </div>
+
+                <div className="mt-1 flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
+                    Step through time
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={goToPreviousYear}
                     disabled={isAtMinYear}
-                    className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     «
                   </button>
@@ -1265,18 +1807,16 @@ export default function Page() {
                     type="button"
                     onClick={goToPreviousDay}
                     disabled={isAtMinDay}
-                    className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     ‹
                   </button>
-
-                  <div className="text-xl font-semibold">{day}</div>
 
                   <button
                     type="button"
                     onClick={goToNextDay}
                     disabled={isAtToday}
-                    className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     ›
                   </button>
@@ -1285,32 +1825,16 @@ export default function Page() {
                     type="button"
                     onClick={goToNextYear}
                     disabled={isAtMaxYear}
-                    className="rounded-lg border border-white/10 bg-black/20 px-3 py-1.5 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     »
                   </button>
                 </div>
               </div>
-
-              <div className="shrink-0 text-right">
-                <div className="text-xs text-zinc-300">Community avg</div>
-                <div className="text-lg font-semibold">
-                  {data ? formatAvg(data.avg) : "—"}
-                  <span className="text-xs font-normal text-zinc-300">
-                    {" "}
-                    ({data?.count ?? 0})
-                  </span>
-                </div>
-
-                <div className="mt-2 text-xs text-zinc-400">Views</div>
-                <div className="text-sm font-medium text-zinc-200">
-                  {formatCompactViews(data?.views ?? 0)}
-                </div>
-              </div>
             </div>
 
-            {!hasPickedInitialDay || loadingHighlight ? (
-              <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-black/20 p-5">
+            {!hasPickedInitialDay ? (
+              <div className="mt-6 overflow-hidden rounded-2xl border border-white/8 bg-black/20 p-5">
                 <div className="animate-pulse">
                   <div className="h-4 w-28 rounded bg-white/10" />
                   <div className="mt-4 h-8 w-2/3 rounded bg-white/10" />
@@ -1321,11 +1845,37 @@ export default function Page() {
               </div>
             ) : highlight ? (
               <div
-                className="mt-6 overflow-hidden rounded-2xl border border-white/10 bg-black/20"
+                ref={highlightBlockRef}
+                className="mt-6 overflow-hidden rounded-2xl border border-white/8 bg-black/20"
                 onMouseEnter={() => setIsHighlightPaused(true)}
                 onMouseLeave={() => setIsHighlightPaused(false)}
               >
                 <div className="relative min-h-[320px]">
+                  <button
+                    type="button"
+                    onClick={toggleFavoriteDay}
+                    disabled={loadingFavoriteDay}
+                    aria-label={
+                      isFavoriteDay
+                        ? "Remove favorite day"
+                        : "Set as favorite day"
+                    }
+                    title={
+                      isFavoriteDay
+                        ? "Remove favorite day"
+                        : "Set as favorite day"
+                    }
+                    className={`absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-xl transition ${
+                      isFavoriteDay
+                        ? "border-yellow-400/30 bg-yellow-500/18 text-yellow-300 hover:bg-yellow-500/22"
+                        : "border-white/15 bg-black/40 text-white hover:bg-black/48"
+                    } disabled:cursor-not-allowed disabled:opacity-60`}
+                  >
+                    <span className="text-2xl leading-none">
+                      {isFavoriteDay ? "★" : "☆"}
+                    </span>
+                  </button>
+
                   {highlight.image ? (
                     <img
                       src={highlight.image}
@@ -1333,10 +1883,10 @@ export default function Page() {
                       className="absolute inset-0 h-full w-full object-cover"
                     />
                   ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 to-zinc-950" />
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] to-black" />
                   )}
 
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/55 to-black/20" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/58 to-black/18" />
 
                   <div className="relative flex h-full min-h-[320px] flex-col justify-end p-5 sm:p-6">
                     <div className="text-sm text-zinc-200/90">In this day</div>
@@ -1346,7 +1896,7 @@ export default function Page() {
 
                     <div className="mt-4 flex flex-wrap items-center gap-2">
                       {highlight.year ? (
-                        <span className="rounded-md bg-white/15 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-sm">
+                        <span className="rounded-md bg-white/12 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-xl">
                           {highlight.year}
                         </span>
                       ) : null}
@@ -1357,7 +1907,7 @@ export default function Page() {
                         return (
                           <span
                             key={badge}
-                            className={`rounded-md border px-2.5 py-1 text-xs font-medium uppercase tracking-wide backdrop-blur-sm ${style.pill} ${style.text} ${style.border}`}
+                            className={`rounded-md border px-2.5 py-1 text-xs font-medium uppercase tracking-wide backdrop-blur-xl ${style.pill} ${style.text} ${style.border}`}
                           >
                             {getBadgeLabel(badge)}
                           </span>
@@ -1381,7 +1931,7 @@ export default function Page() {
                           href={highlight.articleUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex w-fit items-center rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
+                          className="inline-flex w-fit items-center rounded-lg border border-white/15 bg-white/[0.08] px-4 py-2 text-sm font-medium text-white backdrop-blur-xl transition hover:bg-white/[0.12]"
                         >
                           Read on Wikipedia
                         </a>
@@ -1394,7 +1944,7 @@ export default function Page() {
                       <button
                         type="button"
                         onClick={() => setShowSuggestModal(true)}
-                        className="inline-flex w-fit items-center rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm font-medium text-white backdrop-blur-sm transition hover:bg-white/20"
+                        className="inline-flex w-fit items-center rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm font-medium text-white backdrop-blur-xl transition hover:bg-white/[0.12]"
                       >
                         Suggest an event
                       </button>
@@ -1406,7 +1956,7 @@ export default function Page() {
                           <button
                             type="button"
                             onClick={goToPrevHighlight}
-                            className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-white transition hover:bg-white/20"
+                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
                           >
                             ←
                           </button>
@@ -1414,7 +1964,7 @@ export default function Page() {
                           <button
                             type="button"
                             onClick={goToNextHighlight}
-                            className="rounded-lg border border-white/20 bg-white/10 px-3 py-1.5 text-sm text-white transition hover:bg-white/20"
+                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
                           >
                             →
                           </button>
@@ -1448,66 +1998,166 @@ export default function Page() {
 
             <div
               ref={rateBoxRef}
-              className="mt-6 scroll-mt-24 rounded-2xl border border-white/10 bg-black/20 p-5"
+              className="mt-6 scroll-mt-24 overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl"
             >
-              <div className="text-sm text-zinc-300">Rate this day</div>
+              <div className="relative">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.03),transparent_28%)]" />
 
-              {myReview ? (
-                <div className="mt-2 text-xs text-emerald-300">
-                  You already rated this day. You can update your review below.
+                <div className="relative p-5 sm:p-6">
+                  <div className="max-w-2xl">
+                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+                      Your reaction
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+                      <div>
+                        <h3 className="text-xl font-semibold text-white">
+                          Rate this day
+                        </h3>
+                        <p className="mt-1 text-sm leading-6 text-zinc-400">
+                          Share your take on this moment in history.
+                        </p>
+                      </div>
+
+                      {myReview ? (
+                        <div className="rounded-2xl border border-emerald-400/18 bg-emerald-500/10 px-4 py-2 text-right backdrop-blur-xl">
+                          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-300/90">
+                            Your current rating
+                          </div>
+                          <div className="mt-1 text-lg font-semibold text-white">
+                            ★ {myReview.stars}.0
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 rounded-[24px] border border-white/8 bg-white/[0.03] p-5 backdrop-blur-2xl">
+                    {!currentUser ? (
+                      <div className="mb-5 rounded-2xl border border-amber-400/18 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
+                        <div className="text-sm font-medium text-amber-200">
+                          Login required to interact
+                        </div>
+                        <div className="mt-1 text-xs text-amber-100/80">
+                          You can explore freely, but ratings, favorites, likes
+                          and replies only work with an account and are the only
+                          ones that count in stats.
+                        </div>
+                      </div>
+                    ) : currentUser.emailVerified === false ? (
+                      <div className="mb-5 rounded-2xl border border-amber-400/18 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
+                        <div className="text-sm font-medium text-amber-200">
+                          Verify your email to interact
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-amber-100/80">
+                          <span>
+                            Your account exists, but you should verify your email first.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openAuthModal("verify-email", currentUser.email)
+                            }
+                            className="rounded-lg border border-amber-300/18 bg-amber-400/10 px-3 py-1.5 text-amber-100 transition hover:bg-amber-400/18"
+                          >
+                            Verify now
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {myReview ? (
+                      <div className="mb-5 rounded-2xl border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 backdrop-blur-xl">
+                        <div className="text-sm font-medium text-emerald-300">
+                          You already rated this day.
+                        </div>
+                        <div className="mt-1 text-xs text-emerald-200/80">
+                          You can update your review below whenever you want.
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                      <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: 5 }).map((_, i) => {
+                            const v = i + 1;
+                            return (
+                              <Star
+                                key={v}
+                                filled={v <= shownStars}
+                                title={`${v} star${v > 1 ? "s" : ""}`}
+                                onMouseEnter={() => setHoverStars(v)}
+                                onMouseLeave={() => setHoverStars(0)}
+                                onClick={() => setStars(v)}
+                              />
+                            );
+                          })}
+                        </div>
+
+                        <div className="min-w-[56px] text-2xl font-semibold tracking-tight text-white">
+                          {shownStars ? `${shownStars}/5` : "—/5"}
+                        </div>
+                      </div>
+
+                      <div className="text-sm text-zinc-400 md:text-right">
+                        {shownStars
+                          ? "Choose how this day feels to you"
+                          : "Select a rating from 1 to 5 stars"}
+                      </div>
+                    </div>
+
+                    <div className="mt-6">
+                      <div className="mb-2 text-sm font-medium text-zinc-200">
+                        Review
+                      </div>
+                      <textarea
+                        value={review}
+                        onChange={(e) =>
+                          setReview(e.target.value.slice(0, REVIEW_MAX_LENGTH))
+                        }
+                        maxLength={REVIEW_MAX_LENGTH}
+                        placeholder="Add a short review, reaction, or opinion about this day..."
+                        className="h-28 w-full resize-none rounded-[20px] border border-white/8 bg-[#101010]/90 px-4 py-4 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-white/14 focus:ring-2 focus:ring-white/10"
+                      />
+                      <div className="mt-2 flex justify-end">
+                        <div
+                          className={`text-xs ${
+                            review.length >= REVIEW_MAX_LENGTH
+                              ? "text-red-400"
+                              : review.length >= REVIEW_MAX_LENGTH - 40
+                                ? "text-amber-300"
+                                : "text-zinc-500"
+                          }`}
+                        >
+                          {review.length} / {REVIEW_MAX_LENGTH}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={submit}
+                        disabled={saving}
+                        className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
+                      >
+                        {saving
+                          ? "Saving..."
+                          : myReview
+                            ? "Update your review"
+                            : "Rate this day"}
+                      </button>
+
+                      {toast ? (
+                        <div className="text-sm text-zinc-300">{toast}</div>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
-              ) : null}
-
-              <div className="mt-3 flex items-center gap-1">
-                {Array.from({ length: 5 }).map((_, i) => {
-                  const v = i + 1;
-                  return (
-                    <Star
-                      key={v}
-                      filled={v <= shownStars}
-                      title={`${v} star${v > 1 ? "s" : ""}`}
-                      onMouseEnter={() => setHoverStars(v)}
-                      onMouseLeave={() => setHoverStars(0)}
-                      onClick={() => setStars(v)}
-                    />
-                  );
-                })}
-
-                <div className="ml-3 text-sm text-zinc-300">
-                  {shownStars ? `${shownStars}/5` : ""}
-                </div>
-              </div>
-
-              <div className="mt-4">
-                <div className="text-sm text-zinc-300">Review</div>
-                <textarea
-                  value={review}
-                  onChange={(e) => setReview(e.target.value)}
-                  placeholder="Optional review…"
-                  className="mt-2 h-24 w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-white/20"
-                />
-              </div>
-
-              <div className="mt-4 flex items-center gap-3">
-                <button
-                  onClick={submit}
-                  disabled={saving}
-                  className="rounded-xl bg-white px-5 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
-                >
-                  {saving
-                    ? "Saving..."
-                    : myReview
-                    ? "Update your review"
-                    : "Rate this day"}
-                </button>
-
-                {toast ? (
-                  <div className="text-sm text-zinc-300">{toast}</div>
-                ) : null}
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-white/10 bg-black/10 p-5">
+            <div className="mt-6 rounded-2xl border border-white/8 bg-black/18 p-5 backdrop-blur-2xl">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-lg font-semibold text-zinc-100">
@@ -1524,7 +2174,7 @@ export default function Page() {
                     onClick={() => setReviewsSort("helpful")}
                     className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                       reviewsSort === "helpful"
-                        ? "border border-white/10 bg-white/10 text-white"
+                        ? "border border-white/8 bg-white/[0.08] text-white"
                         : "text-zinc-400 hover:text-zinc-200"
                     }`}
                   >
@@ -1536,7 +2186,7 @@ export default function Page() {
                     onClick={() => setReviewsSort("newest")}
                     className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
                       reviewsSort === "newest"
-                        ? "border border-white/10 bg-white/10 text-white"
+                        ? "border border-white/8 bg-white/[0.08] text-white"
                         : "text-zinc-400 hover:text-zinc-200"
                     }`}
                   >
@@ -1545,56 +2195,28 @@ export default function Page() {
                 </div>
               </div>
 
-              <div className="mt-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-                <div className="flex flex-wrap items-center gap-3">
-                  <div className="text-3xl font-semibold text-white">
-                    ★ {formatAvg(data?.avg ?? 0)}
-                  </div>
-                  <div className="text-sm text-zinc-400">
-                    ({ratingsCount} rating{ratingsCount === 1 ? "" : "s"})
-                  </div>
-                </div>
-
-                <div className="mt-4 space-y-2">
-                  {starDistribution.map((item) => (
-                    <div key={item.stars} className="flex items-center gap-3">
-                      <div className="w-12 shrink-0 text-sm text-zinc-300">
-                        {item.stars} ★
-                      </div>
-
-                      <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className="h-full rounded-full bg-yellow-400"
-                          style={{
-                            width: `${(item.count / maxDistributionCount) * 100}%`,
-                          }}
-                        />
-                      </div>
-
-                      <div className="w-6 shrink-0 text-right text-sm text-zinc-400">
-                        {item.count}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <RatingDistribution
+                avg={formatAvg(data?.avg ?? 0)}
+                ratingsCount={ratingsCount}
+                starDistribution={starDistribution}
+              />
 
               {myReview ? (
-                <div className="mt-5">
+                <div ref={myReviewBlockRef} className="mt-5">
                   <div className="mb-2 text-sm font-medium text-zinc-200">
                     Your rating
                   </div>
 
-                  <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/5 p-4">
+                  <div className="rounded-2xl border border-emerald-400/18 bg-emerald-500/5 p-4 backdrop-blur-xl">
                     <div className="flex flex-wrap items-center gap-2">
                       <div className="text-yellow-400">
                         {"★".repeat(clamp(myReview.stars, 0, 5))}
-                        <span className="text-zinc-600">
+                        <span className="text-zinc-700">
                           {"★".repeat(5 - clamp(myReview.stars, 0, 5))}
                         </span>
                       </div>
 
-                      <span className="rounded-md border border-emerald-400/30 bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300">
+                      <span className="rounded-md border border-emerald-400/20 bg-emerald-500/18 px-2 py-0.5 text-xs font-medium text-emerald-300">
                         Your review
                       </span>
 
@@ -1660,90 +2282,43 @@ export default function Page() {
 
                       <button
                         type="button"
-                        onClick={() =>
+                        onClick={() => {
+                          if (!currentUser) {
+                            openAuthModal("login");
+                            return;
+                          }
+
+                          if (requireVerifiedEmail()) return;
+
                           setReplyingToId((prev) =>
                             prev === myReview.id ? null : myReview.id
-                          )
-                        }
+                          );
+                        }}
                         className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
                       >
                         Reply
                       </button>
                     </div>
 
-                    {myReview.replies?.length ? (
-                      <div className="mt-4 space-y-3 border-l border-white/10 pl-4">
-                        {myReview.replies.map((reply) => (
-                          <div
-                            key={reply.id}
-                            className="rounded-xl border border-white/10 bg-black/20 p-3"
-                          >
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-zinc-300">
-                                {reply.authorLabel}
-                              </span>
-
-                              <div className="text-xs text-zinc-400">
-                                {formatReviewDate(reply.createdAt)}
-                              </div>
-
-                              {reply.isMine ? (
-                                <button
-                                  type="button"
-                                  onClick={() => deleteReply(reply.id)}
-                                  disabled={deletingReplyId === reply.id}
-                                  className="text-xs text-red-300 underline underline-offset-4 transition hover:text-red-200 disabled:opacity-50"
-                                >
-                                  {deletingReplyId === reply.id
-                                    ? "Deleting..."
-                                    : "Delete"}
-                                </button>
-                              ) : null}
-                            </div>
-
-                            <div className="mt-2 text-sm leading-6 text-zinc-200">
-                              {reply.text}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
+                    <ReplyList
+                      replies={myReview.replies}
+                      deletingReplyId={deletingReplyId}
+                      onDeleteReply={deleteReply}
+                    />
 
                     {replyingToId === myReview.id ? (
-                      <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
-                        <textarea
-                          value={replyTextByRating[myReview.id] ?? ""}
-                          onChange={(e) =>
-                            setReplyTextByRating((prev) => ({
-                              ...prev,
-                              [myReview.id]: e.target.value,
-                            }))
-                          }
-                          placeholder="Write a reply..."
-                          className="h-24 w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-white/20"
-                        />
-
-                        <div className="mt-3 flex items-center gap-3">
-                          <button
-                            type="button"
-                            onClick={() => submitReply(myReview.id)}
-                            disabled={sendingReplyId === myReview.id}
-                            className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
-                          >
-                            {sendingReplyId === myReview.id
-                              ? "Sending..."
-                              : "Send reply"}
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setReplyingToId(null)}
-                            className="text-sm text-zinc-400 transition hover:text-zinc-200"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
+                      <ReplyComposer
+                        value={replyTextByRating[myReview.id] ?? ""}
+                        onChange={(value) =>
+                          setReplyTextByRating((prev) => ({
+                            ...prev,
+                            [myReview.id]: value,
+                          }))
+                        }
+                        onSubmit={() => submitReply(myReview.id)}
+                        onCancel={() => setReplyingToId(null)}
+                        sending={sendingReplyId === myReview.id}
+                      />
                     ) : null}
                   </div>
                 </div>
@@ -1765,17 +2340,17 @@ export default function Page() {
                     return (
                       <div
                         key={r.id}
-                        className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                        className="rounded-2xl border border-white/8 bg-black/20 p-4 backdrop-blur-xl"
                       >
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="text-yellow-400">
                             {"★".repeat(clamp(r.stars, 0, 5))}
-                            <span className="text-zinc-600">
+                            <span className="text-zinc-700">
                               {"★".repeat(5 - clamp(r.stars, 0, 5))}
                             </span>
                           </div>
 
-                          <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-zinc-300">
+                          <span className="rounded-md border border-white/8 bg-white/[0.05] px-2 py-0.5 text-xs text-zinc-300">
                             {r.authorLabel}
                           </span>
 
@@ -1823,97 +2398,50 @@ export default function Page() {
 
                           <button
                             type="button"
-                            onClick={() =>
+                            onClick={() => {
+                              if (!currentUser) {
+                                openAuthModal("login");
+                                return;
+                              }
+
+                              if (requireVerifiedEmail()) return;
+
                               setReplyingToId((prev) =>
                                 prev === r.id ? null : r.id
-                              )
-                            }
+                              );
+                            }}
                             className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
                           >
                             Reply
                           </button>
                         </div>
 
-                        {r.replies?.length ? (
-                          <div className="mt-4 space-y-3 border-l border-white/10 pl-4">
-                            {r.replies.map((reply) => (
-                              <div
-                                key={reply.id}
-                                className="rounded-xl border border-white/10 bg-black/20 p-3"
-                              >
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-zinc-300">
-                                    {reply.authorLabel}
-                                  </span>
-
-                                  <div className="text-xs text-zinc-400">
-                                    {formatReviewDate(reply.createdAt)}
-                                  </div>
-
-                                  {reply.isMine ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => deleteReply(reply.id)}
-                                      disabled={deletingReplyId === reply.id}
-                                      className="text-xs text-red-300 underline underline-offset-4 transition hover:text-red-200 disabled:opacity-50"
-                                    >
-                                      {deletingReplyId === reply.id
-                                        ? "Deleting..."
-                                        : "Delete"}
-                                    </button>
-                                  ) : null}
-                                </div>
-
-                                <div className="mt-2 text-sm leading-6 text-zinc-200">
-                                  {reply.text}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
+                        <ReplyList
+                          replies={r.replies}
+                          deletingReplyId={deletingReplyId}
+                          onDeleteReply={deleteReply}
+                        />
 
                         {replyingToId === r.id ? (
-                          <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4">
-                            <textarea
-                              value={replyTextByRating[r.id] ?? ""}
-                              onChange={(e) =>
-                                setReplyTextByRating((prev) => ({
-                                  ...prev,
-                                  [r.id]: e.target.value,
-                                }))
-                              }
-                              placeholder="Write a reply..."
-                              className="h-24 w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-100 outline-none focus:ring-2 focus:ring-white/20"
-                            />
-
-                            <div className="mt-3 flex items-center gap-3">
-                              <button
-                                type="button"
-                                onClick={() => submitReply(r.id)}
-                                disabled={sendingReplyId === r.id}
-                                className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
-                              >
-                                {sendingReplyId === r.id
-                                  ? "Sending..."
-                                  : "Send reply"}
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() => setReplyingToId(null)}
-                                className="text-sm text-zinc-400 transition hover:text-zinc-200"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
+                          <ReplyComposer
+                            value={replyTextByRating[r.id] ?? ""}
+                            onChange={(value) =>
+                              setReplyTextByRating((prev) => ({
+                                ...prev,
+                                [r.id]: value,
+                              }))
+                            }
+                            onSubmit={() => submitReply(r.id)}
+                            onCancel={() => setReplyingToId(null)}
+                            sending={sendingReplyId === r.id}
+                          />
                         ) : null}
                       </div>
                     );
                   })}
 
                   {otherReviews.length === 0 && !myReview ? (
-                    <div className="rounded-xl border border-white/10 bg-black/10 p-4 text-sm text-zinc-400">
+                    <div className="rounded-xl border border-white/8 bg-black/15 p-4 text-sm text-zinc-400">
                       No reviews yet. Be the first.
                     </div>
                   ) : null}
@@ -1923,7 +2451,7 @@ export default function Page() {
           </section>
 
           <aside className="space-y-6">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+            <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-6 backdrop-blur-2xl">
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-sm font-semibold">Most Loved Days</div>
@@ -1941,8 +2469,10 @@ export default function Page() {
                 {top.slice(0, 6).map((item, index) => (
                   <button
                     key={item.day}
-                    onClick={() => setDay(item.day)}
-                    className="w-full rounded-xl border border-white/10 bg-black/20 p-4 text-left transition hover:bg-black/30"
+                    onClick={() =>
+                      openDay(item.day, { scrollToHighlight: false })
+                    }
+                    className="w-full rounded-xl border border-white/8 bg-black/20 p-4 text-left transition hover:bg-black/30 backdrop-blur-xl"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
@@ -1975,7 +2505,7 @@ export default function Page() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
+            <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-6 backdrop-blur-2xl">
               <div>
                 <div className="text-sm font-semibold">
                   Most Controversial Days
@@ -1989,8 +2519,10 @@ export default function Page() {
                 {low.slice(0, 6).map((item, index) => (
                   <button
                     key={item.day}
-                    onClick={() => setDay(item.day)}
-                    className="w-full rounded-xl border border-white/10 bg-black/20 p-4 text-left transition hover:bg-black/30"
+                    onClick={() =>
+                      openDay(item.day, { scrollToHighlight: false })
+                    }
+                    className="w-full rounded-xl border border-white/8 bg-black/20 p-4 text-left transition hover:bg-black/30 backdrop-blur-xl"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
@@ -2024,11 +2556,63 @@ export default function Page() {
             </div>
           </aside>
         </div>
+
+        <section className="mt-14">
+          <div className="mb-5 flex items-end justify-between gap-4">
+            <div>
+              <div className="text-xl font-semibold text-zinc-100">
+                Discover more days
+              </div>
+              <div className="mt-1 text-sm text-zinc-400">
+                Keep exploring moments from history
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={async () => {
+                setLoadingDiscover(true);
+                const items = await loadDiscoverRandomDays(
+                  5,
+                  FORCE_FRESH_MODE
+                );
+                setDiscoverDays(items);
+                setLoadingDiscover(false);
+              }}
+              className="rounded-xl border border-white/8 bg-black/20 px-4 py-2 text-sm text-zinc-200 transition hover:bg-black/30 backdrop-blur-xl"
+            >
+              Refresh cards
+            </button>
+          </div>
+
+          {loadingDiscover ? (
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div
+                  key={index}
+                  className="h-[360px] animate-pulse rounded-[30px] border border-white/8 bg-white/[0.04]"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
+              {discoverDays.map((card, index) => (
+                <DiscoverDayCard
+                  key={`${card.day}-${index}`}
+                  card={card}
+                  onSelect={(selectedDay) =>
+                    openDay(selectedDay, { scrollToHighlight: true })
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
 
       {showSuggestModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-[#111827] p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
+          <div className="w-full max-w-xl rounded-[28px] border border-white/8 bg-[#111111]/95 p-6 shadow-[0_30px_100px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-white">
@@ -2045,7 +2629,7 @@ export default function Page() {
                   setShowSuggestModal(false);
                   setSuggestToast("");
                 }}
-                className="rounded-lg border border-white/10 px-3 py-1 text-sm text-zinc-300 transition hover:bg-white/5"
+                className="rounded-lg border border-white/8 px-3 py-1 text-sm text-zinc-300 transition hover:bg-white/[0.06]"
               >
                 Close
               </button>
@@ -2060,7 +2644,7 @@ export default function Page() {
                   value={suggestEvent}
                   onChange={(e) => setSuggestEvent(e.target.value)}
                   placeholder="Example: Boxer Protocol signed in Beijing"
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/20"
+                  className="w-full rounded-xl border border-white/8 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/10"
                 />
               </div>
 
@@ -2072,7 +2656,7 @@ export default function Page() {
                   value={suggestDescription}
                   onChange={(e) => setSuggestDescription(e.target.value)}
                   placeholder="Write a short description of what happened..."
-                  className="h-32 w-full resize-none rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/20"
+                  className="h-32 w-full resize-none rounded-xl border border-white/8 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/10"
                 />
               </div>
 
@@ -2084,7 +2668,7 @@ export default function Page() {
                   value={suggestSource}
                   onChange={(e) => setSuggestSource(e.target.value)}
                   placeholder="Wikipedia, article URL, book, etc."
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/20"
+                  className="w-full rounded-xl border border-white/8 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/10"
                 />
               </div>
 
@@ -2096,7 +2680,7 @@ export default function Page() {
                   value={suggestEmail}
                   onChange={(e) => setSuggestEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/20"
+                  className="w-full rounded-xl border border-white/8 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/10"
                 />
               </div>
 
@@ -2118,6 +2702,34 @@ export default function Page() {
           </div>
         </div>
       ) : null}
+
+      <CosmicLoading
+        open={
+          isDayTransitioning ||
+          (loadingHighlight && !highlight) ||
+          (loadingDay && !data)
+        }
+        label="Searching historical archives..."
+      />
+
+      <AuthModal
+        open={authModalOpen}
+        view={authView}
+        initialEmail={authEmail}
+        onClose={closeAuthModal}
+        onChangeView={(view, nextEmail) => {
+          setAuthView(view);
+          if (typeof nextEmail === "string") {
+            setAuthEmail(nextEmail);
+          }
+        }}
+        onAuthSuccess={(user) => {
+          setCurrentUser(user ?? null);
+          setLoadingCurrentUser(false);
+          loadFavoriteDayStatus(day);
+          loadDay(day);
+        }}
+      />
     </main>
   );
 }

@@ -1,13 +1,21 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { getOrCreateAnonId } from "@/app/lib/anon";
+import { getCurrentUser } from "@/app/lib/current-user";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function POST(req: Request) {
   try {
-    const anonId = await getOrCreateAnonId();
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "You must be logged in to delete a reply." },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json().catch(() => null);
     const replyId = body?.replyId;
 
@@ -19,7 +27,7 @@ export async function POST(req: Request) {
       where: { id: replyId },
       select: {
         id: true,
-        anonId: true,
+        userId: true,
       },
     });
 
@@ -27,7 +35,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Reply not found" }, { status: 404 });
     }
 
-    if (reply.anonId !== anonId) {
+    if (reply.userId !== user.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 

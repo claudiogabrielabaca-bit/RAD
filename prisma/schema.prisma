@@ -7,56 +7,119 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id                     String   @id @default(cuid())
+  email                  String   @unique
+  username               String   @unique
+  passwordHash           String
+
+  emailVerified          Boolean  @default(false)
+  emailVerifyCode        String?
+  emailVerifyExpiresAt   DateTime?
+
+  loginCode              String?
+  loginCodeExpiresAt     DateTime?
+
+  passwordResetCode      String?
+  passwordResetExpiresAt DateTime?
+
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  sessions               Session[]
+  ratings                Rating[]
+  likes                  RatingLike[]
+  reports                ReviewReport[]
+  replies                RatingReply[]
+  favoriteDays           FavoriteDay[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model Rating {
-  id        String         @id @default(cuid())
-  anonId    String
+  id        String   @id @default(cuid())
+  anonId    String?
+  userId    String?
   day       String
   stars     Int
   review    String
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   likes     RatingLike[]
   reports   ReviewReport[]
   replies   RatingReply[]
 
   @@unique([anonId, day], name: "anonId_day")
+  @@unique([userId, day], name: "userId_day")
 }
 
 model RatingLike {
   id        String   @id @default(cuid())
   ratingId  String
-  anonId    String
+  anonId    String?
+  userId    String?
   createdAt DateTime @default(now())
 
-  rating Rating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  rating    Rating   @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([ratingId, anonId], name: "rating_like_unique")
+  @@unique([ratingId, anonId], name: "rating_like_anon_unique")
+  @@unique([ratingId, userId], name: "rating_like_user_unique")
 }
 
 model ReviewReport {
   id        String   @id @default(cuid())
   ratingId  String
-  anonId    String
+  anonId    String?
+  userId    String?
   reason    String
   status    String   @default("pending")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  rating Rating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  rating    Rating   @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@unique([ratingId, anonId], name: "review_report_unique")
+  @@unique([ratingId, anonId], name: "review_report_anon_unique")
+  @@unique([ratingId, userId], name: "review_report_user_unique")
 }
 
 model RatingReply {
   id        String   @id @default(cuid())
   ratingId  String
-  anonId    String
+  anonId    String?
+  userId    String?
   text      String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  rating Rating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  rating    Rating   @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model FavoriteDay {
+  id        String   @id @default(cuid())
+  anonId    String?
+  userId    String?
+  day       String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([anonId, day], name: "favorite_day_anon_unique")
+  @@unique([userId, day], name: "favorite_day_user_unique")
 }
 
 model DayHighlightCache {
@@ -68,6 +131,7 @@ model DayHighlightCache {
   text       String
   image      String?
   articleUrl String?
+  highlights Json?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }

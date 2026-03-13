@@ -1,6 +1,6 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { getOrCreateAnonId } from "@/app/lib/anon";
+import { getCurrentUser } from "@/app/lib/current-user";
 import { getAnonLabel } from "@/app/lib/anon-label";
 
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const revalidate = 0;
 
 export async function GET(req: Request) {
   try {
-    const anonId = await getOrCreateAnonId();
+    const user = await getCurrentUser();
     const { searchParams } = new URL(req.url);
     const day = searchParams.get("day");
 
@@ -25,6 +25,18 @@ export async function GET(req: Request) {
           replies: {
             orderBy: {
               createdAt: "asc",
+            },
+            include: {
+              user: {
+                select: {
+                  username: true,
+                },
+              },
+            },
+          },
+          user: {
+            select: {
+              username: true,
             },
           },
         },
@@ -48,16 +60,23 @@ export async function GET(req: Request) {
         review: r.review,
         createdAt: r.createdAt.toISOString(),
         likesCount: r.likes.length,
-        likedByMe: r.likes.some((like) => like.anonId === anonId),
-        isMine: r.anonId === anonId,
-        authorLabel: r.anonId === anonId ? "You" : getAnonLabel(r.anonId),
+        likedByMe: user ? r.likes.some((like) => like.userId === user.id) : false,
+        isMine: user ? r.userId === user.id : false,
+        authorLabel: r.user?.username
+          ? `@${r.user.username}`
+          : r.anonId
+            ? getAnonLabel(r.anonId)
+            : "User",
         replies: r.replies.map((reply) => ({
           id: reply.id,
           text: reply.text,
           createdAt: reply.createdAt.toISOString(),
-          isMine: reply.anonId === anonId,
-          authorLabel:
-            reply.anonId === anonId ? "You" : getAnonLabel(reply.anonId),
+          isMine: user ? reply.userId === user.id : false,
+          authorLabel: reply.user?.username
+            ? `@${reply.user.username}`
+            : reply.anonId
+              ? getAnonLabel(reply.anonId)
+              : "User",
         })),
       }))
       .sort((a, b) => {

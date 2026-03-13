@@ -1,13 +1,21 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { getOrCreateAnonId } from "@/app/lib/anon";
+import { getCurrentUser } from "@/app/lib/current-user";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export async function POST(req: Request) {
   try {
-    const anonId = await getOrCreateAnonId();
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "You must be logged in to delete a review." },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json().catch(() => null);
     const ratingId = body?.ratingId;
 
@@ -15,19 +23,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid ratingId" }, { status: 400 });
     }
 
-    const rating = await prisma.rating.findUnique({
+    const review = await prisma.rating.findUnique({
       where: { id: ratingId },
       select: {
         id: true,
-        anonId: true,
+        userId: true,
       },
     });
 
-    if (!rating) {
+    if (!review) {
       return NextResponse.json({ error: "Review not found" }, { status: 404 });
     }
 
-    if (rating.anonId !== anonId) {
+    if (review.userId !== user.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 

@@ -1,13 +1,23 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { getOrCreateAnonId } from "@/app/lib/anon";
+import { getCurrentUser } from "@/app/lib/current-user";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const REPLY_MAX_LENGTH = 220;
+
 export async function POST(req: Request) {
   try {
-    const anonId = await getOrCreateAnonId();
+    const user = await getCurrentUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { error: "You must be logged in to reply." },
+        { status: 401 }
+      );
+    }
+
     const body = await req.json().catch(() => null);
 
     const ratingId = body?.ratingId;
@@ -18,12 +28,15 @@ export async function POST(req: Request) {
     }
 
     if (!text || typeof text !== "string" || text.trim().length < 1) {
-      return NextResponse.json({ error: "Reply cannot be empty" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Reply cannot be empty" },
+        { status: 400 }
+      );
     }
 
-    if (text.trim().length > 400) {
+    if (text.trim().length > REPLY_MAX_LENGTH) {
       return NextResponse.json(
-        { error: "Reply is too long (max 400 chars)" },
+        { error: `Reply is too long (max ${REPLY_MAX_LENGTH} chars)` },
         { status: 400 }
       );
     }
@@ -42,7 +55,8 @@ export async function POST(req: Request) {
     const reply = await prisma.ratingReply.create({
       data: {
         ratingId,
-        anonId,
+        userId: user.id,
+        anonId: null,
         text: text.trim(),
       },
       select: {
