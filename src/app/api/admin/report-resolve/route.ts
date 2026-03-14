@@ -5,6 +5,8 @@ import { isAdminAuthenticated } from "@/app/lib/admin";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const ALLOWED_STATUSES = new Set(["pending", "resolved", "ignored"]);
+
 export async function POST(req: Request) {
   try {
     const isAdmin = await isAdminAuthenticated();
@@ -21,8 +23,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid reportId" }, { status: 400 });
     }
 
-    if (!status || !["pending", "resolved", "ignored"].includes(status)) {
+    if (!status || typeof status !== "string" || !ALLOWED_STATUSES.has(status)) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
+
+    const existing = await prisma.reviewReport.findUnique({
+      where: { id: reportId },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json({ error: "Report not found" }, { status: 404 });
     }
 
     const updated = await prisma.reviewReport.update({

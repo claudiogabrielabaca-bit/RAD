@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getAdminCookieName } from "@/app/lib/admin";
+
+const ADMIN_COOKIE_NAME = "rad_admin_session";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,13 +16,13 @@ export async function POST() {
   );
 
   res.cookies.set({
-    name: getAdminCookieName(),
+    name: ADMIN_COOKIE_NAME,
     value: "",
     httpOnly: true,
-    secure: false,
     sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
     path: "/",
-    maxAge: 0,
+    expires: new Date(0),
   });
 
   return res;

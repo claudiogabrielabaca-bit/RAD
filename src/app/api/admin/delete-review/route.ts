@@ -24,6 +24,7 @@ export async function POST(req: Request) {
       where: { id: ratingId },
       select: {
         id: true,
+        day: true,
       },
     });
 
@@ -36,7 +37,13 @@ export async function POST(req: Request) {
     });
 
     return NextResponse.json(
-      { ok: true },
+      {
+        ok: true,
+        deleted: {
+          id: rating.id,
+          day: rating.day,
+        },
+      },
       {
         headers: {
           "Cache-Control": "no-store",
