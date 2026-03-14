@@ -17,6 +17,10 @@ type MeUser = {
   emailVerified?: boolean;
 };
 
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
 export default function AuthModal({
   open,
   view,
@@ -44,9 +48,11 @@ export default function AuthModal({
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-
   const [devCode, setDevCode] = useState("");
-  const [currentUserEmailVerified, setCurrentUserEmailVerified] = useState<boolean | null>(null);
+
+  const [currentUserEmailVerified, setCurrentUserEmailVerified] = useState<
+    boolean | null
+  >(null);
 
   useEffect(() => {
     if (!open) return;
@@ -57,6 +63,7 @@ export default function AuthModal({
     setDevCode("");
     setLoading(false);
     setSecondaryLoading(false);
+    setCurrentUserEmailVerified(null);
 
     if (view === "login") {
       setPassword("");
@@ -101,26 +108,36 @@ export default function AuthModal({
 
         const json = await res.json().catch(() => null);
 
-        if (!res.ok) return;
+        if (!res.ok) {
+          setCurrentUserEmailVerified(null);
+          return;
+        }
 
-        setCurrentUserEmailVerified(
-          typeof json?.user?.emailVerified === "boolean"
-            ? json.user.emailVerified
-            : null
-        );
+        const meEmail =
+          typeof json?.user?.email === "string"
+            ? normalizeEmail(json.user.email)
+            : "";
 
-        if (json?.user?.email && !initialEmail) {
-          setEmail(json.user.email);
+        const formEmail = normalizeEmail(initialEmail || email);
+
+        if (meEmail && formEmail && meEmail === formEmail) {
+          setCurrentUserEmailVerified(
+            typeof json?.user?.emailVerified === "boolean"
+              ? json.user.emailVerified
+              : null
+          );
+        } else {
+          setCurrentUserEmailVerified(null);
         }
       } catch {
-        //
+        setCurrentUserEmailVerified(null);
       }
     }
 
     if (view === "verify-email") {
       loadMe();
     }
-  }, [open, view, initialEmail]);
+  }, [open, view, initialEmail, email]);
 
   useEffect(() => {
     if (!open) return;
@@ -159,7 +176,7 @@ export default function AuthModal({
       case "login":
         return "Step 1: enter your email and password.";
       case "login-code":
-        return "Step 2: enter the access code generated for your account.";
+        return "Step 2: enter the access code sent to your email.";
       case "register":
         return "Create your RAD account to save ratings and favorites.";
       case "forgot-password":
@@ -191,6 +208,13 @@ export default function AuthModal({
     }
   }
 
+  function goToView(nextView: AuthView, nextEmail?: string) {
+    setMessage("");
+    setError("");
+    setDevCode("");
+    onChangeView(nextView, nextEmail ?? email);
+  }
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -199,13 +223,15 @@ export default function AuthModal({
     setDevCode("");
 
     try {
+      const normalized = normalizeEmail(email);
+
       const res = await fetch("/api/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
+          email: normalized,
           password,
         }),
       });
@@ -216,7 +242,7 @@ export default function AuthModal({
         if (json?.requiresVerification) {
           setMessage("This account must verify email first.");
           setDevCode(json?.devCode ?? "");
-          onChangeView("verify-email", json?.email ?? email.trim().toLowerCase());
+          goToView("verify-email", json?.email ?? normalized);
           return;
         }
 
@@ -227,7 +253,7 @@ export default function AuthModal({
       if (json?.requiresCode) {
         setMessage(json?.message ?? "Enter the login code.");
         setDevCode(json?.devCode ?? "");
-        onChangeView("login-code", json?.email ?? email.trim().toLowerCase());
+        goToView("login-code", json?.email ?? normalized);
         return;
       }
 
@@ -252,7 +278,7 @@ export default function AuthModal({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
+          email: normalizeEmail(email),
           code: code.trim(),
         }),
       });
@@ -290,7 +316,7 @@ export default function AuthModal({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
+          email: normalizeEmail(email),
         }),
       });
 
@@ -301,7 +327,7 @@ export default function AuthModal({
         return;
       }
 
-      setMessage(json?.message ?? "New login code generated.");
+      setMessage(json?.message ?? "New login code sent.");
       setDevCode(json?.devCode ?? "");
     } catch {
       setError("Could not resend login code.");
@@ -318,13 +344,15 @@ export default function AuthModal({
     setDevCode("");
 
     try {
+      const normalized = normalizeEmail(email);
+
       const res = await fetch("/api/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
+          email: normalized,
           username: username.trim().toLowerCase(),
           password,
         }),
@@ -341,7 +369,7 @@ export default function AuthModal({
         json?.message ?? "Account created successfully. Verify your email."
       );
       setDevCode(json?.devCode ?? "");
-      onChangeView("verify-email", json?.user?.email ?? email.trim().toLowerCase());
+      goToView("verify-email", json?.user?.email ?? normalized);
     } catch {
       setError("Could not create account.");
     } finally {
@@ -357,13 +385,15 @@ export default function AuthModal({
     setDevCode("");
 
     try {
+      const normalized = normalizeEmail(email);
+
       const res = await fetch("/api/forgot-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
+          email: normalized,
         }),
       });
 
@@ -375,11 +405,10 @@ export default function AuthModal({
       }
 
       setMessage(
-        json?.message ??
-          "If that email exists, a recovery code was generated."
+        json?.message ?? "If that email exists, a recovery code was sent."
       );
       setDevCode(json?.devCode ?? "");
-      onChangeView("reset-password", email.trim().toLowerCase());
+      goToView("reset-password", normalized);
     } catch {
       setError("Could not process request.");
     } finally {
@@ -406,13 +435,15 @@ export default function AuthModal({
     }
 
     try {
+      const normalized = normalizeEmail(email);
+
       const res = await fetch("/api/reset-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
+          email: normalized,
           code: code.trim(),
           newPassword,
         }),
@@ -435,8 +466,8 @@ export default function AuthModal({
       setCode("");
 
       setTimeout(() => {
-        onChangeView("login", email.trim().toLowerCase());
-      }, 700);
+        goToView("login", normalized);
+      }, 900);
     } catch {
       setError("Could not reset password.");
     } finally {
@@ -451,13 +482,15 @@ export default function AuthModal({
     setError("");
 
     try {
+      const normalized = normalizeEmail(email);
+
       const res = await fetch("/api/verify-email", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
+          email: normalized,
           code: code.trim(),
         }),
       });
@@ -473,9 +506,11 @@ export default function AuthModal({
       setCurrentUserEmailVerified(true);
       setCode("");
 
+      await refreshUserAndNotify();
+
       setTimeout(() => {
-        onChangeView("login", email.trim().toLowerCase());
-      }, 700);
+        goToView("login", normalized);
+      }, 900);
     } catch {
       setError("Could not verify email.");
     } finally {
@@ -496,7 +531,7 @@ export default function AuthModal({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
+          email: normalizeEmail(email),
         }),
       });
 
@@ -507,7 +542,7 @@ export default function AuthModal({
         return;
       }
 
-      setMessage(json?.message ?? "Verification code regenerated.");
+      setMessage(json?.message ?? "Verification code sent.");
       setDevCode(json?.devCode ?? "");
     } catch {
       setError("Could not resend verification code.");
@@ -552,7 +587,7 @@ export default function AuthModal({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => onChangeView("login", email)}
+                onClick={() => goToView("login", email)}
                 className={`rounded-xl px-3 py-2 text-sm transition ${
                   view === "login"
                     ? "bg-white text-black"
@@ -564,7 +599,7 @@ export default function AuthModal({
 
               <button
                 type="button"
-                onClick={() => onChangeView("register", email)}
+                onClick={() => goToView("register", email)}
                 className={`rounded-xl px-3 py-2 text-sm transition ${
                   view === "register"
                     ? "bg-white text-black"
@@ -575,39 +610,27 @@ export default function AuthModal({
               </button>
 
               {view === "login-code" ? (
-                <button
-                  type="button"
-                  className="rounded-xl bg-white px-3 py-2 text-sm text-black"
-                >
+                <div className="rounded-xl bg-white px-3 py-2 text-sm text-black">
                   Login code
-                </button>
+                </div>
               ) : null}
 
               {view === "forgot-password" ? (
-                <button
-                  type="button"
-                  className="rounded-xl bg-white px-3 py-2 text-sm text-black"
-                >
+                <div className="rounded-xl bg-white px-3 py-2 text-sm text-black">
                   Forgot password
-                </button>
+                </div>
               ) : null}
 
               {view === "reset-password" ? (
-                <button
-                  type="button"
-                  className="rounded-xl bg-white px-3 py-2 text-sm text-black"
-                >
+                <div className="rounded-xl bg-white px-3 py-2 text-sm text-black">
                   Reset password
-                </button>
+                </div>
               ) : null}
 
               {view === "verify-email" ? (
-                <button
-                  type="button"
-                  className="rounded-xl bg-white px-3 py-2 text-sm text-black"
-                >
+                <div className="rounded-xl bg-white px-3 py-2 text-sm text-black">
                   Verify email
-                </button>
+                </div>
               ) : null}
             </div>
           </div>
@@ -672,7 +695,7 @@ export default function AuthModal({
 
                 <button
                   type="button"
-                  onClick={() => onChangeView("forgot-password", email)}
+                  onClick={() => goToView("forgot-password", email)}
                   className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-white"
                 >
                   Forgot password?
@@ -729,7 +752,7 @@ export default function AuthModal({
 
                 <button
                   type="button"
-                  onClick={() => onChangeView("login", email)}
+                  onClick={() => goToView("login", email)}
                   className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-white"
                 >
                   Back
@@ -819,7 +842,7 @@ export default function AuthModal({
 
                 <button
                   type="button"
-                  onClick={() => onChangeView("login", email)}
+                  onClick={() => goToView("login", email)}
                   className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-white"
                 >
                   Back to login
@@ -893,7 +916,7 @@ export default function AuthModal({
 
                 <button
                   type="button"
-                  onClick={() => onChangeView("forgot-password", email)}
+                  onClick={() => goToView("forgot-password", email)}
                   className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-white"
                 >
                   Back
@@ -908,11 +931,13 @@ export default function AuthModal({
                 <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">
                   Verification status
                 </div>
+
                 <div className="mt-2 text-sm text-zinc-200">
                   {currentUserEmailVerified === true
                     ? "Your email is already verified."
                     : "Your email is not verified yet."}
                 </div>
+
                 {email ? (
                   <div className="mt-1 text-xs text-zinc-500">{email}</div>
                 ) : null}
@@ -945,10 +970,18 @@ export default function AuthModal({
                 <button
                   type="button"
                   onClick={handleResendVerification}
-                  disabled={secondaryLoading}
+                  disabled={secondaryLoading || currentUserEmailVerified === true}
                   className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:bg-white/10 disabled:opacity-60"
                 >
                   {secondaryLoading ? "Generating..." : "Resend code"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => goToView("login", email)}
+                  className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-white"
+                >
+                  Back to login
                 </button>
               </div>
             </form>
