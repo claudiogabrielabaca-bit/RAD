@@ -301,6 +301,41 @@ function truncateText(text: string, max = 78) {
   return `${text.slice(0, max).trim()}...`;
 }
 
+function isValidDayString(value?: string | null): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function getDayWithOffset(baseDay: string, offset: number) {
+  if (!isValidDayString(baseDay)) return null;
+
+  const d = new Date(`${baseDay}T00:00:00`);
+  d.setDate(d.getDate() + offset);
+  return d.toISOString().slice(0, 10);
+}
+
+function getDayWithYearShift(
+  baseDay: string,
+  delta: number,
+  minDay: string,
+  maxDay: string
+) {
+  if (!isValidDayString(baseDay)) return null;
+
+  const [y, m, d] = baseDay.split("-").map(Number);
+  const targetYear = y + delta;
+  const currentRealYear = new Date().getFullYear();
+
+  if (targetYear < 1900 || targetYear > currentRealYear) return null;
+
+  const maxDayInMonth = getDaysInMonth(targetYear, m);
+  const safeDay = Math.min(d, maxDayInMonth);
+  const candidate = `${targetYear}-${pad2(m)}-${pad2(safeDay)}`;
+
+  if (candidate < minDay || candidate > maxDay) return null;
+
+  return candidate;
+}
+
 async function loadDiscoverRandomDays(
   n = 5,
   fresh = FORCE_FRESH_MODE
@@ -459,6 +494,9 @@ export default function Page() {
   const highlightRequestRef = useRef(0);
   const skipNextAutoDayLoadRef = useRef(false);
 
+  const dayBundleCacheRef = useRef<Map<string, SurpriseResponse>>(new Map());
+  const prefetchingDaysRef = useRef<Set<string>>(new Set());
+
   const [day, setDay] = useState<string>(minDay);
   const [hasPickedInitialDay, setHasPickedInitialDay] = useState(false);
 
@@ -534,7 +572,7 @@ export default function Page() {
   );
 
   const profileHref =
-    hasPickedInitialDay && /^\d{4}-\d{2}-\d{2}$/.test(day)
+    hasPickedInitialDay && isValidDayString(day)
       ? `/profile?fromDay=${day}`
       : "/profile";
 
@@ -627,7 +665,67 @@ export default function Page() {
     setIsDayTransitioning(false);
   }
 
-  function applySurprisePayload(payload: SurpriseResponse) {
+  function cacheBundlePayload(payload: SurpriseResponse) {
+    dayBundleCacheRef.current.set(payload.day, payload);
+  }
+
+  function invalidateDayCache(targetDay?: string) {
+    if (!targetDay) return;
+    dayBundleCacheRef.current.delete(targetDay);
+  }
+
+  async function fetchDayBundle(targetDay: string) {
+    const res = await fetch(
+      `/api/day-bundle?day=${encodeURIComponent(targetDay)}`,
+      {
+        cache: "no-store",
+      }
+    );
+
+    const json = (await res.json().catch(() => null)) as
+      | SurpriseResponse
+      | null;
+
+    if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
+      throw new Error("Failed to load day bundle");
+    }
+
+    return json;
+  }
+
+  async function prefetchDayBundle(targetDay: string) {
+    if (!isValidDayString(targetDay)) return;
+    if (dayBundleCacheRef.current.has(targetDay)) return;
+    if (prefetchingDaysRef.current.has(targetDay)) return;
+
+    prefetchingDaysRef.current.add(targetDay);
+
+    try {
+      const payload = await fetchDayBundle(targetDay);
+      cacheBundlePayload(payload);
+    } catch {
+      //
+    } finally {
+      prefetchingDaysRef.current.delete(targetDay);
+    }
+  }
+
+  async function prefetchRelatedDays(baseDay: string) {
+    const candidates = [
+      getDayWithOffset(baseDay, -1),
+      getDayWithOffset(baseDay, 1),
+      getDayWithYearShift(baseDay, -1, minDay, today),
+      getDayWithYearShift(baseDay, 1, minDay, today),
+    ].filter((item): item is string => !!item && item !== baseDay);
+
+    for (const candidate of candidates) {
+      void prefetchDayBundle(candidate);
+    }
+  }
+
+  function applyBundlePayload(payload: SurpriseResponse) {
+    cacheBundlePayload(payload);
+
     const items = payload.highlightData?.highlights?.length
       ? payload.highlightData.highlights
       : payload.highlightData?.highlight
@@ -642,7 +740,10 @@ export default function Page() {
     setLoadingHighlight(false);
   }
 
-  function openDay(nextDay: string, options?: { scrollToHighlight?: boolean }) {
+  async function openDay(
+    nextDay: string,
+    options?: { scrollToHighlight?: boolean }
+  ) {
     const shouldScrollToHighlight = !!options?.scrollToHighlight;
 
     if (nextDay === day) {
@@ -660,7 +761,30 @@ export default function Page() {
 
     pendingScrollToHighlightRef.current = shouldScrollToHighlight;
     beginDayTransition();
-    setDay(nextDay);
+    const transitionId = transitionIdRef.current;
+
+    const cached = dayBundleCacheRef.current.get(nextDay);
+
+    if (cached) {
+      skipNextAutoDayLoadRef.current = true;
+      applyBundlePayload(cached);
+      setDay(cached.day);
+      return;
+    }
+
+    try {
+      const payload = await fetchDayBundle(nextDay);
+
+      if (transitionIdRef.current !== transitionId) return;
+
+      skipNextAutoDayLoadRef.current = true;
+      applyBundlePayload(payload);
+      setDay(payload.day);
+    } catch {
+      if (transitionIdRef.current !== transitionId) return;
+      showToast("Could not load this day.");
+      finishDayTransition(transitionId);
+    }
   }
 
   useEffect(() => {
@@ -676,8 +800,13 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    dayBundleCacheRef.current.clear();
+    prefetchingDaysRef.current.clear();
+  }, [currentUser?.id]);
+
+  useEffect(() => {
     if (!hasPickedInitialDay) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
+    if (!isValidDayString(day)) return;
 
     try {
       window.localStorage.setItem("rad:lastDay", day);
@@ -699,26 +828,58 @@ export default function Page() {
       setLoadingDay(false);
       setLoadingHighlight(false);
 
-      if (queryDay && /^\d{4}-\d{2}-\d{2}$/.test(queryDay)) {
-        if (!cancelled) {
-          setDay(queryDay);
-          setHasPickedInitialDay(true);
+      if (queryDay && isValidDayString(queryDay)) {
+        try {
+          const payload = await fetchDayBundle(queryDay);
+
+          if (!cancelled) {
+            skipNextAutoDayLoadRef.current = true;
+            applyBundlePayload(payload);
+            setDay(payload.day);
+          }
+        } catch {
+          if (!cancelled) {
+            setDay(queryDay);
+          }
+        } finally {
+          if (!cancelled) {
+            setHasPickedInitialDay(true);
+          }
         }
+
         return;
       }
 
       try {
         const res = await fetch(
+          `/api/surprise${FORCE_FRESH_MODE ? "?fresh=1" : ""}`,
+          {
+            cache: "no-store",
+          }
+        );
+
+        const json = (await res.json().catch(() => null)) as
+          | SurpriseResponse
+          | null;
+
+        if (!cancelled && res.ok && json?.day && json?.dayData && json?.highlightData) {
+          skipNextAutoDayLoadRef.current = true;
+          applyBundlePayload(json);
+          setDay(json.day);
+          return;
+        }
+
+        const fallbackRes = await fetch(
           `/api/random-valid-day${FORCE_FRESH_MODE ? "?fresh=1" : ""}`,
           {
             cache: "no-store",
           }
         );
 
-        const json = await res.json().catch(() => null);
+        const fallbackJson = await fallbackRes.json().catch(() => null);
 
-        if (!cancelled && res.ok && json?.day) {
-          setDay(json.day);
+        if (!cancelled && fallbackRes.ok && fallbackJson?.day) {
+          setDay(fallbackJson.day);
         }
       } finally {
         if (!cancelled) {
@@ -727,7 +888,7 @@ export default function Page() {
       }
     }
 
-    run();
+    void run();
 
     return () => {
       cancelled = true;
@@ -746,7 +907,7 @@ export default function Page() {
       }
     }
 
-    run();
+    void run();
 
     return () => {
       cancelled = true;
@@ -774,7 +935,7 @@ export default function Page() {
 
     const hasProfileJumpParams =
       !!queryDay &&
-      /^\d{4}-\d{2}-\d{2}$/.test(queryDay) &&
+      isValidDayString(queryDay) &&
       focus === "my-review";
 
     if (!hasProfileJumpParams) {
@@ -968,7 +1129,7 @@ export default function Page() {
       }
 
       if (json.day === day) {
-        applySurprisePayload(json);
+        applyBundlePayload(json);
         finishDayTransition(transitionId);
 
         if (
@@ -986,7 +1147,7 @@ export default function Page() {
       skipNextAutoDayLoadRef.current = true;
       pendingScrollToHighlightRef.current = scrollToResult;
 
-      applySurprisePayload(json);
+      applyBundlePayload(json);
       setDay(json.day);
     } catch {
       showToast("Could not load a random day.");
@@ -1000,32 +1161,42 @@ export default function Page() {
 
     try {
       const res = await fetch(
-        `/api/today-valid-day${FORCE_FRESH_MODE ? "?fresh=1" : ""}`,
+        `/api/today-valid-day?bundle=1${FORCE_FRESH_MODE ? "&fresh=1" : ""}`,
         {
           cache: "no-store",
         }
       );
 
-      const json = await res.json().catch(() => null);
+      const json = (await res.json().catch(() => null)) as
+        | SurpriseResponse
+        | null;
 
-      if (!res.ok || !json?.day) {
+      if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
         showToast("No valid 'today in history' day available yet.");
         finishDayTransition(transitionId);
         return;
       }
 
       if (json.day === day) {
+        applyBundlePayload(json);
         finishDayTransition(transitionId);
 
-        if (scrollToResult && highlight && highlightBlockRef.current) {
+        if (
+          scrollToResult &&
+          (json.highlightData.highlight || json.highlightData.highlights?.length)
+        ) {
           requestAnimationFrame(() => {
             scrollToHighlightBlock();
           });
         }
+
         return;
       }
 
+      skipNextAutoDayLoadRef.current = true;
       pendingScrollToHighlightRef.current = scrollToResult;
+
+      applyBundlePayload(json);
       setDay(json.day);
     } catch {
       showToast("Could not load today in history.");
@@ -1055,6 +1226,7 @@ export default function Page() {
           setLoadingDay(false);
           setLoadingHighlight(false);
           finishDayTransition(transitionId);
+          void prefetchRelatedDays(day);
         }
 
         return;
@@ -1063,10 +1235,12 @@ export default function Page() {
       await Promise.allSettled([loadDay(day), loadHighlight(day)]);
 
       if (cancelled) return;
+
       finishDayTransition(transitionId);
+      void prefetchRelatedDays(day);
     }
 
-    run();
+    void run();
 
     return () => {
       cancelled = true;
@@ -1075,12 +1249,12 @@ export default function Page() {
 
   useEffect(() => {
     if (!hasPickedInitialDay) return;
-    loadTop();
+    void loadTop();
   }, [hasPickedInitialDay]);
 
   useEffect(() => {
     if (!hasPickedInitialDay) return;
-    loadFavoriteDayStatus(day);
+    void loadFavoriteDayStatus(day);
   }, [day, hasPickedInitialDay, currentUser]);
 
   useEffect(() => {
@@ -1116,48 +1290,31 @@ export default function Page() {
 
   function goToManualDay() {
     const nextDay = `${selectedYear}-${selectedMonth}-${selectedDay}`;
-    openDay(nextDay, { scrollToHighlight: true });
+    void openDay(nextDay, { scrollToHighlight: true });
   }
 
   function goToPreviousDay() {
-    const d = new Date(`${day}T00:00:00`);
-    d.setDate(d.getDate() - 1);
-    const prev = d.toISOString().slice(0, 10);
+    const prev = getDayWithOffset(day, -1);
 
-    if (prev >= minDay) {
-      openDay(prev, { scrollToHighlight: false });
+    if (prev && prev >= minDay) {
+      void openDay(prev, { scrollToHighlight: false });
     }
   }
 
   function goToNextDay() {
-    const d = new Date(`${day}T00:00:00`);
-    d.setDate(d.getDate() + 1);
-    const next = d.toISOString().slice(0, 10);
+    const next = getDayWithOffset(day, 1);
 
-    if (next <= today) {
-      openDay(next, { scrollToHighlight: false });
+    if (next && next <= today) {
+      void openDay(next, { scrollToHighlight: false });
     }
   }
 
   function shiftYearBy(delta: number) {
-    const [y, m, d] = day.split("-");
-    const year = Number(y);
-    const month = Number(m);
-    const currentDay = Number(d);
+    const nextDay = getDayWithYearShift(day, delta, minDay, today);
 
-    const targetYear = year + delta;
-    const currentRealYear = new Date().getFullYear();
+    if (!nextDay) return;
 
-    if (targetYear < 1900 || targetYear > currentRealYear) return;
-
-    const maxDay = getDaysInMonth(targetYear, month);
-    const safeDay = Math.min(currentDay, maxDay);
-
-    const nextDay = `${targetYear}-${pad2(month)}-${pad2(safeDay)}`;
-
-    if (nextDay < minDay || nextDay > today) return;
-
-    openDay(nextDay, { scrollToHighlight: false });
+    void openDay(nextDay, { scrollToHighlight: false });
   }
 
   function goToPreviousYear() {
@@ -1309,9 +1466,8 @@ export default function Page() {
         return;
       }
 
-      await loadDay(day);
-      await loadHighlight(day);
-      await loadTop();
+      invalidateDayCache(day);
+      await Promise.all([loadDay(day), loadHighlight(day), loadTop()]);
       showToast("Review saved.");
     } catch {
       showToast("Error guardando.");
@@ -1352,8 +1508,8 @@ export default function Page() {
         setReview("");
       }
 
-      await loadDay(day);
-      await loadTop();
+      invalidateDayCache(day);
+      await Promise.all([loadDay(day), loadTop()]);
       showToast("Review deleted.");
     } catch {
       showToast("Could not delete review.");
@@ -1434,6 +1590,7 @@ export default function Page() {
         return;
       }
 
+      invalidateDayCache(day);
       await loadDay(day);
     } catch {
       showToast("Error dando like.");
@@ -1488,6 +1645,7 @@ export default function Page() {
       }));
       setReplyingToId(null);
 
+      invalidateDayCache(day);
       await loadDay(day);
       showToast("Reply sent.");
     } catch {
@@ -1528,6 +1686,7 @@ export default function Page() {
         return;
       }
 
+      invalidateDayCache(day);
       await loadDay(day);
       showToast("Reply deleted.");
     } catch {
