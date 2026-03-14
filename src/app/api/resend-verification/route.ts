@@ -2,6 +2,7 @@ import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { generateNumericCode, hashAuthCode } from "@/app/lib/auth";
 import { sendMail } from "@/app/lib/mail";
+import { verifyTurnstileToken } from "@/app/lib/turnstile";
 import {
   buildRateLimitKey,
   consumeRateLimit,
@@ -15,6 +16,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
     const email = body?.email?.toString().trim().toLowerCase();
+    const turnstileToken = body?.turnstileToken?.toString() ?? "";
 
     if (!email || !email.includes("@")) {
       return NextResponse.json({ error: "Invalid email." }, { status: 400 });
@@ -31,6 +33,15 @@ export async function POST(req: Request) {
       return createRateLimitResponse(
         rateLimit.retryAfterSec,
         "Too many requests. Please try again later."
+      );
+    }
+
+    const turnstile = await verifyTurnstileToken(turnstileToken, req);
+
+    if (!turnstile.ok) {
+      return NextResponse.json(
+        { error: "Security check failed. Please try again." },
+        { status: 400 }
       );
     }
 

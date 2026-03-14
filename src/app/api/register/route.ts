@@ -6,6 +6,7 @@ import {
   hashPassword,
 } from "@/app/lib/auth";
 import { sendMail } from "@/app/lib/mail";
+import { verifyTurnstileToken } from "@/app/lib/turnstile";
 import {
   buildRateLimitKey,
   consumeRateLimit,
@@ -22,6 +23,7 @@ export async function POST(req: Request) {
     const email = body?.email?.toString().trim().toLowerCase();
     const username = body?.username?.toString().trim().toLowerCase();
     const password = body?.password?.toString() ?? "";
+    const turnstileToken = body?.turnstileToken?.toString() ?? "";
 
     if (!email || !email.includes("@")) {
       return NextResponse.json({ error: "Invalid email." }, { status: 400 });
@@ -38,6 +40,15 @@ export async function POST(req: Request) {
       return createRateLimitResponse(
         rateLimit.retryAfterSec,
         "Too many registration attempts. Please try again later."
+      );
+    }
+
+    const turnstile = await verifyTurnstileToken(turnstileToken, req);
+
+    if (!turnstile.ok) {
+      return NextResponse.json(
+        { error: "Security check failed. Please try again." },
+        { status: 400 }
       );
     }
 

@@ -6,6 +6,7 @@ import {
   verifyPassword,
 } from "@/app/lib/auth";
 import { sendMail } from "@/app/lib/mail";
+import { verifyTurnstileToken } from "@/app/lib/turnstile";
 import {
   buildRateLimitKey,
   consumeRateLimit,
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
 
     const email = body?.email?.toString().trim().toLowerCase();
     const password = body?.password?.toString() ?? "";
+    const turnstileToken = body?.turnstileToken?.toString() ?? "";
 
     if (!email || !password) {
       return NextResponse.json(
@@ -32,14 +34,23 @@ export async function POST(req: Request) {
     const rateLimit = await consumeRateLimit({
       action: "login",
       key: buildRateLimitKey(req, email),
-      limit: 6,
-      windowMs: 10 * 60 * 1000,
+      limit: 5,
+      windowMs: 15 * 60 * 1000,
     });
 
     if (!rateLimit.ok) {
       return createRateLimitResponse(
         rateLimit.retryAfterSec,
         "Too many login attempts. Please try again later."
+      );
+    }
+
+    const turnstile = await verifyTurnstileToken(turnstileToken, req);
+
+    if (!turnstile.ok) {
+      return NextResponse.json(
+        { error: "Security check failed. Please try again." },
+        { status: 400 }
       );
     }
 
@@ -57,12 +68,7 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json(
         { error: "Invalid credentials." },
-        {
-          status: 401,
-          headers: {
-            "Cache-Control": "no-store",
-          },
-        }
+        { status: 401 }
       );
     }
 
@@ -71,12 +77,7 @@ export async function POST(req: Request) {
     if (!isValidPassword) {
       return NextResponse.json(
         { error: "Invalid credentials." },
-        {
-          status: 401,
-          headers: {
-            "Cache-Control": "no-store",
-          },
-        }
+        { status: 401 }
       );
     }
 
@@ -139,12 +140,7 @@ This code expires in 15 minutes.`,
           devCode:
             process.env.NODE_ENV !== "production" ? verifyCode : undefined,
         },
-        {
-          status: 403,
-          headers: {
-            "Cache-Control": "no-store",
-          },
-        }
+        { status: 403 }
       );
     }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import TurnstileWidget from "@/app/components/rad/turnstile-widget";
 
 export type AuthView =
   | "login"
@@ -54,6 +55,28 @@ export default function AuthModal({
     boolean | null
   >(null);
 
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
+
+  function resetTurnstile() {
+    setTurnstileToken("");
+    setTurnstileResetKey((prev) => prev + 1);
+  }
+
+  function requireTurnstile(actionLabel = "continue") {
+    if (!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
+      setError("Security check is unavailable. Please try again later.");
+      return false;
+    }
+
+    if (!turnstileToken) {
+      setError(`Complete the security check before trying to ${actionLabel}.`);
+      return false;
+    }
+
+    return true;
+  }
+
   useEffect(() => {
     if (!open) return;
 
@@ -64,6 +87,7 @@ export default function AuthModal({
     setLoading(false);
     setSecondaryLoading(false);
     setCurrentUserEmailVerified(null);
+    resetTurnstile();
 
     if (view === "login") {
       setPassword("");
@@ -190,6 +214,12 @@ export default function AuthModal({
     }
   }, [view]);
 
+  const showTurnstile =
+    view === "login" ||
+    view === "register" ||
+    view === "forgot-password" ||
+    view === "verify-email";
+
   async function refreshUserAndNotify() {
     try {
       const res = await fetch("/api/me", {
@@ -212,6 +242,7 @@ export default function AuthModal({
     setMessage("");
     setError("");
     setDevCode("");
+    setTurnstileToken("");
     onChangeView(nextView, nextEmail ?? email);
   }
 
@@ -221,6 +252,11 @@ export default function AuthModal({
     setMessage("");
     setError("");
     setDevCode("");
+
+    if (!requireTurnstile("continue")) {
+      setLoading(false);
+      return;
+    }
 
     try {
       const normalized = normalizeEmail(email);
@@ -233,8 +269,11 @@ export default function AuthModal({
         body: JSON.stringify({
           email: normalized,
           password,
+          turnstileToken,
         }),
       });
+
+      resetTurnstile();
 
       const json = await res.json().catch(() => null);
 
@@ -259,6 +298,7 @@ export default function AuthModal({
 
       setError("Unexpected login response.");
     } catch {
+      resetTurnstile();
       setError("Could not log in.");
     } finally {
       setLoading(false);
@@ -309,6 +349,11 @@ export default function AuthModal({
     setError("");
     setDevCode("");
 
+    if (!requireTurnstile("resend the code")) {
+      setSecondaryLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch("/api/resend-login-code", {
         method: "POST",
@@ -317,8 +362,11 @@ export default function AuthModal({
         },
         body: JSON.stringify({
           email: normalizeEmail(email),
+          turnstileToken,
         }),
       });
+
+      resetTurnstile();
 
       const json = await res.json().catch(() => null);
 
@@ -330,6 +378,7 @@ export default function AuthModal({
       setMessage(json?.message ?? "New login code sent.");
       setDevCode(json?.devCode ?? "");
     } catch {
+      resetTurnstile();
       setError("Could not resend login code.");
     } finally {
       setSecondaryLoading(false);
@@ -343,6 +392,11 @@ export default function AuthModal({
     setError("");
     setDevCode("");
 
+    if (!requireTurnstile("create an account")) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const normalized = normalizeEmail(email);
 
@@ -355,8 +409,11 @@ export default function AuthModal({
           email: normalized,
           username: username.trim().toLowerCase(),
           password,
+          turnstileToken,
         }),
       });
+
+      resetTurnstile();
 
       const json = await res.json().catch(() => null);
 
@@ -371,6 +428,7 @@ export default function AuthModal({
       setDevCode(json?.devCode ?? "");
       goToView("verify-email", json?.user?.email ?? normalized);
     } catch {
+      resetTurnstile();
       setError("Could not create account.");
     } finally {
       setLoading(false);
@@ -384,6 +442,11 @@ export default function AuthModal({
     setError("");
     setDevCode("");
 
+    if (!requireTurnstile("send the recovery code")) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const normalized = normalizeEmail(email);
 
@@ -394,8 +457,11 @@ export default function AuthModal({
         },
         body: JSON.stringify({
           email: normalized,
+          turnstileToken,
         }),
       });
+
+      resetTurnstile();
 
       const json = await res.json().catch(() => null);
 
@@ -410,6 +476,7 @@ export default function AuthModal({
       setDevCode(json?.devCode ?? "");
       goToView("reset-password", normalized);
     } catch {
+      resetTurnstile();
       setError("Could not process request.");
     } finally {
       setLoading(false);
@@ -524,6 +591,11 @@ export default function AuthModal({
     setError("");
     setDevCode("");
 
+    if (!requireTurnstile("resend the verification code")) {
+      setSecondaryLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch("/api/resend-verification", {
         method: "POST",
@@ -532,8 +604,11 @@ export default function AuthModal({
         },
         body: JSON.stringify({
           email: normalizeEmail(email),
+          turnstileToken,
         }),
       });
+
+      resetTurnstile();
 
       const json = await res.json().catch(() => null);
 
@@ -545,6 +620,7 @@ export default function AuthModal({
       setMessage(json?.message ?? "Verification code sent.");
       setDevCode(json?.devCode ?? "");
     } catch {
+      resetTurnstile();
       setError("Could not resend verification code.");
     } finally {
       setSecondaryLoading(false);
@@ -684,6 +760,14 @@ export default function AuthModal({
                 />
               </div>
 
+              {showTurnstile ? (
+                <TurnstileWidget
+                  key={`turnstile-${view}-${turnstileResetKey}`}
+                  resetKey={turnstileResetKey}
+                  onTokenChange={setTurnstileToken}
+                />
+              ) : null}
+
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                 <button
                   type="submit"
@@ -731,6 +815,14 @@ export default function AuthModal({
                   className="w-full rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
                 />
               </div>
+
+              {showTurnstile ? (
+                <TurnstileWidget
+                  key={`turnstile-${view}-${turnstileResetKey}`}
+                  resetKey={turnstileResetKey}
+                  onTokenChange={setTurnstileToken}
+                />
+              ) : null}
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
@@ -806,6 +898,14 @@ export default function AuthModal({
                 />
               </div>
 
+              {showTurnstile ? (
+                <TurnstileWidget
+                  key={`turnstile-${view}-${turnstileResetKey}`}
+                  resetKey={turnstileResetKey}
+                  onTokenChange={setTurnstileToken}
+                />
+              ) : null}
+
               <div className="pt-2">
                 <button
                   type="submit"
@@ -830,6 +930,14 @@ export default function AuthModal({
                   className="w-full rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
                 />
               </div>
+
+              {showTurnstile ? (
+                <TurnstileWidget
+                  key={`turnstile-${view}-${turnstileResetKey}`}
+                  resetKey={turnstileResetKey}
+                  onTokenChange={setTurnstileToken}
+                />
+              ) : null}
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
@@ -957,6 +1065,14 @@ export default function AuthModal({
                   className="w-full rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
                 />
               </div>
+
+              {showTurnstile ? (
+                <TurnstileWidget
+                  key={`turnstile-${view}-${turnstileResetKey}`}
+                  resetKey={turnstileResetKey}
+                  onTokenChange={setTurnstileToken}
+                />
+              ) : null}
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
