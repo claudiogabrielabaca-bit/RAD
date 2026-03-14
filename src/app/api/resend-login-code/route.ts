@@ -56,7 +56,7 @@ export async function POST(req: Request) {
     let emailSent = false;
 
     try {
-      await sendMail({
+      const mailResult = await sendMail({
         to: user.email,
         subject: "Your RAD login code",
         text: `Hello ${user.username},
@@ -77,6 +77,7 @@ This code expires in 10 minutes.`,
         `,
       });
 
+      console.log("resend-login-code email sent:", mailResult?.id);
       emailSent = true;
     } catch (mailError) {
       console.error("resend-login-code mail send error:", mailError);

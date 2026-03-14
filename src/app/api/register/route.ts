@@ -90,7 +90,7 @@ export async function POST(req: Request) {
     let emailSent = false;
 
     try {
-      await sendMail({
+      const mailResult = await sendMail({
         to: email,
         subject: "Verify your RAD account",
         text: `Welcome to RAD!
@@ -111,6 +111,7 @@ This code expires in 15 minutes.`,
         `,
       });
 
+      console.log("register verification email sent:", mailResult?.id);
       emailSent = true;
     } catch (mailError) {
       console.error("register mail send error:", mailError);

@@ -13,9 +13,7 @@ export async function POST(req: Request) {
 
     if (!email || !email.includes("@")) {
       return NextResponse.json(
-        {
-          error: "Invalid email.",
-        },
+        { error: "Invalid email." },
         { status: 400 }
       );
     }
@@ -30,6 +28,7 @@ export async function POST(req: Request) {
     });
 
     let devCode: string | undefined;
+    let emailSent = false;
 
     if (user) {
       const resetCode = generateNumericCode(6);
@@ -46,7 +45,7 @@ export async function POST(req: Request) {
       devCode = process.env.NODE_ENV !== "production" ? resetCode : undefined;
 
       try {
-        await sendMail({
+        const mailResult = await sendMail({
           to: user.email,
           subject: "Your RAD password reset code",
           text: `Hello ${user.username},
@@ -66,6 +65,9 @@ This code expires in 15 minutes.`,
             </div>
           `,
         });
+
+        console.log("forgot-password email sent:", mailResult?.id);
+        emailSent = true;
       } catch (mailError) {
         console.error("forgot-password mail send error:", mailError);
       }
@@ -74,8 +76,8 @@ This code expires in 15 minutes.`,
     return NextResponse.json(
       {
         ok: true,
-        message:
-          "If that email exists, a recovery code was sent.",
+        emailSent,
+        message: "If that email exists, a recovery code was sent.",
         devCode,
       },
       {

@@ -12,10 +12,7 @@ export async function POST(req: Request) {
     const email = body?.email?.toString().trim().toLowerCase();
 
     if (!email || !email.includes("@")) {
-      return NextResponse.json(
-        { error: "Invalid email." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid email." }, { status: 400 });
     }
 
     const user = await prisma.user.findUnique({
@@ -38,6 +35,7 @@ export async function POST(req: Request) {
     if (user.emailVerified) {
       return NextResponse.json({
         ok: true,
+        emailSent: false,
         message: "Your email is already verified.",
       });
     }
@@ -56,7 +54,7 @@ export async function POST(req: Request) {
     let emailSent = false;
 
     try {
-      await sendMail({
+      const mailResult = await sendMail({
         to: user.email,
         subject: "Verify your RAD account",
         text: `Hello ${user.username},
@@ -77,6 +75,7 @@ This code expires in 15 minutes.`,
         `,
       });
 
+      console.log("resend-verification email sent:", mailResult?.id);
       emailSent = true;
     } catch (mailError) {
       console.error("resend-verification mail send error:", mailError);

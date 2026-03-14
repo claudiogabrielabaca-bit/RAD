@@ -23,11 +23,22 @@ export async function sendMail({
     throw new Error("Missing MAIL_FROM");
   }
 
-  return await resend.emails.send({
+  const result = await resend.emails.send({
     from,
     to,
     subject,
     html,
     text,
   });
+
+  if (result.error) {
+    console.error("Resend sendMail error:", result.error);
+    throw new Error(
+      typeof result.error.message === "string"
+        ? result.error.message
+        : "Failed to send email"
+    );
+  }
+
+  return result.data;
 }
