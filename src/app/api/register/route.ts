@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { generateNumericCode, hashPassword } from "@/app/lib/auth";
+import { sendMail } from "@/app/lib/mail";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -86,11 +87,43 @@ export async function POST(req: Request) {
       },
     });
 
+    let emailSent = false;
+
+    try {
+      await sendMail({
+        to: email,
+        subject: "Verify your RAD account",
+        text: `Welcome to RAD!
+
+Your verification code is: ${verifyCode}
+
+This code expires in 15 minutes.`,
+        html: `
+          <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
+            <h2>Welcome to RAD</h2>
+            <p>Your verification code is:</p>
+            <div style="font-size:32px;font-weight:700;letter-spacing:6px;margin:16px 0;">
+              ${verifyCode}
+            </div>
+            <p>This code expires in <strong>15 minutes</strong>.</p>
+            <p>You can enter it in the verification screen to activate your account.</p>
+          </div>
+        `,
+      });
+
+      emailSent = true;
+    } catch (mailError) {
+      console.error("register mail send error:", mailError);
+    }
+
     return NextResponse.json(
       {
         ok: true,
         user,
-        message: "Account created. Verify your email before logging in.",
+        emailSent,
+        message: emailSent
+          ? "Account created. Check your email to verify your account."
+          : "Account created, but we could not send the verification email. Request a new code.",
         devCode: process.env.NODE_ENV !== "production" ? verifyCode : undefined,
       },
       {

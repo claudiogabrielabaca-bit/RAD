@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { generateNumericCode } from "@/app/lib/auth";
+import { sendMail } from "@/app/lib/mail";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,9 +11,9 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => null);
     const email = body?.email?.toString().trim().toLowerCase();
 
-    if (!email) {
+    if (!email || !email.includes("@")) {
       return NextResponse.json(
-        { error: "Email is required." },
+        { error: "Invalid email." },
         { status: 400 }
       );
     }
@@ -21,6 +22,8 @@ export async function POST(req: Request) {
       where: { email },
       select: {
         id: true,
+        email: true,
+        username: true,
         emailVerified: true,
       },
     });
@@ -35,7 +38,7 @@ export async function POST(req: Request) {
     if (user.emailVerified) {
       return NextResponse.json({
         ok: true,
-        message: "This email is already verified.",
+        message: "Your email is already verified.",
       });
     }
 
@@ -50,13 +53,45 @@ export async function POST(req: Request) {
       },
     });
 
+    let emailSent = false;
+
+    try {
+      await sendMail({
+        to: user.email,
+        subject: "Verify your RAD account",
+        text: `Hello ${user.username},
+
+Your verification code is: ${verifyCode}
+
+This code expires in 15 minutes.`,
+        html: `
+          <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
+            <h2>Verify your RAD account</h2>
+            <p>Hello <strong>${user.username}</strong>,</p>
+            <p>Your verification code is:</p>
+            <div style="font-size:32px;font-weight:700;letter-spacing:6px;margin:16px 0;">
+              ${verifyCode}
+            </div>
+            <p>This code expires in <strong>15 minutes</strong>.</p>
+          </div>
+        `,
+      });
+
+      emailSent = true;
+    } catch (mailError) {
+      console.error("resend-verification mail send error:", mailError);
+    }
+
     return NextResponse.json({
       ok: true,
-      message: "Verification code regenerated.",
+      emailSent,
+      message: emailSent
+        ? "Verification code sent."
+        : "Verification code generated, but the email could not be sent.",
       devCode: process.env.NODE_ENV !== "production" ? verifyCode : undefined,
     });
   } catch (error) {
     console.error("resend-verification POST error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Server error." }, { status: 500 });
   }
 }

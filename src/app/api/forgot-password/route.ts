@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { generateNumericCode } from "@/app/lib/auth";
+import { sendMail } from "@/app/lib/mail";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -24,8 +25,11 @@ export async function POST(req: Request) {
       select: {
         id: true,
         email: true,
+        username: true,
       },
     });
+
+    let devCode: string | undefined;
 
     if (user) {
       const resetCode = generateNumericCode(6);
@@ -39,26 +43,40 @@ export async function POST(req: Request) {
         },
       });
 
-      return NextResponse.json(
-        {
-          ok: true,
-          message:
-            "If that email exists, a recovery code was generated. Email sending is not connected yet.",
-          devCode: resetCode,
-        },
-        {
-          headers: {
-            "Cache-Control": "no-store",
-          },
-        }
-      );
+      devCode = process.env.NODE_ENV !== "production" ? resetCode : undefined;
+
+      try {
+        await sendMail({
+          to: user.email,
+          subject: "Your RAD password reset code",
+          text: `Hello ${user.username},
+
+Your password reset code is: ${resetCode}
+
+This code expires in 15 minutes.`,
+          html: `
+            <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
+              <h2>RAD password reset</h2>
+              <p>Hello <strong>${user.username}</strong>,</p>
+              <p>Your reset code is:</p>
+              <div style="font-size:32px;font-weight:700;letter-spacing:6px;margin:16px 0;">
+                ${resetCode}
+              </div>
+              <p>This code expires in <strong>15 minutes</strong>.</p>
+            </div>
+          `,
+        });
+      } catch (mailError) {
+        console.error("forgot-password mail send error:", mailError);
+      }
     }
 
     return NextResponse.json(
       {
         ok: true,
         message:
-          "If that email exists, a recovery code was generated. Email sending is not connected yet.",
+          "If that email exists, a recovery code was sent.",
+        devCode,
       },
       {
         headers: {
