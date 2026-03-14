@@ -1,17 +1,29 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { timingSafeEqual } from "crypto";
 
 const ADMIN_COOKIE_NAME = "rad_admin_session";
 
-export function middleware(req: NextRequest) {
-  const pathname = req.nextUrl.pathname;
-
-  const protectedPaths = [
+const protectedPaths = [
   "/rad-control-room",
   "/api/admin/reports",
   "/api/admin/report-resolve",
   "/api/admin/delete-review",
 ];
+
+function safeEqual(a: string, b: string) {
+  const aBuffer = Buffer.from(a);
+  const bBuffer = Buffer.from(b);
+
+  if (aBuffer.length !== bBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(aBuffer, bBuffer);
+}
+
+export function proxy(req: NextRequest) {
+  const pathname = req.nextUrl.pathname;
 
   const isProtected = protectedPaths.some((path) =>
     pathname.startsWith(path)
@@ -21,9 +33,10 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const adminSession = req.cookies.get(ADMIN_COOKIE_NAME)?.value;
+  const adminSecret = process.env.ADMIN_SECRET;
+  const adminSession = req.cookies.get(ADMIN_COOKIE_NAME)?.value ?? "";
 
-  if (!adminSession) {
+  if (!adminSecret || !adminSession || !safeEqual(adminSession, adminSecret)) {
     return NextResponse.rewrite(new URL("/404", req.url));
   }
 

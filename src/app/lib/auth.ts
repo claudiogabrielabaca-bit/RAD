@@ -1,10 +1,11 @@
 import { prisma } from "@/app/lib/prisma";
 import { cookies } from "next/headers";
-import { randomBytes } from "crypto";
+import { randomBytes, randomInt } from "crypto";
 import bcrypt from "bcryptjs";
 
 const SESSION_COOKIE = "rad_session";
 const SESSION_DAYS = 30;
+const SESSION_MAX_AGE = SESSION_DAYS * 24 * 60 * 60;
 const BCRYPT_ROUNDS = 12;
 
 export async function hashPassword(password: string) {
@@ -22,15 +23,22 @@ export function generateSessionToken() {
 export function generateNumericCode(length = 6) {
   let code = "";
   for (let i = 0; i < length; i++) {
-    code += Math.floor(Math.random() * 10).toString();
+    code += randomInt(0, 10).toString();
   }
   return code;
 }
 
 export async function createSession(userId: string) {
   const token = generateSessionToken();
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + SESSION_DAYS);
+  const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000);
+
+  await prisma.session.deleteMany({
+    where: {
+      expiresAt: {
+        lt: new Date(),
+      },
+    },
+  });
 
   await prisma.session.create({
     data: {
@@ -50,6 +58,8 @@ export async function createSession(userId: string) {
     secure: process.env.NODE_ENV === "production",
     path: "/",
     expires: expiresAt,
+    maxAge: SESSION_MAX_AGE,
+    priority: "high",
   });
 
   return token;
@@ -73,6 +83,8 @@ export async function clearSession() {
     secure: process.env.NODE_ENV === "production",
     path: "/",
     expires: new Date(0),
+    maxAge: 0,
+    priority: "high",
   });
 }
 
