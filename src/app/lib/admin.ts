@@ -1,28 +1,83 @@
 import { cookies } from "next/headers";
+import { createHmac, timingSafeEqual } from "crypto";
+import { NextResponse } from "next/server";
 
-const ADMIN_COOKIE_NAME = "rad_admin_session";
+export const ADMIN_COOKIE_NAME = "rad_admin_session";
+const ADMIN_COOKIE_MAX_AGE = 60 * 60 * 12;
 
-export function getAdminCookieName() {
-  return ADMIN_COOKIE_NAME;
+function safeEqual(a: string, b: string) {
+  const aBuffer = Buffer.from(a);
+  const bBuffer = Buffer.from(b);
+
+  if (aBuffer.length !== bBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(aBuffer, bBuffer);
 }
 
-export function getExpectedAdminUsername() {
-  return process.env.ADMIN_USERNAME ?? "";
+function getAdminSecret() {
+  return process.env.ADMIN_SECRET ?? "";
 }
 
-export function getExpectedAdminPassword() {
-  return process.env.ADMIN_PASSWORD ?? "";
+function createAdminSessionValue(secret: string) {
+  return createHmac("sha256", secret)
+    .update("rad-admin-session")
+    .digest("hex");
+}
+
+export function verifyAdminSessionValue(sessionValue: string) {
+  const secret = getAdminSecret();
+
+  if (!secret || !sessionValue) {
+    return false;
+  }
+
+  const expected = createAdminSessionValue(secret);
+  return safeEqual(sessionValue, expected);
 }
 
 export async function isAdminAuthenticated() {
-  const cookieStore = await cookies();
-  const session = cookieStore.get(ADMIN_COOKIE_NAME)?.value;
+  const secret = getAdminSecret();
 
-  const expectedUser = getExpectedAdminUsername();
-  const expectedPass = getExpectedAdminPassword();
+  if (!secret) {
+    return false;
+  }
 
-  if (!expectedUser || !expectedPass) return false;
+  const store = await cookies();
+  const sessionValue = store.get(ADMIN_COOKIE_NAME)?.value ?? "";
 
-  const expectedValue = `${expectedUser}:${expectedPass}`;
-  return session === expectedValue;
+  return verifyAdminSessionValue(sessionValue);
+}
+
+export function setAdminSessionCookie(res: NextResponse) {
+  const secret = getAdminSecret();
+
+  if (!secret) {
+    throw new Error("Missing ADMIN_SECRET");
+  }
+
+  const value = createAdminSessionValue(secret);
+
+  res.cookies.set({
+    name: ADMIN_COOKIE_NAME,
+    value,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: ADMIN_COOKIE_MAX_AGE,
+  });
+}
+
+export function clearAdminSessionCookie(res: NextResponse) {
+  res.cookies.set({
+    name: ADMIN_COOKIE_NAME,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: new Date(0),
+  });
 }

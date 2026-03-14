@@ -1,32 +1,54 @@
 import { NextResponse } from "next/server";
-import {
-  getAdminCookieName,
-  getExpectedAdminPassword,
-  getExpectedAdminUsername,
-} from "@/app/lib/admin";
+import { timingSafeEqual } from "crypto";
+import { setAdminSessionCookie } from "@/app/lib/admin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+function safeEqual(a: string, b: string) {
+  const aBuffer = Buffer.from(a);
+  const bBuffer = Buffer.from(b);
+
+  if (aBuffer.length !== bBuffer.length) {
+    return false;
+  }
+
+  return timingSafeEqual(aBuffer, bBuffer);
+}
+
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => null);
+    const adminUsername = process.env.ADMIN_USERNAME ?? "";
+    const adminPassword = process.env.ADMIN_PASSWORD ?? "";
+    const adminSecret = process.env.ADMIN_SECRET ?? "";
 
-    const username = body?.username;
-    const password = body?.password;
-
-    const expectedUser = getExpectedAdminUsername();
-    const expectedPass = getExpectedAdminPassword();
-
-    if (!expectedUser || !expectedPass) {
+    if (!adminUsername || !adminPassword || !adminSecret) {
       return NextResponse.json(
-        { error: "Admin credentials are not configured" },
+        { error: "Admin environment variables are missing." },
         { status: 500 }
       );
     }
 
-    if (username !== expectedUser || password !== expectedPass) {
-      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
+    const body = await req.json().catch(() => null);
+
+    const username = body?.username?.toString().trim() ?? "";
+    const password = body?.password?.toString() ?? "";
+
+    if (!username || !password) {
+      return NextResponse.json(
+        { error: "Username and password are required." },
+        { status: 400 }
+      );
+    }
+
+    const validUsername = safeEqual(username, adminUsername);
+    const validPassword = safeEqual(password, adminPassword);
+
+    if (!validUsername || !validPassword) {
+      return NextResponse.json(
+        { error: "Invalid admin credentials." },
+        { status: 401 }
+      );
     }
 
     const res = NextResponse.json(
@@ -38,19 +60,11 @@ export async function POST(req: Request) {
       }
     );
 
-    res.cookies.set({
-      name: getAdminCookieName(),
-      value: `${expectedUser}:${expectedPass}`,
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 12,
-    });
+    setAdminSessionCookie(res);
 
     return res;
   } catch (error) {
-    console.error("admin login error:", error);
+    console.error("admin login POST error:", error);
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
