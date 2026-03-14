@@ -27,7 +27,8 @@ export default function ReplyComposer({
         onChange={(e) => onChange(e.target.value.slice(0, REPLY_MAX_LENGTH))}
         maxLength={REPLY_MAX_LENGTH}
         placeholder="Write a reply..."
-        className="h-24 w-full resize-none rounded-xl border border-white/10 bg-[#07101f]/75 px-4 py-3 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
+        className="w-full rounded-2xl border border-white/10 bg-[#111111] px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
+
       />
 
       <div className="mt-2 flex items-center justify-between gap-3">
