@@ -16,13 +16,14 @@ import type {
   HighlightItem,
   HighlightResponse,
   LegacyHighlightType,
+  SurpriseResponse,
   TopItem,
 } from "@/app/lib/rad-types";
 
 const REVIEW_MAX_LENGTH = 280;
 const REPLY_MAX_LENGTH = 220;
 const HIGHLIGHT_SCROLL_OFFSET = 350;
-const FORCE_FRESH_MODE = true;
+const FORCE_FRESH_MODE = false;
 
 type CurrentUser = {
   id: string;
@@ -456,6 +457,7 @@ export default function Page() {
 
   const dayRequestRef = useRef(0);
   const highlightRequestRef = useRef(0);
+  const skipNextAutoDayLoadRef = useRef(false);
 
   const [day, setDay] = useState<string>(minDay);
   const [hasPickedInitialDay, setHasPickedInitialDay] = useState(false);
@@ -623,6 +625,21 @@ export default function Page() {
   function finishDayTransition(transitionId: number) {
     if (transitionIdRef.current !== transitionId) return;
     setIsDayTransitioning(false);
+  }
+
+  function applySurprisePayload(payload: SurpriseResponse) {
+    const items = payload.highlightData?.highlights?.length
+      ? payload.highlightData.highlights
+      : payload.highlightData?.highlight
+        ? [payload.highlightData.highlight]
+        : [];
+
+    setData(payload.dayData);
+    setHighlights(items);
+    setHighlight(items[0] ?? null);
+    setActiveHighlightIndex(0);
+    setLoadingDay(false);
+    setLoadingHighlight(false);
   }
 
   function openDay(nextDay: string, options?: { scrollToHighlight?: boolean }) {
@@ -934,32 +951,42 @@ export default function Page() {
 
     try {
       const res = await fetch(
-        `/api/random-valid-day${FORCE_FRESH_MODE ? "?fresh=1" : ""}`,
+        `/api/surprise${FORCE_FRESH_MODE ? "?fresh=1" : ""}`,
         {
           cache: "no-store",
         }
       );
 
-      const json = await res.json().catch(() => null);
+      const json = (await res.json().catch(() => null)) as
+        | SurpriseResponse
+        | null;
 
-      if (!res.ok || !json?.day) {
+      if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
         showToast("No random day available.");
         finishDayTransition(transitionId);
         return;
       }
 
       if (json.day === day) {
+        applySurprisePayload(json);
         finishDayTransition(transitionId);
 
-        if (scrollToResult && highlight && highlightBlockRef.current) {
+        if (
+          scrollToResult &&
+          (json.highlightData.highlight || json.highlightData.highlights?.length)
+        ) {
           requestAnimationFrame(() => {
             scrollToHighlightBlock();
           });
         }
+
         return;
       }
 
+      skipNextAutoDayLoadRef.current = true;
       pendingScrollToHighlightRef.current = scrollToResult;
+
+      applySurprisePayload(json);
       setDay(json.day);
     } catch {
       showToast("Could not load a random day.");
@@ -1020,6 +1047,18 @@ export default function Page() {
         },
         body: JSON.stringify({ day }),
       }).catch(() => {});
+
+      if (skipNextAutoDayLoadRef.current) {
+        skipNextAutoDayLoadRef.current = false;
+
+        if (!cancelled) {
+          setLoadingDay(false);
+          setLoadingHighlight(false);
+          finishDayTransition(transitionId);
+        }
+
+        return;
+      }
 
       await Promise.allSettled([loadDay(day), loadHighlight(day)]);
 
@@ -2051,7 +2090,8 @@ export default function Page() {
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-amber-100/80">
                           <span>
-                            Your account exists, but you should verify your email first.
+                            Your account exists, but you should verify your email
+                            first.
                           </span>
                           <button
                             type="button"

@@ -112,3 +112,9 @@ export type FavoriteDayResponse = {
   isFavorite: boolean;
   favoriteDay: string | null;
 };
+export type SurpriseResponse = {
+  day: string;
+  source?: "cache" | "generated";
+  dayData: DayResponse;
+  highlightData: HighlightResponse;
+};
