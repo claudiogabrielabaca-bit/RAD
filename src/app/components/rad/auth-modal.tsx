@@ -64,11 +64,6 @@ export default function AuthModal({
   }
 
   function requireTurnstile(actionLabel = "continue") {
-    if (!process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY) {
-      setError("Security check is unavailable. Please try again later.");
-      return false;
-    }
-
     if (!turnstileToken) {
       setError(`Complete the security check before trying to ${actionLabel}.`);
       return false;
@@ -220,6 +215,8 @@ export default function AuthModal({
     view === "forgot-password" ||
     view === "verify-email";
 
+  const codeIsComplete = code.trim().length === 6;
+
   async function refreshUserAndNotify() {
     try {
       const res = await fetch("/api/me", {
@@ -242,7 +239,7 @@ export default function AuthModal({
     setMessage("");
     setError("");
     setDevCode("");
-    setTurnstileToken("");
+    resetTurnstile();
     onChangeView(nextView, nextEmail ?? email);
   }
 
@@ -349,11 +346,6 @@ export default function AuthModal({
     setError("");
     setDevCode("");
 
-    if (!requireTurnstile("resend the code")) {
-      setSecondaryLoading(false);
-      return;
-    }
-
     try {
       const res = await fetch("/api/resend-login-code", {
         method: "POST",
@@ -362,11 +354,8 @@ export default function AuthModal({
         },
         body: JSON.stringify({
           email: normalizeEmail(email),
-          turnstileToken,
         }),
       });
-
-      resetTurnstile();
 
       const json = await res.json().catch(() => null);
 
@@ -378,7 +367,6 @@ export default function AuthModal({
       setMessage(json?.message ?? "New login code sent.");
       setDevCode(json?.devCode ?? "");
     } catch {
-      resetTurnstile();
       setError("Could not resend login code.");
     } finally {
       setSecondaryLoading(false);
@@ -548,6 +536,11 @@ export default function AuthModal({
     setMessage("");
     setError("");
 
+    if (!requireTurnstile("verify your email")) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const normalized = normalizeEmail(email);
 
@@ -559,8 +552,11 @@ export default function AuthModal({
         body: JSON.stringify({
           email: normalized,
           code: code.trim(),
+          turnstileToken,
         }),
       });
+
+      resetTurnstile();
 
       const json = await res.json().catch(() => null);
 
@@ -579,6 +575,7 @@ export default function AuthModal({
         goToView("login", normalized);
       }, 900);
     } catch {
+      resetTurnstile();
       setError("Could not verify email.");
     } finally {
       setLoading(false);
@@ -760,13 +757,11 @@ export default function AuthModal({
                 />
               </div>
 
-              {showTurnstile ? (
-                <TurnstileWidget
-                  key={`turnstile-${view}-${turnstileResetKey}`}
-                  resetKey={turnstileResetKey}
-                  onTokenChange={setTurnstileToken}
-                />
-              ) : null}
+              <TurnstileWidget
+                key={`turnstile-${view}-${turnstileResetKey}`}
+                resetKey={turnstileResetKey}
+                onTokenChange={setTurnstileToken}
+              />
 
               <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                 <button
@@ -816,18 +811,10 @@ export default function AuthModal({
                 />
               </div>
 
-              {showTurnstile ? (
-                <TurnstileWidget
-                  key={`turnstile-${view}-${turnstileResetKey}`}
-                  resetKey={turnstileResetKey}
-                  onTokenChange={setTurnstileToken}
-                />
-              ) : null}
-
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !codeIsComplete}
                   className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
                 >
                   {loading ? "Logging in..." : "Access account"}
@@ -898,13 +885,11 @@ export default function AuthModal({
                 />
               </div>
 
-              {showTurnstile ? (
-                <TurnstileWidget
-                  key={`turnstile-${view}-${turnstileResetKey}`}
-                  resetKey={turnstileResetKey}
-                  onTokenChange={setTurnstileToken}
-                />
-              ) : null}
+              <TurnstileWidget
+                key={`turnstile-${view}-${turnstileResetKey}`}
+                resetKey={turnstileResetKey}
+                onTokenChange={setTurnstileToken}
+              />
 
               <div className="pt-2">
                 <button
@@ -931,13 +916,11 @@ export default function AuthModal({
                 />
               </div>
 
-              {showTurnstile ? (
-                <TurnstileWidget
-                  key={`turnstile-${view}-${turnstileResetKey}`}
-                  resetKey={turnstileResetKey}
-                  onTokenChange={setTurnstileToken}
-                />
-              ) : null}
+              <TurnstileWidget
+                key={`turnstile-${view}-${turnstileResetKey}`}
+                resetKey={turnstileResetKey}
+                onTokenChange={setTurnstileToken}
+              />
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
@@ -1016,7 +999,7 @@ export default function AuthModal({
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !codeIsComplete}
                   className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
                 >
                   {loading ? "Updating..." : "Reset password"}
@@ -1066,18 +1049,20 @@ export default function AuthModal({
                 />
               </div>
 
-              {showTurnstile ? (
-                <TurnstileWidget
-                  key={`turnstile-${view}-${turnstileResetKey}`}
-                  resetKey={turnstileResetKey}
-                  onTokenChange={setTurnstileToken}
-                />
-              ) : null}
+              <TurnstileWidget
+                key={`turnstile-${view}-${turnstileResetKey}`}
+                resetKey={turnstileResetKey}
+                onTokenChange={setTurnstileToken}
+              />
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button
                   type="submit"
-                  disabled={loading || currentUserEmailVerified === true}
+                  disabled={
+                    loading ||
+                    currentUserEmailVerified === true ||
+                    !codeIsComplete
+                  }
                   className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
                 >
                   {loading ? "Verifying..." : "Verify email"}

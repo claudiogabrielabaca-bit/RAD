@@ -26,10 +26,7 @@ export async function POST(req: Request) {
     }
 
     if (!code || !/^\d{6}$/.test(code)) {
-      return NextResponse.json(
-        { error: "Invalid reset code." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
     }
 
     if (newPassword.length < 8) {
@@ -65,10 +62,7 @@ export async function POST(req: Request) {
     });
 
     if (!user || !user.passwordResetCode || !user.passwordResetExpiresAt) {
-      return NextResponse.json(
-        { error: INVALID_MESSAGE },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
     }
 
     if (user.passwordResetExpiresAt < new Date()) {
@@ -81,10 +75,7 @@ export async function POST(req: Request) {
         },
       });
 
-      return NextResponse.json(
-        { error: INVALID_MESSAGE },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
     }
 
     if (user.passwordResetAttempts >= CODE_ATTEMPT_LIMIT) {

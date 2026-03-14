@@ -11,6 +11,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const CODE_ATTEMPT_LIMIT = 5;
+const INVALID_MESSAGE = "Invalid or expired login code.";
 
 export async function POST(req: Request) {
   try {
@@ -23,6 +24,18 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "Email and login code are required." },
         { status: 400 }
+      );
+    }
+
+    if (!/^\d{6}$/.test(code)) {
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
+        {
+          status: 400,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
       );
     }
 
@@ -53,9 +66,14 @@ export async function POST(req: Request) {
       },
     });
 
-    if (!user || !user.emailVerified || !user.loginCode || !user.loginCodeExpiresAt) {
+    if (
+      !user ||
+      !user.emailVerified ||
+      !user.loginCode ||
+      !user.loginCodeExpiresAt
+    ) {
       return NextResponse.json(
-        { error: "Invalid or expired login code." },
+        { error: INVALID_MESSAGE },
         {
           status: 400,
           headers: {
@@ -76,7 +94,7 @@ export async function POST(req: Request) {
       });
 
       return NextResponse.json(
-        { error: "Invalid or expired login code." },
+        { error: INVALID_MESSAGE },
         {
           status: 400,
           headers: {
@@ -135,7 +153,7 @@ export async function POST(req: Request) {
         {
           error: invalidate
             ? "Too many invalid attempts. Request a new login code."
-            : "Invalid or expired login code.",
+            : INVALID_MESSAGE,
         },
         {
           status: 400,

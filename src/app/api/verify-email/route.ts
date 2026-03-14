@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { verifyAuthCode } from "@/app/lib/auth";
+import { verifyTurnstileToken } from "@/app/lib/turnstile";
 import {
   buildRateLimitKey,
   consumeRateLimit,
@@ -19,12 +20,17 @@ export async function POST(req: Request) {
 
     const email = body?.email?.toString().trim().toLowerCase();
     const code = body?.code?.toString().trim();
+    const turnstileToken = body?.turnstileToken?.toString() ?? "";
 
     if (!email || !code) {
       return NextResponse.json(
         { error: "Email and verification code are required." },
         { status: 400 }
       );
+    }
+
+    if (!/^\d{6}$/.test(code)) {
+      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
     }
 
     const rateLimit = await consumeRateLimit({
@@ -38,6 +44,15 @@ export async function POST(req: Request) {
       return createRateLimitResponse(
         rateLimit.retryAfterSec,
         "Too many verification attempts. Please try again later."
+      );
+    }
+
+    const turnstile = await verifyTurnstileToken(turnstileToken, req);
+
+    if (!turnstile.ok) {
+      return NextResponse.json(
+        { error: "Security check failed. Please try again." },
+        { status: 400 }
       );
     }
 
