@@ -6,12 +6,14 @@ const csp = `
   form-action 'self';
   frame-ancestors 'none';
   object-src 'none';
-  script-src 'self' 'unsafe-inline';
+  script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com;
+  script-src-elem 'self' 'unsafe-inline' https://challenges.cloudflare.com https://static.cloudflareinsights.com;
   style-src 'self' 'unsafe-inline';
   img-src 'self' data: blob: https:;
   font-src 'self' data: https:;
-  connect-src 'self' https:;
-  frame-src 'none';
+  connect-src 'self' https://challenges.cloudflare.com https://cloudflareinsights.com https://static.cloudflareinsights.com https:;
+  frame-src 'self' https://challenges.cloudflare.com;
+  child-src 'self' https://challenges.cloudflare.com;
   upgrade-insecure-requests;
 `
   .replace(/\s{2,}/g, " ")
