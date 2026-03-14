@@ -46,14 +46,42 @@ export async function GET() {
       }),
     ]);
 
-    const stats = {
-      ratingsCount: ratings.length,
-      favoritesCount: favoriteDays.length,
-      averageRating:
-        ratings.length > 0
-          ? ratings.reduce((acc, item) => acc + item.stars, 0) / ratings.length
-          : 0,
-    };
+    const favoriteDaysList = favoriteDays.map((item) => item.day);
+
+    const favoriteDayPreviews = favoriteDaysList.length
+      ? await prisma.dayHighlightCache.findMany({
+          where: {
+            day: {
+              in: favoriteDaysList,
+            },
+          },
+          select: {
+            day: true,
+            type: true,
+            year: true,
+            title: true,
+            text: true,
+            image: true,
+            articleUrl: true,
+          },
+        })
+      : [];
+
+    const previewMap = new Map(
+      favoriteDayPreviews.map((item) => [item.day, item])
+    );
+
+    const ratingsCount = ratings.length;
+    const favoritesCount = favoriteDays.length;
+    const averageRating =
+      ratingsCount > 0
+        ? ratings.reduce((acc, item) => acc + item.stars, 0) / ratingsCount
+        : 0;
+
+    const starDistribution = [5, 4, 3, 2, 1].map((stars) => ({
+      stars,
+      count: ratings.filter((item) => item.stars === stars).length,
+    }));
 
     return NextResponse.json(
       {
@@ -61,6 +89,7 @@ export async function GET() {
           id: user.id,
           email: user.email,
           username: user.username,
+          emailVerified: user.emailVerified,
           createdAt: user.createdAt.toISOString(),
         },
         ratings: ratings.map((item) => ({
@@ -68,12 +97,36 @@ export async function GET() {
           createdAt: item.createdAt.toISOString(),
           updatedAt: item.updatedAt.toISOString(),
         })),
-        favoriteDays: favoriteDays.map((item) => ({
+        latestRatings: ratings.slice(0, 5).map((item) => ({
           ...item,
           createdAt: item.createdAt.toISOString(),
           updatedAt: item.updatedAt.toISOString(),
         })),
-        stats,
+        favoriteDays: favoriteDays.map((item) => {
+          const preview = previewMap.get(item.day);
+
+          return {
+            ...item,
+            createdAt: item.createdAt.toISOString(),
+            updatedAt: item.updatedAt.toISOString(),
+            preview: preview
+              ? {
+                  type: preview.type,
+                  year: preview.year,
+                  title: preview.title,
+                  text: preview.text,
+                  image: preview.image,
+                  articleUrl: preview.articleUrl,
+                }
+              : null,
+          };
+        }),
+        stats: {
+          ratingsCount,
+          favoritesCount,
+          averageRating,
+          starDistribution,
+        },
       },
       {
         headers: {
