@@ -1,9 +1,17 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { hashPassword } from "@/app/lib/auth";
+import { hashPassword, verifyAuthCode } from "@/app/lib/auth";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const CODE_ATTEMPT_LIMIT = 5;
+const INVALID_MESSAGE = "Invalid or expired reset code.";
 
 export async function POST(req: Request) {
   try {
@@ -31,39 +39,100 @@ export async function POST(req: Request) {
       );
     }
 
+    const rateLimit = await consumeRateLimit({
+      action: "reset-password",
+      key: buildRateLimitKey(req, email),
+      limit: 10,
+      windowMs: 15 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many reset attempts. Please try again later."
+      );
+    }
+
     const user = await prisma.user.findUnique({
       where: { email },
       select: {
         id: true,
+        email: true,
         passwordResetCode: true,
         passwordResetExpiresAt: true,
+        passwordResetAttempts: true,
       },
     });
 
-    if (!user) {
+    if (!user || !user.passwordResetCode || !user.passwordResetExpiresAt) {
       return NextResponse.json(
-        { error: "Invalid email or reset code." },
-        { status: 400 }
-      );
-    }
-
-    if (!user.passwordResetCode || !user.passwordResetExpiresAt) {
-      return NextResponse.json(
-        { error: "No reset code found." },
+        { error: INVALID_MESSAGE },
         { status: 400 }
       );
     }
 
     if (user.passwordResetExpiresAt < new Date()) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordResetCode: null,
+          passwordResetExpiresAt: null,
+          passwordResetAttempts: 0,
+        },
+      });
+
       return NextResponse.json(
-        { error: "Reset code expired." },
+        { error: INVALID_MESSAGE },
         { status: 400 }
       );
     }
 
-    if (user.passwordResetCode !== code) {
+    if (user.passwordResetAttempts >= CODE_ATTEMPT_LIMIT) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordResetCode: null,
+          passwordResetExpiresAt: null,
+          passwordResetAttempts: 0,
+        },
+      });
+
       return NextResponse.json(
-        { error: "Invalid email or reset code." },
+        { error: "Too many invalid attempts. Request a new reset code." },
+        { status: 400 }
+      );
+    }
+
+    const validCode = verifyAuthCode({
+      email: user.email,
+      code,
+      purpose: "reset",
+      hash: user.passwordResetCode,
+    });
+
+    if (!validCode) {
+      const nextAttempts = user.passwordResetAttempts + 1;
+      const invalidate = nextAttempts >= CODE_ATTEMPT_LIMIT;
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: invalidate
+          ? {
+              passwordResetCode: null,
+              passwordResetExpiresAt: null,
+              passwordResetAttempts: 0,
+            }
+          : {
+              passwordResetAttempts: nextAttempts,
+            },
+      });
+
+      return NextResponse.json(
+        {
+          error: invalidate
+            ? "Too many invalid attempts. Request a new reset code."
+            : INVALID_MESSAGE,
+        },
         { status: 400 }
       );
     }
@@ -74,6 +143,7 @@ export async function POST(req: Request) {
         passwordHash: await hashPassword(newPassword),
         passwordResetCode: null,
         passwordResetExpiresAt: null,
+        passwordResetAttempts: 0,
       },
     });
 

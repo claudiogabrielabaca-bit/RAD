@@ -16,12 +16,15 @@ model User {
   emailVerified          Boolean  @default(false)
   emailVerifyCode        String?
   emailVerifyExpiresAt   DateTime?
+  emailVerifyAttempts    Int      @default(0)
 
   loginCode              String?
   loginCodeExpiresAt     DateTime?
+  loginCodeAttempts      Int      @default(0)
 
   passwordResetCode      String?
   passwordResetExpiresAt DateTime?
+  passwordResetAttempts  Int      @default(0)
 
   createdAt              DateTime @default(now())
   updatedAt              DateTime @updatedAt
@@ -142,4 +145,16 @@ model DayStats {
   views     Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model RateLimit {
+  id        String   @id @default(cuid())
+  action    String
+  key       String
+  count     Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([action, key])
 }

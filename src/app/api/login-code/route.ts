@@ -1,9 +1,16 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { createSession } from "@/app/lib/auth";
+import { createSession, verifyAuthCode } from "@/app/lib/auth";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const CODE_ATTEMPT_LIMIT = 5;
 
 export async function POST(req: Request) {
   try {
@@ -19,6 +26,20 @@ export async function POST(req: Request) {
       );
     }
 
+    const rateLimit = await consumeRateLimit({
+      action: "login-code",
+      key: buildRateLimitKey(req, email),
+      limit: 10,
+      windowMs: 10 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many code attempts. Please try again later."
+      );
+    }
+
     const user = await prisma.user.findUnique({
       where: { email },
       select: {
@@ -28,41 +49,100 @@ export async function POST(req: Request) {
         emailVerified: true,
         loginCode: true,
         loginCodeExpiresAt: true,
+        loginCodeAttempts: true,
       },
     });
 
-    if (!user) {
+    if (!user || !user.emailVerified || !user.loginCode || !user.loginCodeExpiresAt) {
       return NextResponse.json(
-        { error: "Invalid login code." },
-        { status: 401 }
-      );
-    }
-
-    if (!user.emailVerified) {
-      return NextResponse.json(
-        { error: "Verify your email before logging in." },
-        { status: 403 }
-      );
-    }
-
-    if (!user.loginCode || !user.loginCodeExpiresAt) {
-      return NextResponse.json(
-        { error: "No active login code found." },
-        { status: 400 }
+        { error: "Invalid or expired login code." },
+        {
+          status: 400,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
       );
     }
 
     if (user.loginCodeExpiresAt < new Date()) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          loginCode: null,
+          loginCodeExpiresAt: null,
+          loginCodeAttempts: 0,
+        },
+      });
+
       return NextResponse.json(
-        { error: "Login code expired. Request a new one." },
-        { status: 400 }
+        { error: "Invalid or expired login code." },
+        {
+          status: 400,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
       );
     }
 
-    if (user.loginCode !== code) {
+    if (user.loginCodeAttempts >= CODE_ATTEMPT_LIMIT) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          loginCode: null,
+          loginCodeExpiresAt: null,
+          loginCodeAttempts: 0,
+        },
+      });
+
       return NextResponse.json(
-        { error: "Invalid login code." },
-        { status: 401 }
+        { error: "Too many invalid attempts. Request a new login code." },
+        {
+          status: 400,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+    }
+
+    const validCode = verifyAuthCode({
+      email: user.email,
+      code,
+      purpose: "login",
+      hash: user.loginCode,
+    });
+
+    if (!validCode) {
+      const nextAttempts = user.loginCodeAttempts + 1;
+      const invalidate = nextAttempts >= CODE_ATTEMPT_LIMIT;
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: invalidate
+          ? {
+              loginCode: null,
+              loginCodeExpiresAt: null,
+              loginCodeAttempts: 0,
+            }
+          : {
+              loginCodeAttempts: nextAttempts,
+            },
+      });
+
+      return NextResponse.json(
+        {
+          error: invalidate
+            ? "Too many invalid attempts. Request a new login code."
+            : "Invalid or expired login code.",
+        },
+        {
+          status: 400,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
       );
     }
 
@@ -71,6 +151,7 @@ export async function POST(req: Request) {
       data: {
         loginCode: null,
         loginCodeExpiresAt: null,
+        loginCodeAttempts: 0,
       },
     });
 

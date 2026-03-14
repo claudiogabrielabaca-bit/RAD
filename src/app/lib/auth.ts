@@ -1,12 +1,31 @@
 import { prisma } from "@/app/lib/prisma";
 import { cookies } from "next/headers";
-import { randomBytes, randomInt } from "crypto";
+import {
+  createHmac,
+  randomBytes,
+  randomInt,
+  timingSafeEqual,
+} from "crypto";
 import bcrypt from "bcryptjs";
 
 const SESSION_COOKIE = "rad_session";
 const SESSION_DAYS = 30;
 const SESSION_MAX_AGE = SESSION_DAYS * 24 * 60 * 60;
 const BCRYPT_ROUNDS = 12;
+
+type AuthCodePurpose = "verify" | "login" | "reset";
+
+function getAuthCodeSecret() {
+  return (
+    process.env.AUTH_CODE_SECRET ||
+    process.env.ADMIN_SECRET ||
+    "dev-only-auth-code-secret-change-me"
+  );
+}
+
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
 
 export async function hashPassword(password: string) {
   return bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -26,6 +45,51 @@ export function generateNumericCode(length = 6) {
     code += randomInt(0, 10).toString();
   }
   return code;
+}
+
+export function hashAuthCode({
+  email,
+  code,
+  purpose,
+}: {
+  email: string;
+  code: string;
+  purpose: AuthCodePurpose;
+}) {
+  const secret = getAuthCodeSecret();
+
+  return createHmac("sha256", secret)
+    .update(`${purpose}:${normalizeEmail(email)}:${code}`)
+    .digest("hex");
+}
+
+export function verifyAuthCode({
+  email,
+  code,
+  purpose,
+  hash,
+}: {
+  email: string;
+  code: string;
+  purpose: AuthCodePurpose;
+  hash: string | null | undefined;
+}) {
+  if (!hash) return false;
+
+  const expected = hashAuthCode({
+    email,
+    code,
+    purpose,
+  });
+
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(hash, "utf8");
+
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return timingSafeEqual(a, b);
 }
 
 export async function createSession(userId: string) {

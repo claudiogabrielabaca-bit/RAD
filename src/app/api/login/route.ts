@@ -1,7 +1,16 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { generateNumericCode, verifyPassword } from "@/app/lib/auth";
+import {
+  generateNumericCode,
+  hashAuthCode,
+  verifyPassword,
+} from "@/app/lib/auth";
 import { sendMail } from "@/app/lib/mail";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -20,6 +29,20 @@ export async function POST(req: Request) {
       );
     }
 
+    const rateLimit = await consumeRateLimit({
+      action: "login",
+      key: buildRateLimitKey(req, email),
+      limit: 6,
+      windowMs: 10 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many login attempts. Please try again later."
+      );
+    }
+
     const user = await prisma.user.findUnique({
       where: { email },
       select: {
@@ -34,7 +57,12 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json(
         { error: "Invalid credentials." },
-        { status: 401 }
+        {
+          status: 401,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
       );
     }
 
@@ -43,19 +71,30 @@ export async function POST(req: Request) {
     if (!isValidPassword) {
       return NextResponse.json(
         { error: "Invalid credentials." },
-        { status: 401 }
+        {
+          status: 401,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
       );
     }
 
     if (!user.emailVerified) {
       const verifyCode = generateNumericCode(6);
+      const verifyCodeHash = hashAuthCode({
+        email: user.email,
+        code: verifyCode,
+        purpose: "verify",
+      });
       const verifyExpiresAt = new Date(Date.now() + 1000 * 60 * 15);
 
       await prisma.user.update({
         where: { id: user.id },
         data: {
-          emailVerifyCode: verifyCode,
+          emailVerifyCode: verifyCodeHash,
           emailVerifyExpiresAt: verifyExpiresAt,
+          emailVerifyAttempts: 0,
         },
       });
 
@@ -100,18 +139,29 @@ This code expires in 15 minutes.`,
           devCode:
             process.env.NODE_ENV !== "production" ? verifyCode : undefined,
         },
-        { status: 403 }
+        {
+          status: 403,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
       );
     }
 
     const loginCode = generateNumericCode(6);
+    const loginCodeHash = hashAuthCode({
+      email: user.email,
+      code: loginCode,
+      purpose: "login",
+    });
     const loginCodeExpiresAt = new Date(Date.now() + 1000 * 60 * 10);
 
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        loginCode,
+        loginCode: loginCodeHash,
         loginCodeExpiresAt,
+        loginCodeAttempts: 0,
       },
     });
 

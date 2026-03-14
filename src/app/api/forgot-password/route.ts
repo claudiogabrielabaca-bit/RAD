@@ -1,7 +1,12 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { generateNumericCode } from "@/app/lib/auth";
+import { generateNumericCode, hashAuthCode } from "@/app/lib/auth";
 import { sendMail } from "@/app/lib/mail";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,9 +17,20 @@ export async function POST(req: Request) {
     const email = body?.email?.toString().trim().toLowerCase();
 
     if (!email || !email.includes("@")) {
-      return NextResponse.json(
-        { error: "Invalid email." },
-        { status: 400 }
+      return NextResponse.json({ error: "Invalid email." }, { status: 400 });
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "forgot-password",
+      key: buildRateLimitKey(req, email),
+      limit: 3,
+      windowMs: 15 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many requests. Please try again later."
       );
     }
 
@@ -28,21 +44,27 @@ export async function POST(req: Request) {
     });
 
     let devCode: string | undefined;
-    let emailSent = false;
 
     if (user) {
       const resetCode = generateNumericCode(6);
+      const resetCodeHash = hashAuthCode({
+        email: user.email,
+        code: resetCode,
+        purpose: "reset",
+      });
       const resetExpiresAt = new Date(Date.now() + 1000 * 60 * 15);
 
       await prisma.user.update({
         where: { id: user.id },
         data: {
-          passwordResetCode: resetCode,
+          passwordResetCode: resetCodeHash,
           passwordResetExpiresAt: resetExpiresAt,
+          passwordResetAttempts: 0,
         },
       });
 
-      devCode = process.env.NODE_ENV !== "production" ? resetCode : undefined;
+      devCode =
+        process.env.NODE_ENV !== "production" ? resetCode : undefined;
 
       try {
         const mailResult = await sendMail({
@@ -67,7 +89,6 @@ This code expires in 15 minutes.`,
         });
 
         console.log("forgot-password email sent:", mailResult?.id);
-        emailSent = true;
       } catch (mailError) {
         console.error("forgot-password mail send error:", mailError);
       }
@@ -76,7 +97,6 @@ This code expires in 15 minutes.`,
     return NextResponse.json(
       {
         ok: true,
-        emailSent,
         message: "If that email exists, a recovery code was sent.",
         devCode,
       },

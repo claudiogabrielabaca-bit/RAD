@@ -1,7 +1,16 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { generateNumericCode, hashPassword } from "@/app/lib/auth";
+import {
+  generateNumericCode,
+  hashAuthCode,
+  hashPassword,
+} from "@/app/lib/auth";
 import { sendMail } from "@/app/lib/mail";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,6 +25,20 @@ export async function POST(req: Request) {
 
     if (!email || !email.includes("@")) {
       return NextResponse.json({ error: "Invalid email." }, { status: 400 });
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "register",
+      key: buildRateLimitKey(req, email),
+      limit: 4,
+      windowMs: 60 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many registration attempts. Please try again later."
+      );
     }
 
     if (!username || username.length < 3 || username.length > 20) {
@@ -67,6 +90,11 @@ export async function POST(req: Request) {
     }
 
     const verifyCode = generateNumericCode(6);
+    const verifyCodeHash = hashAuthCode({
+      email,
+      code: verifyCode,
+      purpose: "verify",
+    });
     const verifyExpiresAt = new Date(Date.now() + 1000 * 60 * 15);
     const passwordHash = await hashPassword(password);
 
@@ -76,8 +104,9 @@ export async function POST(req: Request) {
         username,
         passwordHash,
         emailVerified: false,
-        emailVerifyCode: verifyCode,
+        emailVerifyCode: verifyCodeHash,
         emailVerifyExpiresAt: verifyExpiresAt,
+        emailVerifyAttempts: 0,
       },
       select: {
         id: true,
