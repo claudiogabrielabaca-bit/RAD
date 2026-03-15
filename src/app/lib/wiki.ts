@@ -56,40 +56,41 @@ type ParsedFallbackItem = {
   articleUrl: string | null;
 };
 
+type AnchorInfo = {
+  title: string | null;
+  articleUrl: string | null;
+  rawText: string | null;
+};
+
 const PRIORITY: WikiType[] = ["selected", "events", "births", "deaths"];
 const WIKI_LANGS: WikiLang[] = ["en"];
 const MAX_HIGHLIGHTS = 5;
 
+function stripHtml(input: string | null | undefined) {
+  if (!input) return null;
+  return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
 function decodeHtmlEntities(input: string) {
   return input
-    .replace(/&#(\d+);/g, (_, dec) => {
-      const code = Number(dec);
-      return Number.isNaN(code) ? _ : String.fromCharCode(code);
-    })
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
-      const code = parseInt(hex, 16);
-      return Number.isNaN(code) ? _ : String.fromCharCode(code);
-    })
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
 }
 
-function stripHtml(input: string | null | undefined) {
-  if (!input) return null;
-
-  return decodeHtmlEntities(input)
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function normalizeText(input: string) {
   return decodeHtmlEntities(input).replace(/\s+/g, " ").trim();
+}
+
+function stripReferenceMarkers(input: string) {
+  return input
+    .replace(/\s*\[\d+\]\s*/g, " ")
+    .replace(/\s+,/g, ",")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeLooseText(input: string | null | undefined) {
@@ -117,14 +118,6 @@ function extractWikiSlug(url: string | null | undefined) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
-}
-
-function normalizeHighlight(item: DayHighlight): DayHighlight {
-  return {
-    ...item,
-    title: item.title ? normalizeText(item.title) : null,
-    text: normalizeText(item.text || "No description available."),
-  };
 }
 
 function buildDedupKey(item: DayHighlight) {
@@ -289,19 +282,18 @@ function buildHighlight(
   image: string | null,
   articleUrl: string | null
 ): DayHighlight {
-  const safeText = normalizeText(text || "No description available.");
-  const safeTitle = title ? normalizeText(title) : null;
-
-  const type = detectPrimaryType(baseType, safeText, safeTitle);
-  const secondaryType = detectSecondaryType(safeText, safeTitle);
+  const cleanTitle = stripReferenceMarkers(title ?? "");
+  const cleanText = stripReferenceMarkers(text);
+  const type = detectPrimaryType(baseType, cleanText, cleanTitle || null);
+  const secondaryType = detectSecondaryType(cleanText, cleanTitle || null);
 
   return {
     type,
     secondaryType:
       secondaryType && secondaryType !== type ? secondaryType : null,
     year,
-    text: safeText,
-    title: safeTitle,
+    text: cleanText,
+    title: cleanTitle || null,
     image,
     articleUrl,
   };
@@ -312,7 +304,7 @@ function mapItem(type: WikiType, item: WikiItem): DayHighlight {
   const rawTitle = stripHtml(
     page?.titles?.display ?? page?.titles?.normalized ?? null
   );
-  const rawText = normalizeText(item.text ?? "No description available.");
+  const rawText = item.text ?? "No description available.";
 
   return buildHighlight(
     type,
@@ -358,7 +350,7 @@ async function fetchWikiType(type: WikiType, month: string, day: string) {
       const items = (data?.[type] ?? []) as WikiItem[];
       results.push(...items);
     } catch {
-      //
+      // continue
     }
   }
 
@@ -491,23 +483,79 @@ function buildWikiArticleUrl(lang: WikiLang, href: string) {
   return `https://${lang}.wikipedia.org${href}`;
 }
 
-function extractFirstAnchorInfo(liHtml: string, lang: WikiLang) {
-  const anchorMatch = liHtml.match(
-    /<a\b[^>]*href="([^"]+)"[^>]*(?:title="([^"]+)")?[^>]*>([\s\S]*?)<\/a>/i
-  );
+function extractAnchorInfos(liHtml: string, lang: WikiLang): AnchorInfo[] {
+  const matches = [
+    ...liHtml.matchAll(
+      /<a\b[^>]*href="([^"]+)"[^>]*(?:title="([^"]+)")?[^>]*>([\s\S]*?)<\/a>/gi
+    ),
+  ];
 
-  if (!anchorMatch) {
-    return { title: null as string | null, articleUrl: null as string | null };
+  return matches.map((match) => {
+    const href = match[1] ?? "";
+    const titleAttr = match[2] ?? "";
+    const innerText = stripHtml(match[3] ?? "") ?? null;
+
+    return {
+      title: stripHtml(titleAttr) ?? innerText,
+      rawText: innerText,
+      articleUrl: buildWikiArticleUrl(lang, href),
+    };
+  });
+}
+
+function isNumericOrYearTitle(value: string | null | undefined) {
+  if (!value) return false;
+  return /^\d{1,4}$/.test(value.trim());
+}
+
+function chooseBestAnchorInfo(
+  liHtml: string,
+  lang: WikiLang,
+  restText: string
+): { title: string | null; articleUrl: string | null } {
+  const anchors = extractAnchorInfos(liHtml, lang);
+
+  if (!anchors.length) {
+    return { title: null, articleUrl: null };
   }
 
-  const href = anchorMatch[1] ?? "";
-  const titleAttr = anchorMatch[2] ?? "";
-  const innerText = stripHtml(anchorMatch[3] ?? "") ?? null;
+  const leadText = stripReferenceMarkers(restText.split(",")[0] ?? "");
+  const normalizedLeadText = normalizeLooseText(leadText);
 
-  return {
-    title: stripHtml(titleAttr) ?? innerText,
-    articleUrl: buildWikiArticleUrl(lang, href),
-  };
+  const scored = anchors.map((anchor) => {
+    const candidateTitle = stripReferenceMarkers(
+      anchor.title ?? anchor.rawText ?? ""
+    );
+    const normalizedCandidate = normalizeLooseText(candidateTitle);
+
+    let score = 0;
+
+    if (!isNumericOrYearTitle(candidateTitle)) score += 50;
+    if (!isTooGenericTitle(candidateTitle)) score += 20;
+    if (anchor.articleUrl) score += 10;
+
+    if (
+      normalizedLeadText &&
+      normalizedCandidate &&
+      (normalizedLeadText === normalizedCandidate ||
+        normalizedLeadText.includes(normalizedCandidate) ||
+        normalizedCandidate.includes(normalizedLeadText))
+    ) {
+      score += 100;
+    }
+
+    return {
+      anchor: {
+        title: candidateTitle || null,
+        articleUrl: anchor.articleUrl,
+      },
+      score,
+    };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+
+  return scored[0]?.anchor ?? { title: null, articleUrl: null };
 }
 
 function parseFallbackItemsFromSectionHtml(
@@ -526,17 +574,19 @@ function parseFallbackItemsFromSectionHtml(
     if (!yearMatch) continue;
 
     const year = Number(yearMatch[1]);
-    const rest = yearMatch[2]?.trim();
+    const rawRest = yearMatch[2]?.trim();
+    const rest = stripReferenceMarkers(rawRest ?? "");
 
     if (!year || !rest) continue;
     if (year !== selectedYear) continue;
 
-    const anchorInfo = extractFirstAnchorInfo(liHtml, lang);
+    const anchorInfo = chooseBestAnchorInfo(liHtml, lang, rest);
+    const fallbackTitle = stripReferenceMarkers(rest.split(",")[0] ?? "");
 
     parsed.push({
       year,
-      text: normalizeText(rest),
-      title: anchorInfo.title ? normalizeText(anchorInfo.title) : null,
+      text: rest,
+      title: anchorInfo.title ?? fallbackTitle ?? null,
       articleUrl: anchorInfo.articleUrl,
     });
   }
@@ -723,17 +773,15 @@ async function getCachedHighlights(date: string): Promise<DayHighlight[] | null>
 
   if (rawItems && rawItems.length > 0) {
     const mapped = rawItems
-      .map((item) =>
-        normalizeHighlight({
-          type: item.type ?? "none",
-          secondaryType: item.secondaryType ?? null,
-          year: item.year ?? null,
-          text: item.text ?? "No description available.",
-          title: item.title ?? null,
-          image: item.image ?? null,
-          articleUrl: item.articleUrl ?? null,
-        })
-      )
+      .map((item) => ({
+        type: item.type ?? "none",
+        secondaryType: item.secondaryType ?? null,
+        year: item.year ?? null,
+        text: stripReferenceMarkers(item.text ?? "No description available."),
+        title: stripReferenceMarkers(item.title ?? "") || null,
+        image: item.image ?? null,
+        articleUrl: item.articleUrl ?? null,
+      }))
       .filter((item) => item.text);
 
     if (mapped.length > 0) {
@@ -741,22 +789,21 @@ async function getCachedHighlights(date: string): Promise<DayHighlight[] | null>
     }
   }
 
-  const legacySingle = normalizeHighlight({
+  const legacySingle: DayHighlight = {
     type: cached.type as HighlightType,
     secondaryType: null,
     year: cached.year,
-    text: cached.text,
-    title: cached.title,
+    text: stripReferenceMarkers(cached.text),
+    title: stripReferenceMarkers(cached.title ?? "") || null,
     image: cached.image,
     articleUrl: cached.articleUrl,
-  });
+  };
 
   return [legacySingle];
 }
 
 async function saveHighlightsToCache(date: string, highlights: DayHighlight[]) {
   const safeHighlights = highlights
-    .map(normalizeHighlight)
     .filter((item) => item.type !== "none")
     .slice(0, MAX_HIGHLIGHTS);
 
@@ -819,9 +866,7 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
   }
 
   all = all.filter((item) => !isTooGenericTitle(item.title));
-  all = sortHighlights(uniqueHighlights(all))
-    .map(normalizeHighlight)
-    .slice(0, MAX_HIGHLIGHTS);
+  all = sortHighlights(uniqueHighlights(all)).slice(0, MAX_HIGHLIGHTS);
 
   if (all.length === 0) {
     return [buildNoneHighlight()];
