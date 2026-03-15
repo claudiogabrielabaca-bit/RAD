@@ -1,8 +1,8 @@
 import { prisma } from "@/app/lib/prisma";
 import { getOrCreateVisitorId, getVisitorId } from "@/app/lib/visitor-id";
 
-const SURPRISE_DECK_VERSION = "v2-month-cooldown-6";
-const MONTH_COOLDOWN = 6;
+const SURPRISE_DECK_VERSION = "v3-month-cooldown-4-natural";
+const MONTH_COOLDOWN = 4;
 
 type DeckRowLike = {
   deck: unknown;
@@ -50,6 +50,11 @@ function getSeenDays(row?: DeckRowLike | null) {
   return deck.slice(0, safeCursor);
 }
 
+function pickRandomItem<T>(items: T[]) {
+  if (items.length === 0) return null;
+  return items[Math.floor(Math.random() * items.length)] ?? null;
+}
+
 function buildMonthSpacedDeck(
   days: string[],
   recentContextDays: string[] = [],
@@ -82,32 +87,28 @@ function buildMonthSpacedDeck(
   while (true) {
     const available = [...buckets.entries()]
       .filter(([, bucket]) => bucket.length > 0)
-      .map(([month, bucket]) => ({
-        month,
-        count: bucket.length,
-      }));
+      .map(([month]) => month);
 
     if (available.length === 0) {
       break;
     }
 
     let candidates = available.filter(
-      ({ month }) => !recentMonths.includes(month)
+      (month) => !recentMonths.includes(month)
     );
 
-    // fallback para evitar loops o dead-ends al final del armado
+    // fallback para evitar dead-end al final del deck
     if (candidates.length === 0) {
       candidates = available;
     }
 
-    // prioriza meses con más stock para no dejarlos todos amontonados al final
-    const maxCount = Math.max(...candidates.map((item) => item.count));
-    const topCandidates = candidates.filter((item) => item.count === maxCount);
+    const chosenMonth = pickRandomItem(candidates);
 
-    const chosen =
-      topCandidates[Math.floor(Math.random() * topCandidates.length)];
+    if (!chosenMonth) {
+      break;
+    }
 
-    const bucket = buckets.get(chosen.month);
+    const bucket = buckets.get(chosenMonth);
     const nextDay = bucket?.pop();
 
     if (!nextDay) {
@@ -116,7 +117,7 @@ function buildMonthSpacedDeck(
 
     arranged.push(nextDay);
 
-    recentMonths.push(chosen.month);
+    recentMonths.push(chosenMonth);
     if (recentMonths.length > monthCooldown) {
       recentMonths.shift();
     }
