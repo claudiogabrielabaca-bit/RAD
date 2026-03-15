@@ -228,16 +228,6 @@ function formatDisplayDate(date: string) {
   });
 }
 
-function formatMonthDayLabel(monthDay: string) {
-  const [month, day] = monthDay.split("-").map(Number);
-  const localDate = new Date(2000, month - 1, day);
-
-  return localDate.toLocaleDateString("en-US", {
-    day: "numeric",
-    month: "long",
-  });
-}
-
 function formatCompactViews(n: number) {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
@@ -440,6 +430,16 @@ function clearTodayHistory(monthDay = getTodayHistoryMonthDay()) {
   } catch {
     //
   }
+}
+
+function formatMonthDayLabel(monthDay: string) {
+  const [month, day] = monthDay.split("-").map(Number);
+  const date = new Date(2000, month - 1, day);
+
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+  });
 }
 
 function buildRandomRequestUrl(
@@ -737,7 +737,6 @@ export default function Page() {
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string>("");
-  const [todayHistoryNotice, setTodayHistoryNotice] = useState("");
 
   const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
   const [reportingReviewId, setReportingReviewId] = useState<string | null>(
@@ -769,6 +768,7 @@ export default function Page() {
   const [loadingDiscover, setLoadingDiscover] = useState(false);
 
   const [isDayTransitioning, setIsDayTransitioning] = useState(false);
+  const [todayHistoryNotice, setTodayHistoryNotice] = useState("");
 
   const daysInSelectedMonth = getDaysInMonth(
     Number(selectedYear),
@@ -845,7 +845,7 @@ export default function Page() {
     }, duration);
   }
 
-  function showTodayHistoryNotice(message: string, duration = 5000) {
+  function showTodayHistoryNotice(message: string, duration = 4200) {
     setTodayHistoryNotice(message);
 
     if (todayHistoryNoticeTimeoutRef.current) {
@@ -2146,6 +2146,12 @@ export default function Page() {
                   </button>
                 </div>
 
+                {todayHistoryNotice ? (
+                  <div className="mt-4 rounded-xl border border-sky-400/15 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/90 backdrop-blur-xl">
+                    ↻ {todayHistoryNotice}
+                  </div>
+                ) : null}
+
                 <div className="mt-8 rounded-2xl border border-white/8 bg-black/25 p-5 backdrop-blur-xl">
                   <div className="text-sm font-medium text-zinc-200">
                     Pick an exact date
@@ -2263,12 +2269,6 @@ export default function Page() {
                     Today in history
                   </button>
                 </div>
-
-                {todayHistoryNotice ? (
-                  <div className="rounded-xl border border-sky-400/15 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/90 backdrop-blur-xl">
-                    ↻ {todayHistoryNotice}
-                  </div>
-                ) : null}
 
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
