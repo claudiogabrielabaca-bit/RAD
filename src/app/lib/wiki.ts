@@ -323,7 +323,8 @@ async function fetchJson(url: string) {
   try {
     const res = await fetch(url, {
       headers: {
-        "Api-User-Agent": "RateAnyDayInHumanHistory/1.0 (local dev)",
+        "User-Agent": "RateAnyDayInHumanHistory/1.0",
+  "Accept": "application/json",
       },
       next: { revalidate: 86400 },
       signal: controller.signal,
