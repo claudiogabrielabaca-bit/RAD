@@ -91,6 +91,7 @@ export async function GET() {
           username: user.username,
           emailVerified: user.emailVerified,
           createdAt: user.createdAt.toISOString(),
+          bio: user.bio ?? "",
         },
         ratings: ratings.map((item) => ({
           ...item,

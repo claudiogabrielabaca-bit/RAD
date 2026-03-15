@@ -1,27 +1,43 @@
 import { Resend } from "resend";
+import { shouldBypassMailInLocal } from "@/app/lib/dev-flags";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+type SendMailArgs = {
+  to: string;
+  subject: string;
+  html: string;
+  text?: string;
+};
 
 export async function sendMail({
   to,
   subject,
   html,
   text,
-}: {
-  to: string;
-  subject: string;
-  html: string;
-  text?: string;
-}) {
+}: SendMailArgs) {
+  const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM;
 
-  if (!process.env.RESEND_API_KEY) {
+  if (shouldBypassMailInLocal()) {
+    if (!apiKey || !from) {
+      console.warn(
+        "sendMail local bypass active: missing RESEND_API_KEY or MAIL_FROM"
+      );
+
+      return {
+        id: "local-dev-mail-bypass",
+      };
+    }
+  }
+
+  if (!apiKey) {
     throw new Error("Missing RESEND_API_KEY");
   }
 
   if (!from) {
     throw new Error("Missing MAIL_FROM");
   }
+
+  const resend = new Resend(apiKey);
 
   const result = await resend.emails.send({
     from,

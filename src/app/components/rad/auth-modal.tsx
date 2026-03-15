@@ -22,6 +22,86 @@ function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
+function EyeIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-5 w-5"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-5 w-5"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 3l18 18" />
+      <path d="M10.6 10.6A3 3 0 0 0 13.4 13.4" />
+      <path d="M9.88 5.1A10.94 10.94 0 0 1 12 4.9c6.4 0 10 7.1 10 7.1a18.4 18.4 0 0 1-4.11 4.98" />
+      <path d="M6.1 6.1A18.76 18.76 0 0 0 2 12s3.6 7.1 10 7.1a10.7 10.7 0 0 0 5.03-1.2" />
+    </svg>
+  );
+}
+
+function PasswordField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  visible,
+  onToggle,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  visible: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm text-zinc-300">{label}</label>
+
+      <div className="relative">
+        <input
+          type={visible ? "text" : "password"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 pr-12 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
+        />
+
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute inset-y-0 right-3 flex items-center text-zinc-400 transition hover:text-white"
+          aria-label={visible ? "Hide password" : "Show password"}
+          title={visible ? "Hide password" : "Show password"}
+        >
+          {visible ? <EyeOffIcon /> : <EyeIcon />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AuthModal({
   open,
   view,
@@ -43,6 +123,11 @@ export default function AuthModal({
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [loading, setLoading] = useState(false);
   const [secondaryLoading, setSecondaryLoading] = useState(false);
@@ -73,16 +158,36 @@ export default function AuthModal({
   }
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setEmail(initialEmail || "");
+      setUsername("");
+      setPassword("");
+      setCode("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setMessage("");
+      setError("");
+      setDevCode("");
+      setLoading(false);
+      setSecondaryLoading(false);
+      setCurrentUserEmailVerified(null);
+      setTurnstileToken("");
+      setShowLoginPassword(false);
+      setShowRegisterPassword(false);
+      setShowNewPassword(false);
+      setShowConfirmPassword(false);
+      return;
+    }
 
     setEmail(initialEmail || "");
-    setMessage("");
-    setError("");
-    setDevCode("");
     setLoading(false);
     setSecondaryLoading(false);
     setCurrentUserEmailVerified(null);
     resetTurnstile();
+    setShowLoginPassword(false);
+    setShowRegisterPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
 
     if (view === "login") {
       setPassword("");
@@ -209,12 +314,6 @@ export default function AuthModal({
     }
   }, [view]);
 
-  const showTurnstile =
-    view === "login" ||
-    view === "register" ||
-    view === "forgot-password" ||
-    view === "verify-email";
-
   const codeIsComplete = code.trim().length === 6;
 
   async function refreshUserAndNotify() {
@@ -235,10 +334,18 @@ export default function AuthModal({
     }
   }
 
-  function goToView(nextView: AuthView, nextEmail?: string) {
-    setMessage("");
-    setError("");
-    setDevCode("");
+  function goToView(
+    nextView: AuthView,
+    nextEmail?: string,
+    options?: {
+      nextMessage?: string;
+      nextError?: string;
+      nextDevCode?: string;
+    }
+  ) {
+    setMessage(options?.nextMessage ?? "");
+    setError(options?.nextError ?? "");
+    setDevCode(options?.nextDevCode ?? "");
     resetTurnstile();
     onChangeView(nextView, nextEmail ?? email);
   }
@@ -276,9 +383,10 @@ export default function AuthModal({
 
       if (!res.ok) {
         if (json?.requiresVerification) {
-          setMessage("This account must verify email first.");
-          setDevCode(json?.devCode ?? "");
-          goToView("verify-email", json?.email ?? normalized);
+          goToView("verify-email", json?.email ?? normalized, {
+            nextMessage: "This account must verify email first.",
+            nextDevCode: json?.devCode ?? "",
+          });
           return;
         }
 
@@ -287,9 +395,10 @@ export default function AuthModal({
       }
 
       if (json?.requiresCode) {
-        setMessage(json?.message ?? "Enter the login code.");
-        setDevCode(json?.devCode ?? "");
-        goToView("login-code", json?.email ?? normalized);
+        goToView("login-code", json?.email ?? normalized, {
+          nextMessage: json?.message ?? "Enter the login code.",
+          nextDevCode: json?.devCode ?? "",
+        });
         return;
       }
 
@@ -410,11 +519,11 @@ export default function AuthModal({
         return;
       }
 
-      setMessage(
-        json?.message ?? "Account created successfully. Verify your email."
-      );
-      setDevCode(json?.devCode ?? "");
-      goToView("verify-email", json?.user?.email ?? normalized);
+      goToView("verify-email", json?.user?.email ?? normalized, {
+        nextMessage:
+          json?.message ?? "Account created successfully. Verify your email.",
+        nextDevCode: json?.devCode ?? "",
+      });
     } catch {
       resetTurnstile();
       setError("Could not create account.");
@@ -458,11 +567,11 @@ export default function AuthModal({
         return;
       }
 
-      setMessage(
-        json?.message ?? "If that email exists, a recovery code was sent."
-      );
-      setDevCode(json?.devCode ?? "");
-      goToView("reset-password", normalized);
+      goToView("reset-password", normalized, {
+        nextMessage:
+          json?.message ?? "If that email exists, a recovery code was sent.",
+        nextDevCode: json?.devCode ?? "",
+      });
     } catch {
       resetTurnstile();
       setError("Could not process request.");
@@ -744,18 +853,14 @@ export default function AuthModal({
                 />
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm text-zinc-300">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Your password"
-                  className="w-full rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
-                />
-              </div>
+              <PasswordField
+                label="Password"
+                value={password}
+                onChange={setPassword}
+                placeholder="Your password"
+                visible={showLoginPassword}
+                onToggle={() => setShowLoginPassword((prev) => !prev)}
+              />
 
               <TurnstileWidget
                 key={`turnstile-${view}-${turnstileResetKey}`}
@@ -872,18 +977,14 @@ export default function AuthModal({
                 />
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm text-zinc-300">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                  className="w-full rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
-                />
-              </div>
+              <PasswordField
+                label="Password"
+                value={password}
+                onChange={setPassword}
+                placeholder="At least 8 characters"
+                visible={showRegisterPassword}
+                onToggle={() => setShowRegisterPassword((prev) => !prev)}
+              />
 
               <TurnstileWidget
                 key={`turnstile-${view}-${turnstileResetKey}`}
@@ -970,31 +1071,23 @@ export default function AuthModal({
                 />
               </div>
 
-              <div>
-                <label className="mb-2 block text-sm text-zinc-300">
-                  New password
-                </label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                  className="w-full rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
-                />
-              </div>
+              <PasswordField
+                label="New password"
+                value={newPassword}
+                onChange={setNewPassword}
+                placeholder="At least 8 characters"
+                visible={showNewPassword}
+                onToggle={() => setShowNewPassword((prev) => !prev)}
+              />
 
-              <div>
-                <label className="mb-2 block text-sm text-zinc-300">
-                  Confirm new password
-                </label>
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Repeat password"
-                  className="w-full rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
-                />
-              </div>
+              <PasswordField
+                label="Confirm new password"
+                value={confirmPassword}
+                onChange={setConfirmPassword}
+                placeholder="Repeat password"
+                visible={showConfirmPassword}
+                onToggle={() => setShowConfirmPassword((prev) => !prev)}
+              />
 
               <div className="flex flex-wrap items-center gap-3 pt-2">
                 <button

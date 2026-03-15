@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import RatingDistribution from "@/app/components/rad/rating-distribution";
+
+const BIO_MAX_LENGTH = 160;
 
 type ProfileUser = {
   id: string;
@@ -11,6 +13,7 @@ type ProfileUser = {
   username: string;
   emailVerified?: boolean;
   createdAt: string;
+  bio?: string | null;
 };
 
 type ProfileRating = {
@@ -137,14 +140,51 @@ function getPreviewBadgeClasses(type?: string | null) {
   return "bg-amber-300/18 text-amber-200";
 }
 
+function isValidDayString(value?: string | null): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-4 w-4"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+    </svg>
+  );
+}
+
 export default function ProfilePageClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const rawReturnTo = searchParams.get("returnTo");
+  const rawFromDay = searchParams.get("fromDay");
+
+  const returnTo =
+    rawReturnTo && rawReturnTo.startsWith("/")
+      ? rawReturnTo
+      : isValidDayString(rawFromDay)
+        ? `/?day=${rawFromDay}`
+        : "/";
 
   const [data, setData] = useState<ProfilePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showAllRatings, setShowAllRatings] = useState(false);
-  const [showAllFavorites, setShowAllFavorites] = useState(false);
+
+  const [bioModalOpen, setBioModalOpen] = useState(false);
+  const [bioDraft, setBioDraft] = useState("");
+  const [bioSaving, setBioSaving] = useState(false);
+  const [bioError, setBioError] = useState("");
 
   async function loadProfile() {
     setLoading(true);
@@ -158,7 +198,7 @@ export default function ProfilePageClient() {
       const json = await res.json().catch(() => null);
 
       if (res.status === 401) {
-        router.push("/");
+        router.push(returnTo);
         return;
       }
 
@@ -177,18 +217,73 @@ export default function ProfilePageClient() {
 
   async function handleLogout() {
     await fetch("/api/logout", { method: "POST" }).catch(() => {});
-    router.push("/");
+    router.push(returnTo);
     router.refresh();
   }
 
   useEffect(() => {
     loadProfile();
-  }, []);
+  }, [returnTo]);
 
-  const visibleFavorites = useMemo(() => {
-    if (!data) return [];
-    return showAllFavorites ? data.favoriteDays : data.favoriteDays.slice(0, 3);
-  }, [data, showAllFavorites]);
+  function getDisplayedBio() {
+    const raw = data?.user?.bio?.trim();
+    if (raw) return raw;
+    return `@${data?.user.username ?? "user"} is building a personal archive of favorite moments in history.`;
+  }
+
+  function openBioModal() {
+    setBioDraft(data?.user?.bio ?? "");
+    setBioError("");
+    setBioModalOpen(true);
+  }
+
+  function closeBioModal() {
+    if (bioSaving) return;
+    setBioModalOpen(false);
+    setBioError("");
+  }
+
+  async function saveBio() {
+    setBioSaving(true);
+    setBioError("");
+
+    try {
+      const res = await fetch("/api/profile/bio", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          bio: bioDraft,
+        }),
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setBioError(json?.error ?? "Could not save bio.");
+        return;
+      }
+
+      setData((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          user: {
+            ...prev.user,
+            bio: json?.bio ?? "",
+          },
+        };
+      });
+
+      setBioModalOpen(false);
+    } catch {
+      setBioError("Could not save bio.");
+    } finally {
+      setBioSaving(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -219,353 +314,299 @@ export default function ProfilePageClient() {
   const { user, stats, latestRatings, ratings, favoriteDays } = data;
 
   return (
-    <main className="min-h-screen bg-transparent text-zinc-100">
-      <div className="mx-auto max-w-7xl px-6 py-10">
-        <div className="mb-5 flex items-center justify-between gap-4">
-          <div>
-            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-              Your account
-            </div>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
-              Profile
-            </h1>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-200 transition hover:bg-black/30"
-            >
-              Back home
-            </Link>
-
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-
-        {/* HERO REDESIGN */}
-        <section className="relative overflow-hidden rounded-[36px] border border-white/10 bg-white/[0.045] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.04),transparent_24%)]" />
-
-          <div className="relative grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-            <div className="flex flex-col gap-5 lg:flex-row">
-              <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/10 text-5xl font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-                {getInitial(user.username)}
-              </div>
-
-              <div className="min-w-0">
-                <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                  RAD profile
-                </div>
-
-                <div className="mt-2 text-5xl font-semibold tracking-tight text-white">
-                  @{user.username}
-                </div>
-
-                <div className="mt-2 text-sm text-zinc-400">{user.email}</div>
-
-                <div className="mt-4 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-zinc-300">
-                    Joined {formatDateOnly(user.createdAt)}
-                  </span>
-
-                  {user.emailVerified ? (
-                    <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-300">
-                      Verified account
-                    </span>
-                  ) : (
-                    <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs text-amber-300">
-                      Email not verified
-                    </span>
-                  )}
-                </div>
-
-                <p className="mt-5 max-w-2xl text-base leading-7 text-zinc-300">
-                  @{user.username} is building a personal archive of favorite
-                  moments in history.
-                </p>
-
-                <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:max-w-2xl xl:grid-cols-3">
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-xs font-medium text-zinc-200">
-                      Identity
-                    </div>
-                    <div className="mt-2 text-sm leading-6 text-zinc-400">
-                      A private RAD profile shaped by saved moments and ratings.
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <div className="text-xs font-medium text-zinc-200">
-                      Favorite focus
-                    </div>
-                    <div className="mt-2 text-sm leading-6 text-zinc-400">
-                      Curated dates with personal meaning and replay value.
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:col-span-2 xl:col-span-1">
-                    <div className="text-xs font-medium text-zinc-200">
-                      Profile pulse
-                    </div>
-                    <div className="mt-2 text-sm leading-6 text-zinc-400">
-                      A visual history of what you save, rate and revisit most.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-[24px] border border-white/10 bg-black/25 p-4 text-center">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                    Ratings
-                  </div>
-                  <div className="mt-3 text-4xl font-semibold text-white">
-                    {stats.ratingsCount}
-                  </div>
-                </div>
-
-                <div className="rounded-[24px] border border-white/10 bg-black/25 p-4 text-center">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                    Favorites
-                  </div>
-                  <div className="mt-3 text-4xl font-semibold text-white">
-                    {stats.favoritesCount}
-                  </div>
-                </div>
-
-                <div className="rounded-[24px] border border-white/10 bg-black/25 p-4 text-center">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                    Avg rating
-                  </div>
-                  <div className="mt-3 text-4xl font-semibold text-white">
-                    ★ {stats.averageRating.toFixed(1)}
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-[24px] border border-white/10 bg-black/25 p-4">
-                <RatingDistribution
-                  compact
-                  avg={stats.averageRating.toFixed(1)}
-                  ratingsCount={stats.ratingsCount}
-                  starDistribution={stats.starDistribution}
-                />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* FAVORITES AS DISCOVERY CARDS */}
-        <section className="mt-8 rounded-[30px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl">
-          <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+    <>
+      <main className="min-h-screen bg-transparent text-zinc-100">
+        <div className="mx-auto max-w-7xl px-6 py-10">
+          <div className="mb-5 flex items-center justify-between gap-4">
             <div>
+              <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                Your account
+              </div>
+              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+                Profile
+              </h1>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Link
+                href={returnTo}
+                className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-200 transition hover:bg-black/30"
+              >
+                Back home
+              </Link>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200"
+              >
+                Logout
+              </button>
+            </div>
+          </div>
+
+          <section className="relative overflow-hidden rounded-[36px] border border-white/10 bg-white/[0.045] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.04),transparent_24%)]" />
+
+            <div className="relative grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="flex flex-col gap-5 lg:flex-row">
+                <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/10 text-5xl font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                  {getInitial(user.username)}
+                </div>
+
+                <div className="min-w-0">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                    RAD profile
+                  </div>
+
+                  <div className="mt-2 text-5xl font-semibold tracking-tight text-white">
+                    @{user.username}
+                  </div>
+
+                  <div className="mt-2 text-sm text-zinc-400">{user.email}</div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-zinc-300">
+                      Joined {formatDateOnly(user.createdAt)}
+                    </span>
+
+                    {user.emailVerified ? (
+                      <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-300">
+                        Verified account
+                      </span>
+                    ) : (
+                      <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs text-amber-300">
+                        Email not verified
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-5 inline-flex max-w-2xl items-center gap-3 align-middle">
+                    <p className="max-w-[720px] text-base leading-7 text-zinc-300">
+                      {getDisplayedBio()}
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={openBioModal}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-zinc-300 transition hover:bg-black/30 hover:text-white"
+                      aria-label="Edit bio"
+                      title="Edit bio"
+                    >
+                      <PencilIcon />
+                    </button>
+                  </div>
+
+                  <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:max-w-2xl xl:grid-cols-3">
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <div className="text-xs font-medium text-zinc-200">
+                        Identity
+                      </div>
+                      <div className="mt-2 text-sm leading-6 text-zinc-400">
+                        A private RAD profile shaped by saved moments and
+                        ratings.
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <div className="text-xs font-medium text-zinc-200">
+                        Favorite focus
+                      </div>
+                      <div className="mt-2 text-sm leading-6 text-zinc-400">
+                        Curated dates with personal meaning and replay value.
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:col-span-2 xl:col-span-1">
+                      <div className="text-xs font-medium text-zinc-200">
+                        Profile pulse
+                      </div>
+                      <div className="mt-2 text-sm leading-6 text-zinc-400">
+                        A visual history of what you save, rate and revisit
+                        most.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="rounded-[24px] border border-white/10 bg-black/25 p-4 text-center">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                      Ratings
+                    </div>
+                    <div className="mt-3 text-4xl font-semibold text-white">
+                      {stats.ratingsCount}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-white/10 bg-black/25 p-4 text-center">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                      Favorites
+                    </div>
+                    <div className="mt-3 text-4xl font-semibold text-white">
+                      {stats.favoritesCount}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-white/10 bg-black/25 p-4 text-center">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                      Avg rating
+                    </div>
+                    <div className="mt-3 text-4xl font-semibold text-white">
+                      ★ {stats.averageRating.toFixed(1)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[24px] border border-white/10 bg-black/25 p-4">
+                  <RatingDistribution
+                    compact
+                    avg={stats.averageRating.toFixed(1)}
+                    ratingsCount={stats.ratingsCount}
+                    starDistribution={stats.starDistribution}
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-8 rounded-[30px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl">
+            <div className="mb-5">
               <h2 className="text-2xl font-semibold text-white">
                 Favorite days
               </h2>
               <p className="mt-1 text-sm text-zinc-400">
-                Discovery-style cards for the days you marked with the star.
+                Discovery-style cards for all the days you marked with the star.
               </p>
             </div>
 
-            {favoriteDays.length > 3 ? (
-              <button
-                type="button"
-                onClick={() => setShowAllFavorites((prev) => !prev)}
-                className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-200 transition hover:bg-black/30"
-              >
-                {showAllFavorites ? "Show less" : "View all favorites"}
-              </button>
-            ) : null}
-          </div>
+            {favoriteDays.length === 0 ? (
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
+                You have not saved favorite days yet.
+              </div>
+            ) : (
+              <div className="flex gap-5 overflow-x-auto pb-2">
+                {favoriteDays.map((favorite) => {
+                  const title =
+                    favorite.preview?.title?.trim() ||
+                    fallbackFavoriteTitle(favorite.day);
 
-          {favoriteDays.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
-              You have not saved favorite days yet.
-            </div>
-          ) : (
-            <div className="flex gap-5 overflow-x-auto pb-2">
-              {visibleFavorites.map((favorite) => {
-                const title =
-                  favorite.preview?.title?.trim() ||
-                  fallbackFavoriteTitle(favorite.day);
+                  const description =
+                    favorite.preview?.text?.trim() || fallbackFavoriteText();
 
-                const description =
-                  favorite.preview?.text?.trim() || fallbackFavoriteText();
+                  const badgeLabel = getPreviewBadgeLabel(
+                    favorite.preview?.type
+                  );
+                  const badgeClasses = getPreviewBadgeClasses(
+                    favorite.preview?.type
+                  );
 
-                const badgeLabel = getPreviewBadgeLabel(favorite.preview?.type);
-                const badgeClasses = getPreviewBadgeClasses(
-                  favorite.preview?.type
-                );
-
-                return (
-                  <article
-                    key={favorite.id}
-                    className="group relative h-[430px] min-w-[290px] max-w-[290px] overflow-hidden rounded-[30px] border border-white/10 bg-black/30"
-                  >
-                    {favorite.preview?.image ? (
-                      <div
-                        className="absolute inset-0 bg-cover bg-center transition duration-500 group-hover:scale-[1.04]"
-                        style={{
-                          backgroundImage: `url(${favorite.preview.image})`,
-                        }}
-                      />
-                    ) : (
-                      <div className="absolute inset-0 bg-[linear-gradient(135deg,#1a1a1a_0%,#0d0d0d_100%)]" />
-                    )}
-
-                    <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
-
-                    <div className="absolute left-4 right-4 top-4 flex items-center justify-between">
-                      <span className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/90 backdrop-blur-md">
-                        Favorite
-                      </span>
-
-                      <span
-                        className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] backdrop-blur-md ${badgeClasses}`}
-                      >
-                        {badgeLabel}
-                      </span>
-                    </div>
-
-                    <div className="absolute bottom-4 left-4 right-4 rounded-[26px] border border-white/10 bg-[rgba(17,17,17,0.78)] p-5 shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl">
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-400">
-                        {favorite.day}
-                      </div>
-
-                      <div className="mt-2 text-[2rem] font-semibold leading-[1.05] tracking-tight text-white">
-                        {title}
-                      </div>
-
-                      <div className="mt-3 line-clamp-3 text-sm leading-6 text-zinc-300">
-                        {description}
-                      </div>
-
-                      <div className="mt-4 flex items-center justify-between text-xs text-zinc-400">
-                        <span>Saved {formatDateOnly(favorite.updatedAt)}</span>
-                        <span className="text-yellow-400">★</span>
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <Link
-                          href={`/?day=${encodeURIComponent(favorite.day)}`}
-                          className="rounded-xl bg-white px-3 py-2 text-xs font-medium text-black transition hover:bg-zinc-200"
-                        >
-                          Open on home
-                        </Link>
-
-                        {favorite.preview?.articleUrl ? (
-                          <a
-                            href={favorite.preview.articleUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-zinc-200 transition hover:bg-black/40"
-                          >
-                            Read source
-                          </a>
-                        ) : null}
-                      </div>
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        {/* LATEST REVIEWS */}
-        <section className="mt-8 rounded-[28px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl">
-          <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <h2 className="text-2xl font-semibold text-white">
-                Latest reviews
-              </h2>
-              <p className="mt-1 text-sm text-zinc-400">
-                Your 5 most recent ratings.
-              </p>
-            </div>
-
-            {ratings.length > 5 ? (
-              <button
-                type="button"
-                onClick={() => setShowAllRatings((prev) => !prev)}
-                className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-200 transition hover:bg-black/30"
-              >
-                {showAllRatings ? "Hide full archive" : "Show full archive"}
-              </button>
-            ) : null}
-          </div>
-
-          {latestRatings.length === 0 ? (
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
-              You have not rated any day yet.
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {latestRatings.map((rating) => (
-                <article
-                  key={rating.id}
-                  className="rounded-2xl border border-white/10 bg-black/20 p-4"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="text-base font-semibold text-white">
-                        {rating.day}
-                      </div>
-                      <div className="mt-1 text-xs text-zinc-500">
-                        {renderStars(rating.stars)} • Updated{" "}
-                        {formatDateTime(rating.updatedAt)}
-                      </div>
-                    </div>
-
-                    <Link
-                      href={`/?day=${encodeURIComponent(rating.day)}`}
-                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 transition hover:bg-white/10"
+                  return (
+                    <article
+                      key={favorite.id}
+                      className="group relative h-[430px] min-w-[290px] max-w-[290px] overflow-hidden rounded-[30px] border border-white/10 bg-black/30"
                     >
-                      Open on home
-                    </Link>
-                  </div>
+                      {favorite.preview?.image ? (
+                        <div
+                          className="absolute inset-0 bg-cover bg-center transition duration-500 group-hover:scale-[1.04]"
+                          style={{
+                            backgroundImage: `url(${favorite.preview.image})`,
+                          }}
+                        />
+                      ) : (
+                        <div className="absolute inset-0 bg-[linear-gradient(135deg,#1a1a1a_0%,#0d0d0d_100%)]" />
+                      )}
 
-                  <p className="mt-4 text-sm leading-6 text-zinc-300">
-                    {rating.review?.trim()
-                      ? rating.review
-                      : "No written review for this rating."}
-                  </p>
-                </article>
-              ))}
-            </div>
-          )}
-        </section>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent" />
 
-        {/* FULL ARCHIVE */}
-        {ratings.length > 5 ? (
+                      <div className="absolute left-4 right-4 top-4 flex items-center justify-between">
+                        <span className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/90 backdrop-blur-md">
+                          Favorite
+                        </span>
+
+                        <span
+                          className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] backdrop-blur-md ${badgeClasses}`}
+                        >
+                          {badgeLabel}
+                        </span>
+                      </div>
+
+                      <div className="absolute bottom-4 left-4 right-4 rounded-[26px] border border-white/10 bg-[rgba(17,17,17,0.78)] p-5 shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-400">
+                          {favorite.day}
+                        </div>
+
+                        <div className="mt-2 text-[2rem] font-semibold leading-[1.05] tracking-tight text-white">
+                          {title}
+                        </div>
+
+                        <div className="mt-3 line-clamp-3 text-sm leading-6 text-zinc-300">
+                          {description}
+                        </div>
+
+                        <div className="mt-4 flex items-center justify-between text-xs text-zinc-400">
+                          <span>Saved {formatDateOnly(favorite.updatedAt)}</span>
+                          <span className="text-yellow-400">★</span>
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Link
+                            href={`/?day=${encodeURIComponent(favorite.day)}`}
+                            className="rounded-xl bg-white px-3 py-2 text-xs font-medium text-black transition hover:bg-zinc-200"
+                          >
+                            Open on home
+                          </Link>
+
+                          {favorite.preview?.articleUrl ? (
+                            <a
+                              href={favorite.preview.articleUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-zinc-200 transition hover:bg-black/40"
+                            >
+                              Read source
+                            </a>
+                          ) : null}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           <section className="mt-8 rounded-[28px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl">
-            <div className="mb-5 flex items-end justify-between gap-4">
+            <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-2xl font-semibold text-white">
-                  Full archive
+                  Latest reviews
                 </h2>
                 <p className="mt-1 text-sm text-zinc-400">
-                  Full history of the days you rated with your account.
+                  Your 5 most recent ratings.
                 </p>
               </div>
 
-              <div className="text-sm text-zinc-500">
-                {ratings.length} total rating{ratings.length === 1 ? "" : "s"}
-              </div>
+              {ratings.length > 5 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAllRatings((prev) => !prev)}
+                  className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-200 transition hover:bg-black/30"
+                >
+                  {showAllRatings ? "Hide full archive" : "Show full archive"}
+                </button>
+              ) : null}
             </div>
 
-            {showAllRatings ? (
+            {latestRatings.length === 0 ? (
+              <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
+                You have not rated any day yet.
+              </div>
+            ) : (
               <div className="space-y-4">
-                {ratings.map((rating) => (
+                {latestRatings.map((rating) => (
                   <article
                     key={rating.id}
                     className="rounded-2xl border border-white/10 bg-black/20 p-4"
@@ -597,61 +638,151 @@ export default function ProfilePageClient() {
                   </article>
                 ))}
               </div>
-            ) : (
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
-                Click <span className="text-zinc-200">Show full archive</span>{" "}
-                to see all your ratings.
-              </div>
             )}
           </section>
-        ) : null}
 
-        {/* ACCOUNT INFO */}
-        <section className="mt-8 rounded-[28px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl">
-          <div className="mb-4">
-            <h2 className="text-xl font-semibold text-white">Account info</h2>
-            <p className="mt-1 text-sm text-zinc-400">
-              Core account details.
-            </p>
+          {ratings.length > 5 ? (
+            <section className="mt-8 rounded-[28px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl">
+              <div className="mb-5 flex items-end justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-semibold text-white">
+                    Full archive
+                  </h2>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Full history of the days you rated with your account.
+                  </p>
+                </div>
+
+                <div className="text-sm text-zinc-500">
+                  {ratings.length} total rating{ratings.length === 1 ? "" : "s"}
+                </div>
+              </div>
+
+              {showAllRatings ? (
+                <div className="space-y-4">
+                  {ratings.map((rating) => (
+                    <article
+                      key={rating.id}
+                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <div className="text-base font-semibold text-white">
+                            {rating.day}
+                          </div>
+                          <div className="mt-1 text-xs text-zinc-500">
+                            {renderStars(rating.stars)} • Updated{" "}
+                            {formatDateTime(rating.updatedAt)}
+                          </div>
+                        </div>
+
+                        <Link
+                          href={`/?day=${encodeURIComponent(rating.day)}`}
+                          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 transition hover:bg-white/10"
+                        >
+                          Open on home
+                        </Link>
+                      </div>
+
+                      <p className="mt-4 text-sm leading-6 text-zinc-300">
+                        {rating.review?.trim()
+                          ? rating.review
+                          : "No written review for this rating."}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
+                  Click <span className="text-zinc-200">Show full archive</span>{" "}
+                  to see all your ratings.
+                </div>
+              )}
+            </section>
+          ) : null}
+        </div>
+      </main>
+
+      {bioModalOpen ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
+          <div
+            className="absolute inset-0"
+            onClick={closeBioModal}
+            aria-hidden="true"
+          />
+
+          <div className="relative z-[101] w-full max-w-lg overflow-hidden rounded-[30px] border border-white/10 bg-[#121212]/95 shadow-[0_30px_90px_rgba(0,0,0,0.55)]">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.06),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.03),transparent_26%)]" />
+
+            <div className="relative p-6 sm:p-7">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+                    RAD Profile
+                  </div>
+                  <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">
+                    Edit bio
+                  </h2>
+                  <p className="mt-2 max-w-md text-sm leading-6 text-zinc-400">
+                    Update the text shown under your profile.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={closeBioModal}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/10"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="mt-6">
+                <label className="mb-2 block text-sm text-zinc-300">Bio</label>
+                <textarea
+                  value={bioDraft}
+                  onChange={(e) =>
+                    setBioDraft(e.target.value.slice(0, BIO_MAX_LENGTH))
+                  }
+                  maxLength={BIO_MAX_LENGTH}
+                  placeholder={`@${user.username} is building a personal archive of favorite moments in history.`}
+                  className="h-36 w-full resize-none rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
+                />
+
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <div className="text-xs text-zinc-500">
+                    {bioDraft.length} / {BIO_MAX_LENGTH}
+                  </div>
+
+                  {bioError ? (
+                    <div className="text-xs text-red-300">{bioError}</div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="mt-6 flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={saveBio}
+                  disabled={bioSaving}
+                  className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
+                >
+                  {bioSaving ? "Saving..." : "Save bio"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={closeBioModal}
+                  disabled={bioSaving}
+                  className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:bg-white/10 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
           </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">
-                Username
-              </div>
-              <div className="mt-2 text-sm text-white">@{user.username}</div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">
-                Email
-              </div>
-              <div className="mt-2 break-all text-sm text-white">
-                {user.email}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">
-                Joined
-              </div>
-              <div className="mt-2 text-sm text-white">
-                {formatDateOnly(user.createdAt)}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-              <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">
-                Status
-              </div>
-              <div className="mt-2 text-sm text-white">
-                {user.emailVerified ? "Verified" : "Unverified"}
-              </div>
-            </div>
-          </div>
-        </section>
-      </div>
-    </main>
+        </div>
+      ) : null}
+    </>
   );
 }

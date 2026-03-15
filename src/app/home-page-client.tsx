@@ -573,7 +573,7 @@ export default function Page() {
 
   const profileHref =
     hasPickedInitialDay && isValidDayString(day)
-      ? `/profile?fromDay=${day}`
+      ? `/profile?returnTo=${encodeURIComponent(`/?day=${day}`)}`
       : "/profile";
 
   function openAuthModal(view: AuthView = "login", nextEmail = "") {
