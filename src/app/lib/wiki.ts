@@ -60,19 +60,32 @@ const PRIORITY: WikiType[] = ["selected", "events", "births", "deaths"];
 const WIKI_LANGS: WikiLang[] = ["en"];
 const MAX_HIGHLIGHTS = 5;
 
-function stripHtml(input: string | null | undefined) {
-  if (!input) return null;
-  return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
 function decodeHtmlEntities(input: string) {
   return input
+    .replace(/&#(\d+);/g, (_, dec) => {
+      const code = Number(dec);
+      return Number.isNaN(code) ? _ : String.fromCharCode(code);
+    })
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => {
+      const code = parseInt(hex, 16);
+      return Number.isNaN(code) ? _ : String.fromCharCode(code);
+    })
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
     .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
     .replace(/&#39;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
+}
+
+function stripHtml(input: string | null | undefined) {
+  if (!input) return null;
+
+  return decodeHtmlEntities(input)
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeText(input: string) {
@@ -104,6 +117,14 @@ function extractWikiSlug(url: string | null | undefined) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+function normalizeHighlight(item: DayHighlight): DayHighlight {
+  return {
+    ...item,
+    title: item.title ? normalizeText(item.title) : null,
+    text: normalizeText(item.text || "No description available."),
+  };
 }
 
 function buildDedupKey(item: DayHighlight) {
@@ -268,16 +289,19 @@ function buildHighlight(
   image: string | null,
   articleUrl: string | null
 ): DayHighlight {
-  const type = detectPrimaryType(baseType, text, title);
-  const secondaryType = detectSecondaryType(text, title);
+  const safeText = normalizeText(text || "No description available.");
+  const safeTitle = title ? normalizeText(title) : null;
+
+  const type = detectPrimaryType(baseType, safeText, safeTitle);
+  const secondaryType = detectSecondaryType(safeText, safeTitle);
 
   return {
     type,
     secondaryType:
       secondaryType && secondaryType !== type ? secondaryType : null,
     year,
-    text,
-    title,
+    text: safeText,
+    title: safeTitle,
     image,
     articleUrl,
   };
@@ -288,7 +312,7 @@ function mapItem(type: WikiType, item: WikiItem): DayHighlight {
   const rawTitle = stripHtml(
     page?.titles?.display ?? page?.titles?.normalized ?? null
   );
-  const rawText = item.text ?? "No description available.";
+  const rawText = normalizeText(item.text ?? "No description available.");
 
   return buildHighlight(
     type,
@@ -334,7 +358,7 @@ async function fetchWikiType(type: WikiType, month: string, day: string) {
       const items = (data?.[type] ?? []) as WikiItem[];
       results.push(...items);
     } catch {
-      // continue
+      //
     }
   }
 
@@ -511,8 +535,8 @@ function parseFallbackItemsFromSectionHtml(
 
     parsed.push({
       year,
-      text: rest,
-      title: anchorInfo.title,
+      text: normalizeText(rest),
+      title: anchorInfo.title ? normalizeText(anchorInfo.title) : null,
       articleUrl: anchorInfo.articleUrl,
     });
   }
@@ -699,15 +723,17 @@ async function getCachedHighlights(date: string): Promise<DayHighlight[] | null>
 
   if (rawItems && rawItems.length > 0) {
     const mapped = rawItems
-      .map((item) => ({
-        type: item.type ?? "none",
-        secondaryType: item.secondaryType ?? null,
-        year: item.year ?? null,
-        text: item.text ?? "No description available.",
-        title: item.title ?? null,
-        image: item.image ?? null,
-        articleUrl: item.articleUrl ?? null,
-      }))
+      .map((item) =>
+        normalizeHighlight({
+          type: item.type ?? "none",
+          secondaryType: item.secondaryType ?? null,
+          year: item.year ?? null,
+          text: item.text ?? "No description available.",
+          title: item.title ?? null,
+          image: item.image ?? null,
+          articleUrl: item.articleUrl ?? null,
+        })
+      )
       .filter((item) => item.text);
 
     if (mapped.length > 0) {
@@ -715,7 +741,7 @@ async function getCachedHighlights(date: string): Promise<DayHighlight[] | null>
     }
   }
 
-  const legacySingle: DayHighlight = {
+  const legacySingle = normalizeHighlight({
     type: cached.type as HighlightType,
     secondaryType: null,
     year: cached.year,
@@ -723,13 +749,14 @@ async function getCachedHighlights(date: string): Promise<DayHighlight[] | null>
     title: cached.title,
     image: cached.image,
     articleUrl: cached.articleUrl,
-  };
+  });
 
   return [legacySingle];
 }
 
 async function saveHighlightsToCache(date: string, highlights: DayHighlight[]) {
   const safeHighlights = highlights
+    .map(normalizeHighlight)
     .filter((item) => item.type !== "none")
     .slice(0, MAX_HIGHLIGHTS);
 
@@ -792,7 +819,9 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
   }
 
   all = all.filter((item) => !isTooGenericTitle(item.title));
-  all = sortHighlights(uniqueHighlights(all)).slice(0, MAX_HIGHLIGHTS);
+  all = sortHighlights(uniqueHighlights(all))
+    .map(normalizeHighlight)
+    .slice(0, MAX_HIGHLIGHTS);
 
   if (all.length === 0) {
     return [buildNoneHighlight()];
