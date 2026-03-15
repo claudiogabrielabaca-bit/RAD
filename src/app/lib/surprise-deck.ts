@@ -1,6 +1,9 @@
 import { prisma } from "@/app/lib/prisma";
 import { getOrCreateVisitorId, getVisitorId } from "@/app/lib/visitor-id";
 
+const SURPRISE_DECK_VERSION = "v2-month-cooldown-6";
+const MONTH_COOLDOWN = 6;
+
 type DeckRowLike = {
   deck: unknown;
   cursor: number;
@@ -8,6 +11,10 @@ type DeckRowLike = {
 
 function isValidDayString(value?: string | null): value is string {
   return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function parseMonth(day: string) {
+  return Number(day.slice(5, 7));
 }
 
 function shuffleArray<T>(items: T[]) {
@@ -43,9 +50,84 @@ function getSeenDays(row?: DeckRowLike | null) {
   return deck.slice(0, safeCursor);
 }
 
+function buildMonthSpacedDeck(
+  days: string[],
+  recentContextDays: string[] = [],
+  monthCooldown = MONTH_COOLDOWN
+) {
+  const uniqueDays = Array.from(
+    new Set(days.filter((day): day is string => isValidDayString(day)))
+  );
+
+  const buckets = new Map<number, string[]>();
+
+  for (const day of uniqueDays) {
+    const month = parseMonth(day);
+    const current = buckets.get(month) ?? [];
+    current.push(day);
+    buckets.set(month, current);
+  }
+
+  for (const [month, bucket] of buckets.entries()) {
+    buckets.set(month, shuffleArray(bucket));
+  }
+
+  const recentMonths = recentContextDays
+    .filter(isValidDayString)
+    .map(parseMonth)
+    .slice(-monthCooldown);
+
+  const arranged: string[] = [];
+
+  while (true) {
+    const available = [...buckets.entries()]
+      .filter(([, bucket]) => bucket.length > 0)
+      .map(([month, bucket]) => ({
+        month,
+        count: bucket.length,
+      }));
+
+    if (available.length === 0) {
+      break;
+    }
+
+    let candidates = available.filter(
+      ({ month }) => !recentMonths.includes(month)
+    );
+
+    // fallback para evitar loops o dead-ends al final del armado
+    if (candidates.length === 0) {
+      candidates = available;
+    }
+
+    // prioriza meses con más stock para no dejarlos todos amontonados al final
+    const maxCount = Math.max(...candidates.map((item) => item.count));
+    const topCandidates = candidates.filter((item) => item.count === maxCount);
+
+    const chosen =
+      topCandidates[Math.floor(Math.random() * topCandidates.length)];
+
+    const bucket = buckets.get(chosen.month);
+    const nextDay = bucket?.pop();
+
+    if (!nextDay) {
+      continue;
+    }
+
+    arranged.push(nextDay);
+
+    recentMonths.push(chosen.month);
+    if (recentMonths.length > monthCooldown) {
+      recentMonths.shift();
+    }
+  }
+
+  return arranged;
+}
+
 function buildFreshDeck(poolDays: string[]) {
   return {
-    deck: shuffleArray([...poolDays]),
+    deck: buildMonthSpacedDeck(poolDays),
     cursor: 0,
   };
 }
@@ -61,10 +143,11 @@ function buildDeckFromSeenDays(poolDays: string[], seenDays: string[]) {
     seenSet.add(day);
   }
 
-  const remaining = shuffleArray(poolDays.filter((day) => !seenSet.has(day)));
+  const remainingPool = poolDays.filter((day) => !seenSet.has(day));
+  const remainingDeck = buildMonthSpacedDeck(remainingPool, uniqueSeen);
 
   return {
-    deck: [...uniqueSeen, ...remaining],
+    deck: [...uniqueSeen, ...remainingDeck],
     cursor: uniqueSeen.length,
   };
 }
@@ -103,7 +186,7 @@ async function getSurprisePool() {
   return {
     days,
     size: days.length,
-    signature: `${days.length}:${lastUpdatedAt}`,
+    signature: `${SURPRISE_DECK_VERSION}:${days.length}:${lastUpdatedAt}`,
   };
 }
 
