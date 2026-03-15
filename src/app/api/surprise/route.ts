@@ -19,7 +19,7 @@ function parseExcludeDays(searchParams: URLSearchParams) {
 
   return Array.from(
     new Set(raw.split(",").map((item) => item.trim()).filter(isValidDayString))
-  ).slice(0, 30);
+  ).slice(0, 120);
 }
 
 export async function GET(req: Request) {
@@ -30,7 +30,8 @@ export async function GET(req: Request) {
 
     const result = await getRandomValidDay({
       fresh,
-      maxAttempts: 12,
+      maxAttempts: 20,
+      maxCacheTake: 5000,
       excludeDays,
     });
 

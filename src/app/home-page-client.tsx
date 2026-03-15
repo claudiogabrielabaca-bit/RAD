@@ -25,7 +25,7 @@ const REPLY_MAX_LENGTH = 220;
 const HIGHLIGHT_SCROLL_OFFSET = 350;
 const FORCE_FRESH_MODE = false;
 const SURPRISE_HISTORY_STORAGE_KEY = "rad:surprise-history";
-const SURPRISE_HISTORY_MAX = 24;
+const SURPRISE_HISTORY_MAX = 120;
 
 type CurrentUser = {
   id: string;
@@ -883,6 +883,7 @@ export default function Page() {
   useEffect(() => {
     dayBundleCacheRef.current.clear();
     prefetchingDaysRef.current.clear();
+      setRecentSurpriseHistory([]);
   }, [currentUser?.id]);
 
   useEffect(() => {

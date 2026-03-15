@@ -120,7 +120,6 @@ function pickBalancedDay(days: string[]) {
     const decadeCount = decadeCounts.get(decade) ?? 1;
     const yearCount = yearCounts.get(year) ?? 1;
 
-    // Le da más chances a meses/años/décadas menos representados
     const weight =
       1 /
       (Math.sqrt(monthCount) *
@@ -204,23 +203,17 @@ export async function getRandomValidDay(
   options?: RandomValidDayOptions
 ): Promise<RandomValidDayResult | null> {
   const fresh = options?.fresh ?? false;
-  const maxCacheTake = options?.maxCacheTake ?? 1200;
-  const maxAttempts = options?.maxAttempts ?? 16;
+  const maxAttempts = options?.maxAttempts ?? 20;
+  const maxCacheTake = options?.maxCacheTake ?? 5000;
   const excludeDays = getUniqueDays(options?.excludeDays ?? []);
   const excludedSet = new Set(excludeDays);
 
   if (!fresh) {
     const validDays = await prisma.dayHighlightCache.findMany({
       where: {
-        type: {
-          not: "none",
-        },
-        title: {
-          not: null,
-        },
-        text: {
-          not: "",
-        },
+        type: { not: "none" },
+        title: { not: null },
+        text: { not: "" },
         ...(excludeDays.length > 0
           ? {
               day: {
@@ -232,13 +225,11 @@ export async function getRandomValidDay(
       select: {
         day: true,
       },
-      orderBy: {
-        updatedAt: "desc",
-      },
-      take: maxCacheTake,
     });
 
-    const pickedFromCache = pickBalancedDay(validDays.map((item) => item.day));
+    const shuffledPool = shuffleArray(validDays.map((item) => item.day));
+    const sampledPool = shuffledPool.slice(0, maxCacheTake);
+    const pickedFromCache = pickBalancedDay(sampledPool);
 
     if (pickedFromCache) {
       return {
@@ -252,9 +243,15 @@ export async function getRandomValidDay(
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     let candidate = getBalancedRandomDateBetween1900AndToday();
+    let safety = 0;
 
-    while (tried.has(candidate) || excludedSet.has(candidate)) {
+    while ((tried.has(candidate) || excludedSet.has(candidate)) && safety < 200) {
       candidate = getBalancedRandomDateBetween1900AndToday();
+      safety++;
+    }
+
+    if (tried.has(candidate) || excludedSet.has(candidate)) {
+      continue;
     }
 
     tried.add(candidate);
