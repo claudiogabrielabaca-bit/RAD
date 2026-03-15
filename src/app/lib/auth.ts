@@ -7,6 +7,7 @@ import {
   timingSafeEqual,
 } from "crypto";
 import bcrypt from "bcryptjs";
+import { claimVisitorDeckToUser } from "@/app/lib/surprise-deck";
 
 const SESSION_COOKIE = "rad_session";
 const SESSION_DAYS = 30;
@@ -124,6 +125,10 @@ export async function createSession(userId: string) {
     expires: expiresAt,
     maxAge: SESSION_MAX_AGE,
     priority: "high",
+  });
+
+  await claimVisitorDeckToUser(userId).catch((error) => {
+    console.error("claimVisitorDeckToUser error:", error);
   });
 
   return token;

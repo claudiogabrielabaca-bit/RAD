@@ -2,50 +2,30 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getCurrentUser } from "@/app/lib/current-user";
 import { getAnonLabel } from "@/app/lib/anon-label";
-import { getRandomValidDay } from "@/app/lib/random-valid-day";
 import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
+import { getNextSurpriseDay } from "@/app/lib/surprise-deck";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function isValidDayString(value?: string | null): value is string {
-  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function parseExcludeDays(searchParams: URLSearchParams) {
-  const raw = searchParams.get("excludeDays") ?? "";
-
-  if (!raw.trim()) return [];
-
-  return Array.from(
-    new Set(raw.split(",").map((item) => item.trim()).filter(isValidDayString))
-  ).slice(0, 120);
-}
-
-export async function GET(req: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(req.url);
-    const fresh = searchParams.get("fresh") === "1";
-    const excludeDays = parseExcludeDays(searchParams);
+    const user = await getCurrentUser();
 
-    const result = await getRandomValidDay({
-      fresh,
-      maxAttempts: 20,
-      maxCacheTake: 5000,
-      excludeDays,
+    const result = await getNextSurpriseDay({
+      userId: user?.id ?? null,
     });
 
     if (!result) {
       return NextResponse.json(
-        { error: "No valid random day found." },
+        { error: "No valid surprise day found." },
         { status: 404 }
       );
     }
 
     const day = result.day;
 
-    const [user, highlightResult, ratings, stats] = await Promise.all([
-      getCurrentUser(),
+    const [highlightResult, ratings, stats] = await Promise.all([
       ensureHighlightsForDay(day),
       prisma.rating.findMany({
         where: { day },
@@ -124,6 +104,8 @@ export async function GET(req: Request) {
       {
         day,
         source: result.source,
+        remaining: result.remaining,
+        total: result.total,
         dayData: {
           day,
           avg,
