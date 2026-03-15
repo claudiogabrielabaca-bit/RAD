@@ -324,7 +324,8 @@ async function fetchJson(url: string) {
     const res = await fetch(url, {
       headers: {
         "User-Agent": "RateAnyDayInHumanHistory/1.0",
-  "Accept": "application/json",
+        "Api-User-Agent": "RateAnyDayInHumanHistory/1.0",
+        Accept: "application/json",
       },
       next: { revalidate: 86400 },
       signal: controller.signal,
@@ -351,7 +352,7 @@ async function fetchWikiType(type: WikiType, month: string, day: string) {
       const items = (data?.[type] ?? []) as WikiItem[];
       results.push(...items);
     } catch {
-      // continue
+      //
     }
   }
 
@@ -873,13 +874,13 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
     return [buildNoneHighlight()];
   }
 
- try {
-  await saveHighlightsToCache(date, all);
-} catch (error) {
-  console.error("saveHighlightsToCache error:", error);
-}
+  try {
+    await saveHighlightsToCache(date, all);
+  } catch (error) {
+    console.error("saveHighlightsToCache error:", error);
+  }
 
-return all;
+  return all;
 }
 
 export async function getDayHighlight(date: string): Promise<DayHighlight> {
