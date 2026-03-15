@@ -53,6 +53,7 @@ export async function GET(req: Request) {
       {
         ...payload,
         source: result.source,
+        restartedRound: result.restartedRound,
       },
       {
         headers: {

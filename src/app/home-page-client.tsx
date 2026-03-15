@@ -40,6 +40,10 @@ type CurrentUserResponse = {
   user: CurrentUser;
 };
 
+type TodayInHistoryResponse = SurpriseResponse & {
+  restartedRound?: boolean;
+};
+
 const BADGE_LABELS: Record<HighlightBadgeKey, string> = {
   selected: "Selected",
   event: "Event",
@@ -221,6 +225,16 @@ function formatDisplayDate(date: string) {
     day: "numeric",
     month: "long",
     year: "numeric",
+  });
+}
+
+function formatMonthDayLabel(monthDay: string) {
+  const [month, day] = monthDay.split("-").map(Number);
+  const localDate = new Date(2000, month - 1, day);
+
+  return localDate.toLocaleDateString("en-US", {
+    day: "numeric",
+    month: "long",
   });
 }
 
@@ -678,6 +692,8 @@ export default function Page() {
   const highlightBlockRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollToHighlightRef = useRef(false);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const todayHistoryNoticeTimeoutRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
   const consumedProfileJumpRef = useRef(false);
   const didInitDayRef = useRef(false);
   const transitionIdRef = useRef(0);
@@ -721,6 +737,7 @@ export default function Page() {
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string>("");
+  const [todayHistoryNotice, setTodayHistoryNotice] = useState("");
 
   const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
   const [reportingReviewId, setReportingReviewId] = useState<string | null>(
@@ -825,6 +842,19 @@ export default function Page() {
     toastTimeoutRef.current = setTimeout(() => {
       setToast("");
       toastTimeoutRef.current = null;
+    }, duration);
+  }
+
+  function showTodayHistoryNotice(message: string, duration = 5000) {
+    setTodayHistoryNotice(message);
+
+    if (todayHistoryNoticeTimeoutRef.current) {
+      clearTimeout(todayHistoryNoticeTimeoutRef.current);
+    }
+
+    todayHistoryNoticeTimeoutRef.current = setTimeout(() => {
+      setTodayHistoryNotice("");
+      todayHistoryNoticeTimeoutRef.current = null;
     }, duration);
   }
 
@@ -984,6 +1014,10 @@ export default function Page() {
       if (toastTimeoutRef.current) {
         clearTimeout(toastTimeoutRef.current);
       }
+
+      if (todayHistoryNoticeTimeoutRef.current) {
+        clearTimeout(todayHistoryNoticeTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -996,6 +1030,7 @@ export default function Page() {
     prefetchingDaysRef.current.clear();
     setRecentSurpriseHistory([]);
     clearTodayHistory();
+    setTodayHistoryNotice("");
   }, [currentUser?.id]);
 
   useEffect(() => {
@@ -1384,7 +1419,7 @@ export default function Page() {
       );
 
       const json = (await res.json().catch(() => null)) as
-        | SurpriseResponse
+        | TodayInHistoryResponse
         | { error?: string }
         | null;
 
@@ -1392,12 +1427,7 @@ export default function Page() {
     }
 
     try {
-      let { res, json } = await requestTodayHistory();
-
-      if (res.status === 404) {
-        clearTodayHistory(monthDay);
-        ({ res, json } = await requestTodayHistory());
-      }
+      const { res, json } = await requestTodayHistory();
 
       const payload =
         res.ok &&
@@ -1405,13 +1435,22 @@ export default function Page() {
         "day" in json &&
         "dayData" in json &&
         "highlightData" in json
-          ? (json as SurpriseResponse)
+          ? (json as TodayInHistoryResponse)
           : null;
 
       if (!payload) {
         showToast("No valid 'today in history' day available yet.");
         finishDayTransition(transitionId);
         return;
+      }
+
+      if (payload.restartedRound) {
+        clearTodayHistory(monthDay);
+        showTodayHistoryNotice(
+          `You explored all available moments for ${formatMonthDayLabel(
+            monthDay
+          )}. A new round has started.`
+        );
       }
 
       rememberTodayHistoryDay(payload.day);
@@ -2224,6 +2263,12 @@ export default function Page() {
                     Today in history
                   </button>
                 </div>
+
+                {todayHistoryNotice ? (
+                  <div className="rounded-xl border border-sky-400/15 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/90 backdrop-blur-xl">
+                    ↻ {todayHistoryNotice}
+                  </div>
+                ) : null}
 
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">

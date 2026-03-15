@@ -53,6 +53,76 @@ function getUniqueDays(days: string[]) {
   return Array.from(new Set(days.filter(Boolean)));
 }
 
+async function findTodayValidDayFromCandidates(args: {
+  candidates: string[];
+  fresh: boolean;
+  maxAttempts: number;
+  restartedRound: boolean;
+}) {
+  const { candidates, fresh, maxAttempts, restartedRound } = args;
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  if (!fresh) {
+    const cachedValidDays = await prisma.dayHighlightCache.findMany({
+      where: {
+        day: {
+          in: candidates,
+        },
+        type: {
+          not: "none",
+        },
+        title: {
+          not: null,
+        },
+        text: {
+          not: "",
+        },
+      },
+      select: {
+        day: true,
+      },
+    });
+
+    const shuffledCachedDays = shuffleArray(
+      cachedValidDays.map((item) => item.day)
+    );
+
+    if (shuffledCachedDays.length > 0) {
+      return {
+        day: shuffledCachedDays[0],
+        source: "cache" as const,
+        restartedRound,
+      };
+    }
+  }
+
+  const shuffledCandidates = shuffleArray(candidates);
+  const attemptLimit = Math.min(maxAttempts, shuffledCandidates.length);
+
+  for (let attempt = 0; attempt < attemptLimit; attempt++) {
+    const candidate = shuffledCandidates[attempt];
+
+    try {
+      const result = await ensureHighlightsForDay(candidate);
+
+      if (isUsableHighlight(result)) {
+        return {
+          day: candidate,
+          source: "generated" as const,
+          restartedRound,
+        };
+      }
+    } catch (error) {
+      console.error(`[today-valid-day] attempt failed for ${candidate}`, error);
+    }
+  }
+
+  return null;
+}
+
 export async function getTodayValidDay(options?: {
   fresh?: boolean;
   maxCacheTake?: number;
@@ -80,62 +150,27 @@ export async function getTodayValidDay(options?: {
     (candidate) => !excludedSet.has(candidate)
   );
 
-  if (remainingCandidateDays.length === 0) {
+  const fromCurrentRound = await findTodayValidDayFromCandidates({
+    candidates: remainingCandidateDays,
+    fresh,
+    maxAttempts,
+    restartedRound: false,
+  });
+
+  if (fromCurrentRound) {
+    return fromCurrentRound;
+  }
+
+  if (excludeDays.length === 0) {
     return null;
   }
 
-  if (!fresh) {
-    const cachedValidDays = await prisma.dayHighlightCache.findMany({
-      where: {
-        day: {
-          in: remainingCandidateDays,
-        },
-        type: {
-          not: "none",
-        },
-        title: {
-          not: null,
-        },
-        text: {
-          not: "",
-        },
-      },
-      select: {
-        day: true,
-      },
-    });
+  const fromRestartedRound = await findTodayValidDayFromCandidates({
+    candidates: candidateDays,
+    fresh,
+    maxAttempts,
+    restartedRound: true,
+  });
 
-    const shuffledCachedDays = shuffleArray(
-      cachedValidDays.map((item) => item.day)
-    );
-
-    if (shuffledCachedDays.length > 0) {
-      return {
-        day: shuffledCachedDays[0],
-        source: "cache" as const,
-      };
-    }
-  }
-
-  const shuffledCandidates = shuffleArray(remainingCandidateDays);
-  const attemptLimit = Math.min(maxAttempts, shuffledCandidates.length);
-
-  for (let attempt = 0; attempt < attemptLimit; attempt++) {
-    const candidate = shuffledCandidates[attempt];
-
-    try {
-      const result = await ensureHighlightsForDay(candidate);
-
-      if (isUsableHighlight(result)) {
-        return {
-          day: candidate,
-          source: "generated" as const,
-        };
-      }
-    } catch (error) {
-      console.error(`[today-valid-day] attempt failed for ${candidate}`, error);
-    }
-  }
-
-  return null;
+  return fromRestartedRound;
 }
