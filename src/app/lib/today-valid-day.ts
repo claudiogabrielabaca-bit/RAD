@@ -5,8 +5,15 @@ function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
-function getRandomInt(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+function shuffleArray<T>(items: T[]) {
+  const arr = [...items];
+
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+
+  return arr;
 }
 
 function isLeapYear(year: number) {
@@ -26,35 +33,36 @@ function isUsableHighlight(
   );
 }
 
-function getRandomValidYearForToday(month: number, day: number) {
+function getValidYearsForMonthDay(month: number, day: number) {
   const minYear = 1900;
   const maxYear = new Date().getFullYear();
+  const years: number[] = [];
 
-  if (month === 2 && day === 29) {
-    const leapYears: number[] = [];
-
-    for (let year = minYear; year <= maxYear; year++) {
-      if (isLeapYear(year)) {
-        leapYears.push(year);
-      }
+  for (let year = minYear; year <= maxYear; year++) {
+    if (month === 2 && day === 29 && !isLeapYear(year)) {
+      continue;
     }
 
-    if (leapYears.length === 0) return null;
-
-    return leapYears[getRandomInt(0, leapYears.length - 1)];
+    years.push(year);
   }
 
-  return getRandomInt(minYear, maxYear);
+  return years;
+}
+
+function getUniqueDays(days: string[]) {
+  return Array.from(new Set(days.filter(Boolean)));
 }
 
 export async function getTodayValidDay(options?: {
   fresh?: boolean;
   maxCacheTake?: number;
   maxAttempts?: number;
+  excludeDays?: string[];
 }) {
   const fresh = options?.fresh ?? false;
-  const maxCacheTake = options?.maxCacheTake ?? 200;
-  const maxAttempts = options?.maxAttempts ?? 12;
+  const maxAttempts = Math.max(1, options?.maxAttempts ?? 160);
+  const excludeDays = getUniqueDays(options?.excludeDays ?? []);
+  const excludedSet = new Set(excludeDays);
 
   const now = new Date();
   const month = now.getMonth() + 1;
@@ -63,11 +71,24 @@ export async function getTodayValidDay(options?: {
   const monthStr = pad2(month);
   const dayStr = pad2(day);
 
+  const candidateYears = getValidYearsForMonthDay(month, day);
+  const candidateDays = candidateYears.map(
+    (year) => `${year}-${monthStr}-${dayStr}`
+  );
+
+  const remainingCandidateDays = candidateDays.filter(
+    (candidate) => !excludedSet.has(candidate)
+  );
+
+  if (remainingCandidateDays.length === 0) {
+    return null;
+  }
+
   if (!fresh) {
-    const validDays = await prisma.dayHighlightCache.findMany({
+    const cachedValidDays = await prisma.dayHighlightCache.findMany({
       where: {
         day: {
-          endsWith: `-${monthStr}-${dayStr}`,
+          in: remainingCandidateDays,
         },
         type: {
           not: "none",
@@ -75,41 +96,32 @@ export async function getTodayValidDay(options?: {
         title: {
           not: null,
         },
+        text: {
+          not: "",
+        },
       },
       select: {
         day: true,
       },
-      take: maxCacheTake,
-      orderBy: {
-        updatedAt: "desc",
-      },
     });
 
-    if (validDays.length > 0) {
-      const randomIndex = Math.floor(Math.random() * validDays.length);
+    const shuffledCachedDays = shuffleArray(
+      cachedValidDays.map((item) => item.day)
+    );
+
+    if (shuffledCachedDays.length > 0) {
       return {
-        day: validDays[randomIndex].day,
+        day: shuffledCachedDays[0],
         source: "cache" as const,
       };
     }
   }
 
-  const tried = new Set<string>();
+  const shuffledCandidates = shuffleArray(remainingCandidateDays);
+  const attemptLimit = Math.min(maxAttempts, shuffledCandidates.length);
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const year = getRandomValidYearForToday(month, day);
-
-    if (!year) {
-      return null;
-    }
-
-    const candidate = `${year}-${monthStr}-${dayStr}`;
-
-    if (tried.has(candidate)) {
-      continue;
-    }
-
-    tried.add(candidate);
+  for (let attempt = 0; attempt < attemptLimit; attempt++) {
+    const candidate = shuffledCandidates[attempt];
 
     try {
       const result = await ensureHighlightsForDay(candidate);

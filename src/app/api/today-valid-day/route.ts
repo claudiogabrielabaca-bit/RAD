@@ -5,16 +5,31 @@ import { buildDayBundle } from "@/app/lib/day-bundle";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+function isValidDayString(value?: string | null): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function parseExcludeDays(searchParams: URLSearchParams) {
+  const raw = searchParams.get("excludeDays") ?? "";
+
+  if (!raw.trim()) return [];
+
+  return Array.from(
+    new Set(raw.split(",").map((item) => item.trim()).filter(isValidDayString))
+  ).slice(0, 160);
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const fresh = searchParams.get("fresh") === "1";
     const bundle = searchParams.get("bundle") === "1";
+    const excludeDays = parseExcludeDays(searchParams);
 
     const result = await getTodayValidDay({
       fresh,
-      maxCacheTake: 200,
-      maxAttempts: 12,
+      maxAttempts: 160,
+      excludeDays,
     });
 
     if (!result) {

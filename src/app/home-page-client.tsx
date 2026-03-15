@@ -26,6 +26,8 @@ const HIGHLIGHT_SCROLL_OFFSET = 350;
 const FORCE_FRESH_MODE = false;
 const SURPRISE_HISTORY_STORAGE_KEY = "rad:surprise-history";
 const SURPRISE_HISTORY_MAX = 120;
+const TODAY_HISTORY_STORAGE_KEY_PREFIX = "rad:today-history:";
+const TODAY_HISTORY_MAX = 160;
 
 type CurrentUser = {
   id: string;
@@ -291,7 +293,7 @@ function getDiscoverTypeClasses(type?: DiscoverCard["type"]) {
     case "discovery":
       return "border-teal-400/25 bg-teal-500/18 text-teal-200";
     case "crime":
-      return "border-red-400/25 bg-red-500/18 text-red-200";
+      return "border-red-500/18 text-red-200";
     default:
       return "border-white/10 bg-black/45 text-white";
   }
@@ -355,6 +357,77 @@ function rememberSurpriseDay(day: string) {
   setRecentSurpriseHistory([day, ...current]);
 }
 
+function getTodayHistoryMonthDay() {
+  const now = new Date();
+  return `${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+}
+
+function getTodayHistoryStorageKey(monthDay = getTodayHistoryMonthDay()) {
+  return `${TODAY_HISTORY_STORAGE_KEY_PREFIX}${monthDay}`;
+}
+
+function getRecentTodayHistory(monthDay = getTodayHistoryMonthDay()) {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.localStorage.getItem(getTodayHistoryStorageKey(monthDay));
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw);
+
+    if (!Array.isArray(parsed)) return [];
+
+    return Array.from(
+      new Set(
+        parsed.filter(
+          (item): item is string =>
+            typeof item === "string" && isValidDayString(item)
+        )
+      )
+    ).slice(0, TODAY_HISTORY_MAX);
+  } catch {
+    return [];
+  }
+}
+
+function setRecentTodayHistory(
+  days: string[],
+  monthDay = getTodayHistoryMonthDay()
+) {
+  if (typeof window === "undefined") return;
+
+  try {
+    const safe = Array.from(
+      new Set(days.filter((item) => isValidDayString(item)))
+    ).slice(0, TODAY_HISTORY_MAX);
+
+    window.localStorage.setItem(
+      getTodayHistoryStorageKey(monthDay),
+      JSON.stringify(safe)
+    );
+  } catch {
+    //
+  }
+}
+
+function rememberTodayHistoryDay(day: string) {
+  if (!isValidDayString(day)) return;
+
+  const monthDay = day.slice(5, 10);
+  const current = getRecentTodayHistory(monthDay).filter((item) => item !== day);
+  setRecentTodayHistory([day, ...current], monthDay);
+}
+
+function clearTodayHistory(monthDay = getTodayHistoryMonthDay()) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.removeItem(getTodayHistoryStorageKey(monthDay));
+  } catch {
+    //
+  }
+}
+
 function buildRandomRequestUrl(
   basePath: string,
   options?: {
@@ -384,6 +457,44 @@ function buildRandomRequestUrl(
 
   const query = params.toString();
   return query ? `${basePath}?${query}` : basePath;
+}
+
+function buildTodayInHistoryRequestUrl(options?: {
+  fresh?: boolean;
+  currentDay?: string;
+  bundle?: boolean;
+}) {
+  const params = new URLSearchParams();
+
+  if (options?.bundle) {
+    params.set("bundle", "1");
+  }
+
+  if (options?.fresh) {
+    params.set("fresh", "1");
+  }
+
+  const monthDay = getTodayHistoryMonthDay();
+  const excludeDays = getRecentTodayHistory(monthDay);
+
+  if (
+    options?.currentDay &&
+    isValidDayString(options.currentDay) &&
+    options.currentDay.slice(5, 10) === monthDay
+  ) {
+    excludeDays.unshift(options.currentDay);
+  }
+
+  const uniqueExcludeDays = Array.from(
+    new Set(excludeDays.filter((item) => isValidDayString(item)))
+  ).slice(0, TODAY_HISTORY_MAX);
+
+  if (uniqueExcludeDays.length > 0) {
+    params.set("excludeDays", uniqueExcludeDays.join(","));
+  }
+
+  const query = params.toString();
+  return query ? `/api/today-valid-day?${query}` : "/api/today-valid-day";
 }
 
 function getDayWithOffset(baseDay: string, offset: number) {
@@ -883,7 +994,8 @@ export default function Page() {
   useEffect(() => {
     dayBundleCacheRef.current.clear();
     prefetchingDaysRef.current.clear();
-      setRecentSurpriseHistory([]);
+    setRecentSurpriseHistory([]);
+    clearTodayHistory();
   }, [currentUser?.id]);
 
   useEffect(() => {
@@ -1257,10 +1369,15 @@ export default function Page() {
   async function goToTodayInHistory(scrollToResult = false) {
     beginDayTransition();
     const transitionId = transitionIdRef.current;
+    const monthDay = getTodayHistoryMonthDay();
 
-    try {
+    async function requestTodayHistory() {
       const res = await fetch(
-        `/api/today-valid-day?bundle=1${FORCE_FRESH_MODE ? "&fresh=1" : ""}`,
+        buildTodayInHistoryRequestUrl({
+          bundle: true,
+          fresh: FORCE_FRESH_MODE,
+          currentDay: day,
+        }),
         {
           cache: "no-store",
         }
@@ -1268,21 +1385,45 @@ export default function Page() {
 
       const json = (await res.json().catch(() => null)) as
         | SurpriseResponse
+        | { error?: string }
         | null;
 
-      if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
+      return { res, json };
+    }
+
+    try {
+      let { res, json } = await requestTodayHistory();
+
+      if (res.status === 404) {
+        clearTodayHistory(monthDay);
+        ({ res, json } = await requestTodayHistory());
+      }
+
+      const payload =
+        res.ok &&
+        json &&
+        "day" in json &&
+        "dayData" in json &&
+        "highlightData" in json
+          ? (json as SurpriseResponse)
+          : null;
+
+      if (!payload) {
         showToast("No valid 'today in history' day available yet.");
         finishDayTransition(transitionId);
         return;
       }
 
-      if (json.day === day) {
-        applyBundlePayload(json);
+      rememberTodayHistoryDay(payload.day);
+
+      if (payload.day === day) {
+        applyBundlePayload(payload);
         finishDayTransition(transitionId);
 
         if (
           scrollToResult &&
-          (json.highlightData.highlight || json.highlightData.highlights?.length)
+          (payload.highlightData.highlight ||
+            payload.highlightData.highlights?.length)
         ) {
           requestAnimationFrame(() => {
             scrollToHighlightBlock();
@@ -1295,8 +1436,8 @@ export default function Page() {
       skipNextAutoDayLoadRef.current = true;
       pendingScrollToHighlightRef.current = scrollToResult;
 
-      applyBundlePayload(json);
-      setDay(json.day);
+      applyBundlePayload(payload);
+      setDay(payload.day);
     } catch {
       showToast("Could not load today in history.");
       finishDayTransition(transitionId);
@@ -2861,8 +3002,8 @@ export default function Page() {
               5 moments that defined the 20th century
             </div>
             <div className="mt-1 text-sm text-zinc-400">
-              A editorial selection of turning points that reshaped the
-              modern world
+              A editorial selection of turning points that reshaped the modern
+              world
             </div>
           </div>
 
