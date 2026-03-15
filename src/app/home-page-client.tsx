@@ -2146,12 +2146,6 @@ export default function Page() {
                   </button>
                 </div>
 
-                {todayHistoryNotice ? (
-                  <div className="mt-4 rounded-xl border border-sky-400/15 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/90 backdrop-blur-xl">
-                    ↻ {todayHistoryNotice}
-                  </div>
-                ) : null}
-
                 <div className="mt-8 rounded-2xl border border-white/8 bg-black/25 p-5 backdrop-blur-xl">
                   <div className="text-sm font-medium text-zinc-200">
                     Pick an exact date
@@ -2269,6 +2263,12 @@ export default function Page() {
                     Today in history
                   </button>
                 </div>
+
+                {todayHistoryNotice ? (
+                  <div className="rounded-xl border border-sky-400/15 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/90 backdrop-blur-xl">
+                    ↻ {todayHistoryNotice}
+                  </div>
+                ) : null}
 
                 <div className="mt-1 flex flex-wrap items-center gap-2">
                   <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">

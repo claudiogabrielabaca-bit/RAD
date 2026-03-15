@@ -9,36 +9,42 @@ const FEATURED_CENTURY_MOMENTS: Array<{
   title: string;
   text: string;
   type: DiscoverCard["type"];
+  image: string;
 }> = [
   {
     day: "1914-07-28",
     title: "World War I begins",
     text: "Austria-Hungary declared war on Serbia, triggering a global conflict that reshaped the 20th century.",
     type: "war",
+    image: "/featured/ww1.jpg",
   },
   {
     day: "1929-10-24",
     title: "Wall Street Crash",
     text: "The collapse of the stock market accelerated the Great Depression and transformed the modern global economy.",
     type: "disaster",
+    image: "/featured/wall-street-crash.jpg",
   },
   {
     day: "1939-09-01",
     title: "World War II begins",
     text: "Germany invaded Poland, starting the deadliest war in human history and redrawing the world's balance of power.",
     type: "war",
+    image: "/featured/ww2.jpg",
   },
   {
     day: "1969-07-20",
     title: "Moon landing",
     text: "Apollo 11 put humans on the Moon, becoming one of the greatest scientific and symbolic achievements of the century.",
     type: "science",
+    image: "/featured/moon-landing.jpg",
   },
   {
     day: "1989-11-09",
     title: "Fall of the Berlin Wall",
     text: "The collapse of the Berlin Wall became the defining symbol of the end of the Cold War era.",
     type: "politics",
+    image: "/featured/berlin-wall.jpg",
   },
 ];
 
@@ -139,12 +145,13 @@ export async function GET(req: NextRequest) {
 
     const cards: DiscoverCard[] = featured.map((item) => {
       const cached = cacheMap.get(item.day);
+      const cachedImage = cached?.image?.trim();
 
       return {
         day: item.day,
         title: cached?.title?.trim() || item.title,
         text: cached?.text?.trim() || item.text,
-        image: cached?.image?.trim() || null,
+        image: cachedImage || item.image,
         avg: statsMap.get(item.day)?.avg ?? 0,
         count: statsMap.get(item.day)?.count ?? 0,
         views: viewsMap.get(item.day) ?? 0,
