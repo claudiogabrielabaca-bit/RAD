@@ -872,9 +872,13 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
     return [buildNoneHighlight()];
   }
 
+ try {
   await saveHighlightsToCache(date, all);
+} catch (error) {
+  console.error("saveHighlightsToCache error:", error);
+}
 
-  return all;
+return all;
 }
 
 export async function getDayHighlight(date: string): Promise<DayHighlight> {
