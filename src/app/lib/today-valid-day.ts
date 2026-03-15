@@ -53,70 +53,43 @@ function getUniqueDays(days: string[]) {
   return Array.from(new Set(days.filter(Boolean)));
 }
 
-async function findTodayValidDayFromCandidates(args: {
+async function findGeneratedCandidate(args: {
   candidates: string[];
-  fresh: boolean;
   maxAttempts: number;
   restartedRound: boolean;
 }) {
-  const { candidates, fresh, maxAttempts, restartedRound } = args;
+  const { candidates, maxAttempts, restartedRound } = args;
 
   if (candidates.length === 0) {
     return null;
   }
 
-  if (!fresh) {
-    const cachedValidDays = await prisma.dayHighlightCache.findMany({
-      where: {
-        day: {
-          in: candidates,
-        },
-        type: {
-          not: "none",
-        },
-        title: {
-          not: null,
-        },
-        text: {
-          not: "",
-        },
-      },
-      select: {
-        day: true,
-      },
-    });
+  const shuffled = shuffleArray(candidates).slice(0, Math.max(1, maxAttempts));
+  const batchSize = 3;
 
-    const shuffledCachedDays = shuffleArray(
-      cachedValidDays.map((item) => item.day)
+  for (let i = 0; i < shuffled.length; i += batchSize) {
+    const batch = shuffled.slice(i, i + batchSize);
+
+    const results = await Promise.allSettled(
+      batch.map(async (candidate) => {
+        const result = await ensureHighlightsForDay(candidate);
+
+        if (isUsableHighlight(result)) {
+          return candidate;
+        }
+
+        return null;
+      })
     );
 
-    if (shuffledCachedDays.length > 0) {
-      return {
-        day: shuffledCachedDays[0],
-        source: "cache" as const,
-        restartedRound,
-      };
-    }
-  }
-
-  const shuffledCandidates = shuffleArray(candidates);
-  const attemptLimit = Math.min(maxAttempts, shuffledCandidates.length);
-
-  for (let attempt = 0; attempt < attemptLimit; attempt++) {
-    const candidate = shuffledCandidates[attempt];
-
-    try {
-      const result = await ensureHighlightsForDay(candidate);
-
-      if (isUsableHighlight(result)) {
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value) {
         return {
-          day: candidate,
+          day: result.value,
           source: "generated" as const,
           restartedRound,
         };
       }
-    } catch (error) {
-      console.error(`[today-valid-day] attempt failed for ${candidate}`, error);
     }
   }
 
@@ -125,12 +98,11 @@ async function findTodayValidDayFromCandidates(args: {
 
 export async function getTodayValidDay(options?: {
   fresh?: boolean;
-  maxCacheTake?: number;
   maxAttempts?: number;
   excludeDays?: string[];
 }) {
   const fresh = options?.fresh ?? false;
-  const maxAttempts = Math.max(1, options?.maxAttempts ?? 160);
+  const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 6, 12));
   const excludeDays = getUniqueDays(options?.excludeDays ?? []);
   const excludedSet = new Set(excludeDays);
 
@@ -141,6 +113,51 @@ export async function getTodayValidDay(options?: {
   const monthStr = pad2(month);
   const dayStr = pad2(day);
 
+  const allCachedRows = await prisma.dayHighlightCache.findMany({
+    where: {
+      day: {
+        endsWith: `-${monthStr}-${dayStr}`,
+      },
+      type: {
+        not: "none",
+      },
+      title: {
+        not: null,
+      },
+      text: {
+        not: "",
+      },
+    },
+    select: {
+      day: true,
+    },
+  });
+
+  const allCachedDays = getUniqueDays(allCachedRows.map((item) => item.day));
+  const remainingCachedDays = allCachedDays.filter(
+    (candidate) => !excludedSet.has(candidate)
+  );
+
+  if (!fresh && remainingCachedDays.length > 0) {
+    const shuffled = shuffleArray(remainingCachedDays);
+
+    return {
+      day: shuffled[0],
+      source: "cache" as const,
+      restartedRound: false,
+    };
+  }
+
+  if (!fresh && allCachedDays.length > 0) {
+    const shuffled = shuffleArray(allCachedDays);
+
+    return {
+      day: shuffled[0],
+      source: "cache" as const,
+      restartedRound: true,
+    };
+  }
+
   const candidateYears = getValidYearsForMonthDay(month, day);
   const candidateDays = candidateYears.map(
     (year) => `${year}-${monthStr}-${dayStr}`
@@ -150,27 +167,27 @@ export async function getTodayValidDay(options?: {
     (candidate) => !excludedSet.has(candidate)
   );
 
-  const fromCurrentRound = await findTodayValidDayFromCandidates({
+  const generatedFromCurrentRound = await findGeneratedCandidate({
     candidates: remainingCandidateDays,
-    fresh,
     maxAttempts,
     restartedRound: false,
   });
 
-  if (fromCurrentRound) {
-    return fromCurrentRound;
+  if (generatedFromCurrentRound) {
+    return generatedFromCurrentRound;
   }
 
-  if (excludeDays.length === 0) {
-    return null;
+  if (excludeDays.length > 0) {
+    const generatedFromRestartedRound = await findGeneratedCandidate({
+      candidates: candidateDays,
+      maxAttempts,
+      restartedRound: true,
+    });
+
+    if (generatedFromRestartedRound) {
+      return generatedFromRestartedRound;
+    }
   }
 
-  const fromRestartedRound = await findTodayValidDayFromCandidates({
-    candidates: candidateDays,
-    fresh,
-    maxAttempts,
-    restartedRound: true,
-  });
-
-  return fromRestartedRound;
+  return null;
 }

@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "RAD — Rate Any Day in Human History",
+  title: "Rate Any Day in Human History",
   description: "Explore, rate and discover any day in human history.",
 };
 

@@ -28,7 +28,7 @@ export async function GET(req: Request) {
 
     const result = await getTodayValidDay({
       fresh,
-      maxAttempts: 160,
+      maxAttempts: 6,
       excludeDays,
     });
 
@@ -53,7 +53,7 @@ export async function GET(req: Request) {
       {
         ...payload,
         source: result.source,
-        restartedRound: result.restartedRound,
+        restartedRound: result.restartedRound ?? false,
       },
       {
         headers: {
