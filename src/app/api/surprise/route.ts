@@ -8,15 +8,30 @@ import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+function isValidDayString(value?: string | null): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function parseExcludeDays(searchParams: URLSearchParams) {
+  const raw = searchParams.get("excludeDays") ?? "";
+
+  if (!raw.trim()) return [];
+
+  return Array.from(
+    new Set(raw.split(",").map((item) => item.trim()).filter(isValidDayString))
+  ).slice(0, 30);
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const fresh = searchParams.get("fresh") === "1";
+    const excludeDays = parseExcludeDays(searchParams);
 
     const result = await getRandomValidDay({
       fresh,
-      maxCacheTake: 500,
       maxAttempts: 12,
+      excludeDays,
     });
 
     if (!result) {
@@ -74,7 +89,9 @@ export async function GET(req: Request) {
         review: r.review,
         createdAt: r.createdAt.toISOString(),
         likesCount: r.likes.length,
-        likedByMe: user ? r.likes.some((like) => like.userId === user.id) : false,
+        likedByMe: user
+          ? r.likes.some((like) => like.userId === user.id)
+          : false,
         isMine: user ? r.userId === user.id : false,
         authorLabel: r.user?.username
           ? `@${r.user.username}`

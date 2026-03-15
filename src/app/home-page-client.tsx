@@ -24,6 +24,8 @@ const REVIEW_MAX_LENGTH = 280;
 const REPLY_MAX_LENGTH = 220;
 const HIGHLIGHT_SCROLL_OFFSET = 350;
 const FORCE_FRESH_MODE = false;
+const SURPRISE_HISTORY_STORAGE_KEY = "rad:surprise-history";
+const SURPRISE_HISTORY_MAX = 24;
 
 type CurrentUser = {
   id: string;
@@ -303,6 +305,85 @@ function truncateText(text: string, max = 78) {
 
 function isValidDayString(value?: string | null): value is string {
   return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function getRecentSurpriseHistory() {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.localStorage.getItem(SURPRISE_HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw);
+
+    if (!Array.isArray(parsed)) return [];
+
+    return Array.from(
+      new Set(
+        parsed.filter(
+          (item): item is string =>
+            typeof item === "string" && isValidDayString(item)
+        )
+      )
+    ).slice(0, SURPRISE_HISTORY_MAX);
+  } catch {
+    return [];
+  }
+}
+
+function setRecentSurpriseHistory(days: string[]) {
+  if (typeof window === "undefined") return;
+
+  try {
+    const safe = Array.from(
+      new Set(days.filter((item) => isValidDayString(item)))
+    ).slice(0, SURPRISE_HISTORY_MAX);
+
+    window.localStorage.setItem(
+      SURPRISE_HISTORY_STORAGE_KEY,
+      JSON.stringify(safe)
+    );
+  } catch {
+    //
+  }
+}
+
+function rememberSurpriseDay(day: string) {
+  if (!isValidDayString(day)) return;
+
+  const current = getRecentSurpriseHistory().filter((item) => item !== day);
+  setRecentSurpriseHistory([day, ...current]);
+}
+
+function buildRandomRequestUrl(
+  basePath: string,
+  options?: {
+    fresh?: boolean;
+    currentDay?: string;
+  }
+) {
+  const params = new URLSearchParams();
+
+  if (options?.fresh) {
+    params.set("fresh", "1");
+  }
+
+  const excludeDays = getRecentSurpriseHistory();
+
+  if (options?.currentDay && isValidDayString(options.currentDay)) {
+    excludeDays.unshift(options.currentDay);
+  }
+
+  const uniqueExcludeDays = Array.from(
+    new Set(excludeDays.filter((item) => isValidDayString(item)))
+  ).slice(0, SURPRISE_HISTORY_MAX);
+
+  if (uniqueExcludeDays.length > 0) {
+    params.set("excludeDays", uniqueExcludeDays.join(","));
+  }
+
+  const query = params.toString();
+  return query ? `${basePath}?${query}` : basePath;
 }
 
 function getDayWithOffset(baseDay: string, offset: number) {
@@ -852,7 +933,9 @@ export default function Page() {
 
       try {
         const res = await fetch(
-          `/api/surprise${FORCE_FRESH_MODE ? "?fresh=1" : ""}`,
+          buildRandomRequestUrl("/api/surprise", {
+            fresh: FORCE_FRESH_MODE,
+          }),
           {
             cache: "no-store",
           }
@@ -862,15 +945,24 @@ export default function Page() {
           | SurpriseResponse
           | null;
 
-        if (!cancelled && res.ok && json?.day && json?.dayData && json?.highlightData) {
+        if (
+          !cancelled &&
+          res.ok &&
+          json?.day &&
+          json?.dayData &&
+          json?.highlightData
+        ) {
           skipNextAutoDayLoadRef.current = true;
           applyBundlePayload(json);
           setDay(json.day);
+          rememberSurpriseDay(json.day);
           return;
         }
 
         const fallbackRes = await fetch(
-          `/api/random-valid-day${FORCE_FRESH_MODE ? "?fresh=1" : ""}`,
+          buildRandomRequestUrl("/api/random-valid-day", {
+            fresh: FORCE_FRESH_MODE,
+          }),
           {
             cache: "no-store",
           }
@@ -880,6 +972,7 @@ export default function Page() {
 
         if (!cancelled && fallbackRes.ok && fallbackJson?.day) {
           setDay(fallbackJson.day);
+          rememberSurpriseDay(fallbackJson.day);
         }
       } finally {
         if (!cancelled) {
@@ -1112,7 +1205,10 @@ export default function Page() {
 
     try {
       const res = await fetch(
-        `/api/surprise${FORCE_FRESH_MODE ? "?fresh=1" : ""}`,
+        buildRandomRequestUrl("/api/surprise", {
+          fresh: FORCE_FRESH_MODE,
+          currentDay: day,
+        }),
         {
           cache: "no-store",
         }
@@ -1127,6 +1223,8 @@ export default function Page() {
         finishDayTransition(transitionId);
         return;
       }
+
+      rememberSurpriseDay(json.day);
 
       if (json.day === day) {
         applyBundlePayload(json);
