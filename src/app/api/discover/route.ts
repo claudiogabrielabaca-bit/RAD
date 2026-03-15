@@ -1,135 +1,108 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { sampleRandomCachedHighlights } from "@/app/lib/random-valid-day";
+import type { DiscoverCard } from "@/app/lib/rad-types";
 
 export const dynamic = "force-dynamic";
+
+const FEATURED_CENTURY_MOMENTS: Array<{
+  day: string;
+  title: string;
+  text: string;
+  type: DiscoverCard["type"];
+}> = [
+  {
+    day: "1914-07-28",
+    title: "World War I begins",
+    text: "Austria-Hungary declared war on Serbia, triggering a global conflict that reshaped the 20th century.",
+    type: "war",
+  },
+  {
+    day: "1929-10-24",
+    title: "Wall Street Crash",
+    text: "The collapse of the stock market accelerated the Great Depression and transformed the modern global economy.",
+    type: "disaster",
+  },
+  {
+    day: "1939-09-01",
+    title: "World War II begins",
+    text: "Germany invaded Poland, starting the deadliest war in human history and redrawing the world's balance of power.",
+    type: "war",
+  },
+  {
+    day: "1969-07-20",
+    title: "Moon landing",
+    text: "Apollo 11 put humans on the Moon, becoming one of the greatest scientific and symbolic achievements of the century.",
+    type: "science",
+  },
+  {
+    day: "1989-11-09",
+    title: "Fall of the Berlin Wall",
+    text: "The collapse of the Berlin Wall became the defining symbol of the end of the Cold War era.",
+    type: "politics",
+  },
+];
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
 
-function shuffleArray<T>(items: T[]) {
-  const arr = [...items];
-
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
+function normalizeCardType(
+  value: string | null | undefined,
+  fallback: DiscoverCard["type"]
+): DiscoverCard["type"] {
+  switch (value) {
+    case "selected":
+    case "events":
+    case "births":
+    case "deaths":
+    case "war":
+    case "disaster":
+    case "politics":
+    case "science":
+    case "culture":
+    case "sports":
+    case "discovery":
+    case "crime":
+    case "none":
+      return value;
+    default:
+      return fallback;
   }
-
-  return arr;
-}
-
-function getDayYear(day: string) {
-  return Number(day.slice(0, 4)) || 0;
-}
-
-function getDayMonth(day: string) {
-  return day.slice(5, 7);
-}
-
-function getDayDecade(day: string) {
-  const year = getDayYear(day);
-  return year ? Math.floor(year / 10) * 10 : 0;
-}
-
-function pickDiscoverItems<
-  T extends {
-    day: string;
-    title: string | null;
-    text: string;
-    image: string | null;
-    type: string;
-  },
->(pool: T[], count: number) {
-  const remaining = shuffleArray(
-    pool.filter(
-      (item) =>
-        !!item.day &&
-        !!item.title?.trim() &&
-        !!item.text?.trim() &&
-        !!item.image?.trim()
-    )
-  );
-
-  const selected: T[] = [];
-  const usedDecades = new Set<number>();
-  const usedYears = new Set<number>();
-  const usedMonths = new Set<string>();
-
-  while (remaining.length > 0 && selected.length < count) {
-    let bestIndex = 0;
-    let bestScore = -Infinity;
-
-    for (let i = 0; i < remaining.length; i++) {
-      const item = remaining[i];
-      const decade = getDayDecade(item.day);
-      const year = getDayYear(item.day);
-      const month = getDayMonth(item.day);
-
-      let score = Math.random() * 10;
-
-      if (!usedDecades.has(decade)) score += 30;
-      if (!usedYears.has(year)) score += 8;
-      if (!usedMonths.has(month)) score += 5;
-      if (item.image) score += 2;
-      if ((item.title?.length ?? 0) > 24) score += 1;
-
-      if (score > bestScore) {
-        bestScore = score;
-        bestIndex = i;
-      }
-    }
-
-    const [picked] = remaining.splice(bestIndex, 1);
-
-    if (!picked) break;
-
-    selected.push(picked);
-    usedDecades.add(getDayDecade(picked.day));
-    usedYears.add(getDayYear(picked.day));
-    usedMonths.add(getDayMonth(picked.day));
-  }
-
-  return selected;
 }
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const rawCount = Number(searchParams.get("count") ?? "5");
-    const fresh = searchParams.get("fresh") === "1";
+    const count = clamp(
+      Number.isFinite(rawCount) ? rawCount : 5,
+      1,
+      FEATURED_CENTURY_MOMENTS.length
+    );
 
-    const count = clamp(Number.isFinite(rawCount) ? rawCount : 5, 1, 12);
+    const featured = FEATURED_CENTURY_MOMENTS.slice(0, count);
+    const featuredDays = featured.map((item) => item.day);
 
-    const sampleSize = fresh
-      ? Math.max(count * 10, 36)
-      : Math.max(count * 8, 24);
-
-    const pool = await sampleRandomCachedHighlights({
-      sampleSize,
-      requireImage: true,
-    });
-
-    const selected = pickDiscoverItems(pool, count);
-    const selectedDays = selected.map((item) => item.day);
-
-    if (selectedDays.length === 0) {
-      return NextResponse.json(
-        { cards: [] },
-        {
-          headers: {
-            "Cache-Control": "no-store",
+    const [cachedRows, stats, dayStats] = await Promise.all([
+      prisma.dayHighlightCache.findMany({
+        where: {
+          day: {
+            in: featuredDays,
           },
-        }
-      );
-    }
-
-    const [stats, dayStats] = await Promise.all([
+        },
+        select: {
+          day: true,
+          title: true,
+          text: true,
+          image: true,
+          type: true,
+        },
+      }),
       prisma.rating.groupBy({
         by: ["day"],
         where: {
           day: {
-            in: selectedDays,
+            in: featuredDays,
           },
         },
         _count: {
@@ -142,7 +115,7 @@ export async function GET(req: NextRequest) {
       prisma.dayStats.findMany({
         where: {
           day: {
-            in: selectedDays,
+            in: featuredDays,
           },
         },
         select: {
@@ -152,6 +125,7 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
+    const cacheMap = new Map(cachedRows.map((item) => [item.day, item]));
     const statsMap = new Map(
       stats.map((item) => [
         item.day,
@@ -161,32 +135,22 @@ export async function GET(req: NextRequest) {
         },
       ])
     );
-
     const viewsMap = new Map(dayStats.map((item) => [item.day, item.views]));
 
-    const cards = selected.map((item) => ({
-      day: item.day,
-      title: item.title?.trim() || "Historical day",
-      text: item.text?.trim() || "Discover this day in history.",
-      image: item.image ?? null,
-      avg: statsMap.get(item.day)?.avg ?? 0,
-      count: statsMap.get(item.day)?.count ?? 0,
-      views: viewsMap.get(item.day) ?? 0,
-      type: item.type as
-        | "selected"
-        | "events"
-        | "births"
-        | "deaths"
-        | "war"
-        | "disaster"
-        | "politics"
-        | "science"
-        | "culture"
-        | "sports"
-        | "discovery"
-        | "crime"
-        | "none",
-    }));
+    const cards: DiscoverCard[] = featured.map((item) => {
+      const cached = cacheMap.get(item.day);
+
+      return {
+        day: item.day,
+        title: cached?.title?.trim() || item.title,
+        text: cached?.text?.trim() || item.text,
+        image: cached?.image?.trim() || null,
+        avg: statsMap.get(item.day)?.avg ?? 0,
+        count: statsMap.get(item.day)?.count ?? 0,
+        views: viewsMap.get(item.day) ?? 0,
+        type: normalizeCardType(cached?.type, item.type),
+      };
+    });
 
     return NextResponse.json(
       { cards },

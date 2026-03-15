@@ -508,7 +508,7 @@ function DiscoverDayCard({
 
       <div className="absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-2">
         <span className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white backdrop-blur-xl">
-          Discovery
+          20th century
         </span>
 
         <span
@@ -2855,31 +2855,14 @@ export default function Page() {
         </div>
 
         <section className="mt-14">
-          <div className="mb-5 flex items-end justify-between gap-4">
-            <div>
-              <div className="text-xl font-semibold text-zinc-100">
-                Discover more days
-              </div>
-              <div className="mt-1 text-sm text-zinc-400">
-                Keep exploring moments from history
-              </div>
+          <div className="mb-5">
+            <div className="text-xl font-semibold text-zinc-100">
+              5 moments that defined the 20th century
             </div>
-
-            <button
-              type="button"
-              onClick={async () => {
-                setLoadingDiscover(true);
-                const items = await loadDiscoverRandomDays(
-                  5,
-                  FORCE_FRESH_MODE
-                );
-                setDiscoverDays(items);
-                setLoadingDiscover(false);
-              }}
-              className="rounded-xl border border-white/8 bg-black/20 px-4 py-2 text-sm text-zinc-200 transition hover:bg-black/30 backdrop-blur-xl"
-            >
-              Refresh cards
-            </button>
+            <div className="mt-1 text-sm text-zinc-400">
+              A editorial selection of turning points that reshaped the
+              modern world
+            </div>
           </div>
 
           {loadingDiscover ? (
