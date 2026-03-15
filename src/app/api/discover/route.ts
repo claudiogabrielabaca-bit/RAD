@@ -1,25 +1,11 @@
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
-import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
+import { sampleRandomCachedHighlights } from "@/app/lib/random-valid-day";
 
-type CachedHighlightRow = {
-  day: string;
-  title: string | null;
-  text: string;
-  image: string | null;
-  type: string;
-  year: number | null;
-};
+export const dynamic = "force-dynamic";
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
-}
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
-
-function getRandomInt(min: number, max: number) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
 function shuffleArray<T>(items: T[]) {
@@ -33,12 +19,12 @@ function shuffleArray<T>(items: T[]) {
   return arr;
 }
 
-function isValidDayString(value?: string | null): value is string {
-  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
 function getDayYear(day: string) {
   return Number(day.slice(0, 4)) || 0;
+}
+
+function getDayMonth(day: string) {
+  return day.slice(5, 7);
 }
 
 function getDayDecade(day: string) {
@@ -46,215 +32,172 @@ function getDayDecade(day: string) {
   return year ? Math.floor(year / 10) * 10 : 0;
 }
 
-function buildCacheWhere(requireImage: boolean) {
-  return {
-    type: {
-      not: "none" as const,
-    },
-    title: {
-      not: null,
-    },
-    text: {
-      not: "",
-    },
-    ...(requireImage
-      ? {
-          image: {
-            not: null,
-          },
-        }
-      : {}),
-  };
-}
-
-function isUsableCachedRow(
-  row: CachedHighlightRow,
-  requireImage: boolean = false
-) {
-  return !!(
-    isValidDayString(row.day) &&
-    row.type !== "none" &&
-    row.title?.trim() &&
-    row.text?.trim() &&
-    (!requireImage || row.image?.trim())
-  );
-}
-
-function getRandomDateBetween1900AndToday() {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-
-  const year = getRandomInt(1900, currentYear);
-  const maxMonth = year === currentYear ? now.getMonth() + 1 : 12;
-  const month = getRandomInt(1, maxMonth);
-
-  const maxDay =
-    year === currentYear && month === now.getMonth() + 1
-      ? now.getDate()
-      : new Date(year, month, 0).getDate();
-
-  const day = getRandomInt(1, maxDay);
-
-  return `${year}-${pad2(month)}-${pad2(day)}`;
-}
-
-function isUsableHighlight(
-  result: Awaited<ReturnType<typeof ensureHighlightsForDay>>
-) {
-  const highlight = result.highlight;
-
-  return !!(
-    highlight &&
-    highlight.type !== "none" &&
-    highlight.text &&
-    highlight.text.trim().length > 0
-  );
-}
-
-export async function sampleRandomCachedHighlights(options?: {
-  sampleSize?: number;
-  requireImage?: boolean;
-}) {
-  const sampleSize = clamp(options?.sampleSize ?? 36, 1, 96);
-  const requireImage = options?.requireImage ?? false;
-
-  const where = buildCacheWhere(requireImage);
-  const total = await prisma.dayHighlightCache.count({ where });
-
-  if (!total) {
-    return [] as CachedHighlightRow[];
-  }
-
-  const desired = Math.min(sampleSize, total);
-  const windowSize = clamp(Math.min(12, desired), 1, 12);
-  const maxStart = Math.max(0, total - windowSize);
-
-  const windowsToFetch = Math.min(
-    6,
-    Math.max(1, Math.ceil(desired / windowSize) + 1)
-  );
-
-  const offsets = new Set<number>();
-  let guard = 0;
-
-  while (offsets.size < windowsToFetch && guard < 32) {
-    offsets.add(maxStart === 0 ? 0 : getRandomInt(0, maxStart));
-    guard++;
-  }
-
-  const batches = await Promise.all(
-    [...offsets].map((skip) =>
-      prisma.dayHighlightCache.findMany({
-        where,
-        select: {
-          day: true,
-          title: true,
-          text: true,
-          image: true,
-          type: true,
-          year: true,
-        },
-        orderBy: {
-          day: "asc",
-        },
-        skip,
-        take: windowSize,
-      })
+function pickDiscoverItems<
+  T extends {
+    day: string;
+    title: string | null;
+    text: string;
+    image: string | null;
+    type: string;
+  },
+>(pool: T[], count: number) {
+  const remaining = shuffleArray(
+    pool.filter(
+      (item) =>
+        !!item.day &&
+        !!item.title?.trim() &&
+        !!item.text?.trim() &&
+        !!item.image?.trim()
     )
   );
 
-  const unique = new Map<string, CachedHighlightRow>();
-  const merged = shuffleArray(batches.flat());
+  const selected: T[] = [];
+  const usedDecades = new Set<number>();
+  const usedYears = new Set<number>();
+  const usedMonths = new Set<string>();
 
-  for (const row of merged) {
-    if (!isUsableCachedRow(row, requireImage)) continue;
-    if (unique.has(row.day)) continue;
+  while (remaining.length > 0 && selected.length < count) {
+    let bestIndex = 0;
+    let bestScore = -Infinity;
 
-    unique.set(row.day, row);
+    for (let i = 0; i < remaining.length; i++) {
+      const item = remaining[i];
+      const decade = getDayDecade(item.day);
+      const year = getDayYear(item.day);
+      const month = getDayMonth(item.day);
 
-    if (unique.size >= desired) {
-      break;
+      let score = Math.random() * 10;
+
+      if (!usedDecades.has(decade)) score += 30;
+      if (!usedYears.has(year)) score += 8;
+      if (!usedMonths.has(month)) score += 5;
+      if (item.image) score += 2;
+      if ((item.title?.length ?? 0) > 24) score += 1;
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestIndex = i;
+      }
     }
+
+    const [picked] = remaining.splice(bestIndex, 1);
+
+    if (!picked) break;
+
+    selected.push(picked);
+    usedDecades.add(getDayDecade(picked.day));
+    usedYears.add(getDayYear(picked.day));
+    usedMonths.add(getDayMonth(picked.day));
   }
 
-  return shuffleArray([...unique.values()]);
+  return selected;
 }
 
-function pickRandomCachedDay(candidates: CachedHighlightRow[]) {
-  if (!candidates.length) return null;
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const rawCount = Number(searchParams.get("count") ?? "5");
+    const fresh = searchParams.get("fresh") === "1";
 
-  const buckets = new Map<number, CachedHighlightRow[]>();
+    const count = clamp(Number.isFinite(rawCount) ? rawCount : 5, 1, 12);
 
-  for (const item of candidates) {
-    const decade = getDayDecade(item.day);
+    const sampleSize = fresh
+      ? Math.max(count * 10, 36)
+      : Math.max(count * 8, 24);
 
-    if (!buckets.has(decade)) {
-      buckets.set(decade, []);
-    }
-
-    buckets.get(decade)?.push(item);
-  }
-
-  const decadeKeys = shuffleArray([...buckets.keys()]);
-  const chosenDecade = decadeKeys[0];
-
-  if (chosenDecade == null) {
-    return candidates[getRandomInt(0, candidates.length - 1)] ?? null;
-  }
-
-  const decadeItems = buckets.get(chosenDecade) ?? candidates;
-  return decadeItems[getRandomInt(0, decadeItems.length - 1)] ?? null;
-}
-
-export async function getRandomValidDay(options?: {
-  fresh?: boolean;
-  maxCacheTake?: number;
-  maxAttempts?: number;
-}) {
-  const fresh = options?.fresh ?? false;
-  const maxCacheTake = options?.maxCacheTake ?? 500;
-  const maxAttempts = options?.maxAttempts ?? 12;
-
-  if (!fresh) {
-    const cacheCandidates = await sampleRandomCachedHighlights({
-      sampleSize: Math.min(maxCacheTake, 48),
-      requireImage: false,
+    const pool = await sampleRandomCachedHighlights({
+      sampleSize,
+      requireImage: true,
     });
 
-    const picked = pickRandomCachedDay(cacheCandidates);
+    const selected = pickDiscoverItems(pool, count);
+    const selectedDays = selected.map((item) => item.day);
 
-    if (picked) {
-      return {
-        day: picked.day,
-        source: "cache" as const,
-      };
-    }
-  }
-
-  const tried = new Set<string>();
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    let candidate = getRandomDateBetween1900AndToday();
-
-    while (tried.has(candidate)) {
-      candidate = getRandomDateBetween1900AndToday();
+    if (selectedDays.length === 0) {
+      return NextResponse.json(
+        { cards: [] },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
     }
 
-    tried.add(candidate);
+    const [stats, dayStats] = await Promise.all([
+      prisma.rating.groupBy({
+        by: ["day"],
+        where: {
+          day: {
+            in: selectedDays,
+          },
+        },
+        _count: {
+          day: true,
+        },
+        _avg: {
+          stars: true,
+        },
+      }),
+      prisma.dayStats.findMany({
+        where: {
+          day: {
+            in: selectedDays,
+          },
+        },
+        select: {
+          day: true,
+          views: true,
+        },
+      }),
+    ]);
 
-    try {
-      const result = await ensureHighlightsForDay(candidate);
+    const statsMap = new Map(
+      stats.map((item) => [
+        item.day,
+        {
+          avg: item._avg.stars ?? 0,
+          count: item._count.day ?? 0,
+        },
+      ])
+    );
 
-      if (isUsableHighlight(result)) {
-        return {
-          day: candidate,
-          source: "generated" as const,
-        };
+    const viewsMap = new Map(dayStats.map((item) => [item.day, item.views]));
+
+    const cards = selected.map((item) => ({
+      day: item.day,
+      title: item.title?.trim() || "Historical day",
+      text: item.text?.trim() || "Discover this day in history.",
+      image: item.image ?? null,
+      avg: statsMap.get(item.day)?.avg ?? 0,
+      count: statsMap.get(item.day)?.count ?? 0,
+      views: viewsMap.get(item.day) ?? 0,
+      type: item.type as
+        | "selected"
+        | "events"
+        | "births"
+        | "deaths"
+        | "war"
+        | "disaster"
+        | "politics"
+        | "science"
+        | "culture"
+        | "sports"
+        | "discovery"
+        | "crime"
+        | "none",
+    }));
+
+    return NextResponse.json(
+      { cards },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+        },
       }
-    } catch (error) {
-      console.error(`[random-valid-day] attempt failed for ${candidate}`, error);
-    }
+    );
+  } catch (error) {
+    console.error("discover GET error:", error);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
-
-  return null;
 }
