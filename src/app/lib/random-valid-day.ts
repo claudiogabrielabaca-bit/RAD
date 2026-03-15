@@ -52,6 +52,14 @@ function parseMonth(day: string) {
   return Number(day.slice(5, 7));
 }
 
+function parseDayOfMonth(day: string) {
+  return Number(day.slice(8, 10));
+}
+
+function parseMonthDay(day: string) {
+  return day.slice(5, 10); // MM-DD
+}
+
 function getDecade(year: number) {
   return Math.floor(year / 10) * 10;
 }
@@ -91,6 +99,33 @@ function getUniqueDays(days: string[]) {
   return Array.from(new Set(days.filter(Boolean)));
 }
 
+function incrementMapCount<K>(map: Map<K, number>, key: K) {
+  map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+function pickWeightedRandomDay(
+  entries: Array<{ day: string; weight: number }>
+): string | null {
+  if (entries.length === 0) return null;
+
+  const totalWeight = entries.reduce((acc, item) => acc + item.weight, 0);
+
+  if (totalWeight <= 0) {
+    return shuffleArray(entries.map((item) => item.day))[0] ?? null;
+  }
+
+  let roll = Math.random() * totalWeight;
+
+  for (const item of entries) {
+    roll -= item.weight;
+    if (roll <= 0) {
+      return item.day;
+    }
+  }
+
+  return entries[entries.length - 1]?.day ?? null;
+}
+
 function pickBalancedDay(days: string[]) {
   const uniqueDays = getUniqueDays(days);
 
@@ -100,51 +135,51 @@ function pickBalancedDay(days: string[]) {
   const monthCounts = new Map<number, number>();
   const decadeCounts = new Map<number, number>();
   const yearCounts = new Map<number, number>();
+  const monthDayCounts = new Map<string, number>();
+  const dayOfMonthCounts = new Map<number, number>();
 
   for (const day of uniqueDays) {
     const year = parseYear(day);
     const month = parseMonth(day);
+    const dayOfMonth = parseDayOfMonth(day);
+    const monthDay = parseMonthDay(day);
     const decade = getDecade(year);
 
-    monthCounts.set(month, (monthCounts.get(month) ?? 0) + 1);
-    decadeCounts.set(decade, (decadeCounts.get(decade) ?? 0) + 1);
-    yearCounts.set(year, (yearCounts.get(year) ?? 0) + 1);
+    incrementMapCount(monthCounts, month);
+    incrementMapCount(decadeCounts, decade);
+    incrementMapCount(yearCounts, year);
+    incrementMapCount(monthDayCounts, monthDay);
+    incrementMapCount(dayOfMonthCounts, dayOfMonth);
   }
 
   const weighted = uniqueDays.map((day) => {
     const year = parseYear(day);
     const month = parseMonth(day);
+    const dayOfMonth = parseDayOfMonth(day);
+    const monthDay = parseMonthDay(day);
     const decade = getDecade(year);
 
     const monthCount = monthCounts.get(month) ?? 1;
     const decadeCount = decadeCounts.get(decade) ?? 1;
     const yearCount = yearCounts.get(year) ?? 1;
+    const monthDayCount = monthDayCounts.get(monthDay) ?? 1;
+    const dayOfMonthCount = dayOfMonthCounts.get(dayOfMonth) ?? 1;
 
+    // Penalización fuerte al MM-DD repetido
+    // Penalización media al mes y década
+    // Penalización suave al año y día del mes
     const weight =
       1 /
-      (Math.sqrt(monthCount) *
-        Math.sqrt(decadeCount) *
-        Math.cbrt(yearCount));
+      (Math.pow(monthDayCount, 1.35) *
+        Math.pow(monthCount, 0.75) *
+        Math.pow(decadeCount, 0.7) *
+        Math.pow(yearCount, 0.35) *
+        Math.pow(dayOfMonthCount, 0.2));
 
     return { day, weight };
   });
 
-  const totalWeight = weighted.reduce((acc, item) => acc + item.weight, 0);
-
-  if (totalWeight <= 0) {
-    return shuffleArray(uniqueDays)[0];
-  }
-
-  let roll = Math.random() * totalWeight;
-
-  for (const item of weighted) {
-    roll -= item.weight;
-    if (roll <= 0) {
-      return item.day;
-    }
-  }
-
-  return weighted[weighted.length - 1]?.day ?? null;
+  return pickWeightedRandomDay(weighted);
 }
 
 export async function sampleRandomCachedHighlights(options?: {
