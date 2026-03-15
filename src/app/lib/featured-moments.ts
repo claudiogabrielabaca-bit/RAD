@@ -18,7 +18,7 @@ export const FEATURED_MOMENTS: FeaturedMoment[] = [
     text: "Austria-Hungary declared war on Serbia, triggering the conflict that became the First World War and reshaped the modern world.",
     type: "war",
     secondaryType: "politics",
-    image: null,
+    image: "/featured/ww1.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/World_War_I",
   },
   {
@@ -27,7 +27,7 @@ export const FEATURED_MOMENTS: FeaturedMoment[] = [
     text: "Black Thursday marked the beginning of the Wall Street Crash of 1929, accelerating the global economic collapse known as the Great Depression.",
     type: "disaster",
     secondaryType: "politics",
-    image: null,
+    image: "/featured/wall-street-crash.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/Wall_Street_Crash_of_1929",
   },
   {
@@ -36,7 +36,7 @@ export const FEATURED_MOMENTS: FeaturedMoment[] = [
     text: "Germany invaded Poland, beginning the Second World War and setting off the deadliest conflict in human history.",
     type: "war",
     secondaryType: "politics",
-    image: null,
+    image: "/featured/ww2.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/Invasion_of_Poland",
   },
   {
@@ -45,7 +45,7 @@ export const FEATURED_MOMENTS: FeaturedMoment[] = [
     text: "Apollo 11 landed on the Moon, and humans walked on its surface for the first time in one of the century’s defining achievements.",
     type: "science",
     secondaryType: "discovery",
-    image: null,
+    image: "/featured/moon-landing.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/Apollo_11",
   },
   {
@@ -54,7 +54,7 @@ export const FEATURED_MOMENTS: FeaturedMoment[] = [
     text: "The Berlin Wall opened, becoming the defining symbol of the collapse of the Cold War order in Europe.",
     type: "politics",
     secondaryType: "discovery",
-    image: null,
+    image: "/featured/berlin-wall.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/Fall_of_the_Berlin_Wall",
   },
 ];
