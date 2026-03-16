@@ -2361,7 +2361,10 @@ export default function Page() {
                     </span>
                   </button>
 
-                 
+                  <HighlightHeroImage
+                    src={highlight.image}
+                    alt={highlight.title ?? "Historical highlight"}
+                  />
 
                   <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/58 to-black/18" />
 
