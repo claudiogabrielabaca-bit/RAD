@@ -8,6 +8,8 @@ import ReplyList from "@/app/components/rad/reply-list";
 import ReplyComposer from "@/app/components/rad/reply-composer";
 import AuthModal, { type AuthView } from "@/app/components/rad/auth-modal";
 import CosmicLoading from "@/app/components/rad/cosmic-loading";
+import HighlightHeroImage from "@/app/components/rad/highlight-hero-image";
+
 import type {
   DayResponse,
   DiscoverCard,
@@ -2359,15 +2361,7 @@ export default function Page() {
                     </span>
                   </button>
 
-                  {highlight.image ? (
-                    <img
-                      src={highlight.image}
-                      alt={highlight.title ?? "Historical highlight"}
-                      className="absolute inset-0 h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] to-black" />
-                  )}
+                 
 
                   <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/58 to-black/18" />
 
