@@ -13,44 +13,43 @@ export default function HighlightHeroImage({
   alt,
   className = "",
 }: HighlightHeroImageProps) {
-  const [displaySrc, setDisplaySrc] = useState<string | null>(src ?? null);
-  const [nextSrc, setNextSrc] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState<boolean>(true);
-  const lastStableSrcRef = useRef<string | null>(src ?? null);
+  const normalizedSrc = src?.trim() || null;
+
+  const [displaySrc, setDisplaySrc] = useState<string | null>(normalizedSrc);
+  const [incomingSrc, setIncomingSrc] = useState<string | null>(null);
+  const [isSwitching, setIsSwitching] = useState(false);
+
+  const lastLoadedSrcRef = useRef<string | null>(normalizedSrc);
 
   useEffect(() => {
-    const normalized = src?.trim() || null;
-
-    if (!normalized) {
-      setNextSrc(null);
-      setDisplaySrc(null);
-      setLoaded(true);
-      lastStableSrcRef.current = null;
+    if (!normalizedSrc) {
       return;
     }
 
-    if (normalized === lastStableSrcRef.current) {
+    if (normalizedSrc === lastLoadedSrcRef.current) {
       return;
     }
 
-    setLoaded(false);
+    setIsSwitching(true);
 
     const img = new window.Image();
-    img.src = normalized;
+    img.decoding = "async";
+    img.src = normalizedSrc;
 
     const handleLoad = () => {
-      setNextSrc(normalized);
+      setIncomingSrc(normalizedSrc);
 
       requestAnimationFrame(() => {
-        setDisplaySrc(normalized);
-        lastStableSrcRef.current = normalized;
-        setLoaded(true);
+        setDisplaySrc(normalizedSrc);
+        lastLoadedSrcRef.current = normalizedSrc;
+        setIncomingSrc(null);
+        setIsSwitching(false);
       });
     };
 
     const handleError = () => {
-      setNextSrc(null);
-      setLoaded(true);
+      setIncomingSrc(null);
+      setIsSwitching(false);
     };
 
     img.onload = handleLoad;
@@ -60,32 +59,24 @@ export default function HighlightHeroImage({
       img.onload = null;
       img.onerror = null;
     };
-  }, [src]);
+  }, [normalizedSrc]);
 
   return (
     <div className={`absolute inset-0 overflow-hidden ${className}`}>
-      <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] to-black" />
+      <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] via-[#111] to-black" />
 
       {displaySrc ? (
         <img
           src={displaySrc}
           alt={alt}
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
-            loaded ? "opacity-100" : "opacity-100"
-          }`}
           draggable={false}
+          className="absolute inset-0 h-full w-full object-cover transition-opacity duration-300 opacity-100"
         />
       ) : null}
 
-      {!loaded && displaySrc ? (
-        <div className="absolute inset-0 bg-black/10 backdrop-blur-[1px]" />
+      {isSwitching ? (
+        <div className="absolute inset-0 bg-black/12 backdrop-blur-[1px]" />
       ) : null}
-
-      {!displaySrc && !nextSrc ? (
-        <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] via-[#111] to-black" />
-      ) : null}
-
-      <div className="absolute inset-0 bg-black/35" />
     </div>
   );
 }
