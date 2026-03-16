@@ -7,6 +7,7 @@ type HighlightHeroImageProps = {
   alt: string;
   className?: string;
   onLoadingChange?: (loading: boolean) => void;
+  revealDelayMs?: number;
 };
 
 export default function HighlightHeroImage({
@@ -14,13 +15,20 @@ export default function HighlightHeroImage({
   alt,
   className = "",
   onLoadingChange,
+  revealDelayMs = 0,
 }: HighlightHeroImageProps) {
   const normalizedSrc = src?.trim() || null;
 
   const [displaySrc, setDisplaySrc] = useState<string | null>(normalizedSrc);
   const lastLoadedSrcRef = useRef<string | null>(normalizedSrc);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (revealTimerRef.current) {
+      clearTimeout(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+
     if (!normalizedSrc) {
       setDisplaySrc(null);
       lastLoadedSrcRef.current = null;
@@ -40,9 +48,12 @@ export default function HighlightHeroImage({
     img.src = normalizedSrc;
 
     const handleLoad = () => {
-      setDisplaySrc(normalizedSrc);
-      lastLoadedSrcRef.current = normalizedSrc;
-      onLoadingChange?.(false);
+      revealTimerRef.current = setTimeout(() => {
+        setDisplaySrc(normalizedSrc);
+        lastLoadedSrcRef.current = normalizedSrc;
+        onLoadingChange?.(false);
+        revealTimerRef.current = null;
+      }, revealDelayMs);
     };
 
     const handleError = () => {
@@ -55,8 +66,13 @@ export default function HighlightHeroImage({
     return () => {
       img.onload = null;
       img.onerror = null;
+
+      if (revealTimerRef.current) {
+        clearTimeout(revealTimerRef.current);
+        revealTimerRef.current = null;
+      }
     };
-  }, [normalizedSrc, onLoadingChange]);
+  }, [normalizedSrc, onLoadingChange, revealDelayMs]);
 
   return (
     <div className={`absolute inset-0 overflow-hidden ${className}`}>

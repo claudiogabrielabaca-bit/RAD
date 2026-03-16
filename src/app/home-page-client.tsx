@@ -31,6 +31,10 @@ const SURPRISE_HISTORY_MAX = 120;
 const TODAY_HISTORY_STORAGE_KEY_PREFIX = "rad:today-history:";
 const TODAY_HISTORY_MAX = 160;
 
+// Ajustá estos dos valores a gusto
+const MIN_DAY_TRANSITION_MS = 1000;
+const HERO_IMAGE_REVEAL_DELAY_MS = 150;
+
 type CurrentUser = {
   id: string;
   email: string;
@@ -696,6 +700,9 @@ export default function Page() {
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const todayHistoryNoticeTimeoutRef =
     useRef<ReturnType<typeof setTimeout> | null>(null);
+  const minTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
   const consumedProfileJumpRef = useRef(false);
   const didInitDayRef = useRef(false);
   const transitionIdRef = useRef(0);
@@ -770,6 +777,8 @@ export default function Page() {
   const [loadingDiscover, setLoadingDiscover] = useState(false);
 
   const [isDayTransitioning, setIsDayTransitioning] = useState(false);
+  const [minimumTransitionDone, setMinimumTransitionDone] = useState(true);
+  const [heroImageLoading, setHeroImageLoading] = useState(false);
   const [todayHistoryNotice, setTodayHistoryNotice] = useState("");
 
   const daysInSelectedMonth = getDaysInMonth(
@@ -874,14 +883,23 @@ export default function Page() {
 
   function beginDayTransition() {
     transitionIdRef.current += 1;
+    const currentTransitionId = transitionIdRef.current;
+
+    setMinimumTransitionDone(false);
     setIsDayTransitioning(true);
     setLoadingDay(true);
     setLoadingHighlight(true);
-    setData(null);
-    setHighlight(null);
-    setHighlights([]);
-    setActiveHighlightIndex(0);
     setIsFavoriteDay(false);
+
+    if (minTransitionTimerRef.current) {
+      clearTimeout(minTransitionTimerRef.current);
+    }
+
+    minTransitionTimerRef.current = setTimeout(() => {
+      if (transitionIdRef.current === currentTransitionId) {
+        setMinimumTransitionDone(true);
+      }
+    }, MIN_DAY_TRANSITION_MS);
   }
 
   function finishDayTransition(transitionId: number) {
@@ -956,9 +974,15 @@ export default function Page() {
         ? [payload.highlightData.highlight]
         : [];
 
+    const nextHighlight = items[0] ?? null;
+    const currentImage = highlight?.image?.trim() || "";
+    const nextImage = nextHighlight?.image?.trim() || "";
+
+    setHeroImageLoading(!!nextImage && nextImage !== currentImage);
+
     setData(payload.dayData);
     setHighlights(items);
-    setHighlight(items[0] ?? null);
+    setHighlight(nextHighlight);
     setActiveHighlightIndex(0);
     setLoadingDay(false);
     setLoadingHighlight(false);
@@ -1019,6 +1043,10 @@ export default function Page() {
 
       if (todayHistoryNoticeTimeoutRef.current) {
         clearTimeout(todayHistoryNoticeTimeoutRef.current);
+      }
+
+      if (minTransitionTimerRef.current) {
+        clearTimeout(minTransitionTimerRef.current);
       }
     };
   }, []);
@@ -2364,6 +2392,14 @@ export default function Page() {
                   <HighlightHeroImage
                     src={highlight.image}
                     alt={highlight.title ?? "Historical highlight"}
+                    revealDelayMs={HERO_IMAGE_REVEAL_DELAY_MS}
+                    onLoadingChange={(loading) => {
+                      if (isDayTransitioning || !minimumTransitionDone) {
+                        setHeroImageLoading(loading);
+                      } else if (!loading) {
+                        setHeroImageLoading(false);
+                      }
+                    }}
                   />
 
                   <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/58 to-black/18" />
@@ -3169,9 +3205,11 @@ export default function Page() {
 
       <CosmicLoading
         open={
+          !minimumTransitionDone ||
           isDayTransitioning ||
           (loadingHighlight && !highlight) ||
-          (loadingDay && !data)
+          (loadingDay && !data) ||
+          heroImageLoading
         }
         label="Searching historical archives..."
       />
