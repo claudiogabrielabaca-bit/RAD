@@ -871,12 +871,17 @@ export default function Page() {
       behavior: "smooth",
     });
   }
-function beginDayTransition() {
-  transitionIdRef.current += 1;
-  setIsDayTransitioning(true);
-  setLoadingDay(true);
-  setLoadingHighlight(true);
-  setIsFavoriteDay(false);
+
+  function beginDayTransition() {
+    transitionIdRef.current += 1;
+    setIsDayTransitioning(true);
+    setLoadingDay(true);
+    setLoadingHighlight(true);
+    setData(null);
+    setHighlight(null);
+    setHighlights([]);
+    setActiveHighlightIndex(0);
+    setIsFavoriteDay(false);
   }
 
   function finishDayTransition(transitionId: number) {

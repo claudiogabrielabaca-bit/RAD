@@ -6,50 +6,47 @@ type HighlightHeroImageProps = {
   src?: string | null;
   alt: string;
   className?: string;
+  onLoadingChange?: (loading: boolean) => void;
 };
 
 export default function HighlightHeroImage({
   src,
   alt,
   className = "",
+  onLoadingChange,
 }: HighlightHeroImageProps) {
   const normalizedSrc = src?.trim() || null;
 
   const [displaySrc, setDisplaySrc] = useState<string | null>(normalizedSrc);
-  const [incomingSrc, setIncomingSrc] = useState<string | null>(null);
-  const [isSwitching, setIsSwitching] = useState(false);
-
   const lastLoadedSrcRef = useRef<string | null>(normalizedSrc);
 
   useEffect(() => {
     if (!normalizedSrc) {
+      setDisplaySrc(null);
+      lastLoadedSrcRef.current = null;
+      onLoadingChange?.(false);
       return;
     }
 
     if (normalizedSrc === lastLoadedSrcRef.current) {
+      onLoadingChange?.(false);
       return;
     }
 
-    setIsSwitching(true);
+    onLoadingChange?.(true);
 
     const img = new window.Image();
     img.decoding = "async";
     img.src = normalizedSrc;
 
     const handleLoad = () => {
-      setIncomingSrc(normalizedSrc);
-
-      requestAnimationFrame(() => {
-        setDisplaySrc(normalizedSrc);
-        lastLoadedSrcRef.current = normalizedSrc;
-        setIncomingSrc(null);
-        setIsSwitching(false);
-      });
+      setDisplaySrc(normalizedSrc);
+      lastLoadedSrcRef.current = normalizedSrc;
+      onLoadingChange?.(false);
     };
 
     const handleError = () => {
-      setIncomingSrc(null);
-      setIsSwitching(false);
+      onLoadingChange?.(false);
     };
 
     img.onload = handleLoad;
@@ -59,7 +56,7 @@ export default function HighlightHeroImage({
       img.onload = null;
       img.onerror = null;
     };
-  }, [normalizedSrc]);
+  }, [normalizedSrc, onLoadingChange]);
 
   return (
     <div className={`absolute inset-0 overflow-hidden ${className}`}>
@@ -70,12 +67,8 @@ export default function HighlightHeroImage({
           src={displaySrc}
           alt={alt}
           draggable={false}
-          className="absolute inset-0 h-full w-full object-cover transition-opacity duration-300 opacity-100"
+          className="absolute inset-0 h-full w-full object-cover"
         />
-      ) : null}
-
-      {isSwitching ? (
-        <div className="absolute inset-0 bg-black/12 backdrop-blur-[1px]" />
       ) : null}
     </div>
   );
