@@ -2402,8 +2402,9 @@ export default function Page() {
                       }
                     }}
                   />
-
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/58 to-black/18" />
+                   {heroImageLoading ? (
+                  <div className="absolute inset-0 z-10 bg-black/25 backdrop-blur-[2px]" />
+                  ) : null}
 
                   <div className="relative flex h-full min-h-[320px] flex-col justify-end p-5 sm:p-6">
                     <div className="text-sm text-zinc-200/90">In this day</div>

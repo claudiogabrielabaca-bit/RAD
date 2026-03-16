@@ -37,11 +37,15 @@ export default function HighlightHeroImage({
     }
 
     if (normalizedSrc === lastLoadedSrcRef.current) {
+      setDisplaySrc(normalizedSrc);
       onLoadingChange?.(false);
       return;
     }
 
     onLoadingChange?.(true);
+
+    // CLAVE: ocultar la imagen anterior apenas cambia el src
+    setDisplaySrc(null);
 
     const img = new window.Image();
     img.decoding = "async";
@@ -57,6 +61,7 @@ export default function HighlightHeroImage({
     };
 
     const handleError = () => {
+      setDisplaySrc(null);
       onLoadingChange?.(false);
     };
 
@@ -85,7 +90,9 @@ export default function HighlightHeroImage({
           draggable={false}
           className="absolute inset-0 h-full w-full object-cover"
         />
-      ) : null}
+      ) : (
+        <div className="absolute inset-0 animate-pulse bg-black/20" />
+      )}
     </div>
   );
 }
