@@ -66,19 +66,24 @@ const PRIORITY: WikiType[] = ["selected", "events", "births", "deaths"];
 const WIKI_LANGS: WikiLang[] = ["en"];
 const MAX_HIGHLIGHTS = 5;
 
-function stripHtml(input: string | null | undefined) {
-  if (!input) return null;
-  return input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
 function decodeHtmlEntities(input: string) {
   return input
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&#0*39;/gi, "'")
+    .replace(/&#0*34;/gi, '"')
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function stripHtml(input: string | null | undefined) {
+  if (!input) return null;
+
+  return decodeHtmlEntities(
+    input.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+  );
 }
 
 function normalizeText(input: string) {
@@ -91,6 +96,18 @@ function stripReferenceMarkers(input: string) {
     .replace(/\s+,/g, ",")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function cleanDisplayText(input: string | null | undefined) {
+  if (!input) return "";
+  return stripReferenceMarkers(
+    decodeHtmlEntities(input).replace(/\s+/g, " ").trim()
+  );
+}
+
+function cleanNullableDisplayText(input: string | null | undefined) {
+  const value = cleanDisplayText(input);
+  return value || null;
 }
 
 function normalizeLooseText(input: string | null | undefined) {
@@ -282,8 +299,8 @@ function buildHighlight(
   image: string | null,
   articleUrl: string | null
 ): DayHighlight {
-  const cleanTitle = stripReferenceMarkers(title ?? "");
-  const cleanText = stripReferenceMarkers(text);
+  const cleanTitle = cleanNullableDisplayText(title);
+  const cleanText = cleanDisplayText(text) || "No description available.";
   const type = detectPrimaryType(baseType, cleanText, cleanTitle || null);
   const secondaryType = detectSecondaryType(cleanText, cleanTitle || null);
 
@@ -293,7 +310,7 @@ function buildHighlight(
       secondaryType && secondaryType !== type ? secondaryType : null,
     year,
     text: cleanText,
-    title: cleanTitle || null,
+    title: cleanTitle,
     image,
     articleUrl,
   };
@@ -301,10 +318,10 @@ function buildHighlight(
 
 function mapItem(type: WikiType, item: WikiItem): DayHighlight {
   const page = item.pages?.[0];
-  const rawTitle = stripHtml(
-    page?.titles?.display ?? page?.titles?.normalized ?? null
+  const rawTitle = cleanNullableDisplayText(
+    stripHtml(page?.titles?.display ?? page?.titles?.normalized ?? null)
   );
-  const rawText = item.text ?? "No description available.";
+  const rawText = cleanDisplayText(item.text ?? "No description available.");
 
   return buildHighlight(
     type,
@@ -779,8 +796,8 @@ async function getCachedHighlights(date: string): Promise<DayHighlight[] | null>
         type: item.type ?? "none",
         secondaryType: item.secondaryType ?? null,
         year: item.year ?? null,
-        text: stripReferenceMarkers(item.text ?? "No description available."),
-        title: stripReferenceMarkers(item.title ?? "") || null,
+        text: cleanDisplayText(item.text ?? "No description available."),
+        title: cleanNullableDisplayText(item.title),
         image: item.image ?? null,
         articleUrl: item.articleUrl ?? null,
       }))
@@ -795,8 +812,8 @@ async function getCachedHighlights(date: string): Promise<DayHighlight[] | null>
     type: cached.type as HighlightType,
     secondaryType: null,
     year: cached.year,
-    text: stripReferenceMarkers(cached.text),
-    title: stripReferenceMarkers(cached.title ?? "") || null,
+    text: cleanDisplayText(cached.text),
+    title: cleanNullableDisplayText(cached.title),
     image: cached.image,
     articleUrl: cached.articleUrl,
   };

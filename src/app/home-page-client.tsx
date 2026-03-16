@@ -9,6 +9,7 @@ import ReplyComposer from "@/app/components/rad/reply-composer";
 import AuthModal, { type AuthView } from "@/app/components/rad/auth-modal";
 import CosmicLoading from "@/app/components/rad/cosmic-loading";
 import HighlightHeroImage from "@/app/components/rad/highlight-hero-image";
+import { decodeHtml } from "@/app/lib/html";
 
 import type {
   DayResponse,
@@ -2391,7 +2392,7 @@ export default function Page() {
 
                   <HighlightHeroImage
                     src={highlight.image}
-                    alt={highlight.title ?? "Historical highlight"}
+                    alt={decodeHtml(highlight.title) || "Historical highlight"}
                     revealDelayMs={HERO_IMAGE_REVEAL_DELAY_MS}
                     onLoadingChange={(loading) => {
                       if (isDayTransitioning || !minimumTransitionDone) {
