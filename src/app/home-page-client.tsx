@@ -236,14 +236,6 @@ function getDaysInMonth(year: number, month: number) {
   return new Date(year, month, 0).getDate();
 }
 
-function getLocalTodayString() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function formatDisplayDate(date: string) {
   const [year, month, day] = date.split("-");
   const localDate = new Date(Number(year), Number(month) - 1, Number(day));
@@ -731,7 +723,7 @@ export default function Page() {
   const searchParams = useSearchParams();
 
   const minDay = "1900-01-01";
-  const today = useMemo(() => getLocalTodayString(), []);
+  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const rateBoxRef = useRef<HTMLDivElement | null>(null);
   const myReviewBlockRef = useRef<HTMLDivElement | null>(null);
@@ -1444,45 +1436,6 @@ export default function Page() {
       }
 
       try {
-        let storedDay: string | null = null;
-
-        try {
-          const raw = window.localStorage.getItem("rad:lastDay");
-          storedDay = isValidDayString(raw) ? raw : null;
-        } catch {
-          storedDay = null;
-        }
-
-        if (storedDay) {
-          try {
-            const payload = await fetchDayBundle(storedDay);
-
-            if (!cancelled) {
-              skipNextAutoDayLoadRef.current = true;
-              await applyBundlePayload(payload);
-              setDay(payload.day);
-              return;
-            }
-          } catch {
-            //
-          }
-        }
-
-        const todayDay = getLocalTodayString();
-
-        try {
-          const todayPayload = await fetchDayBundle(todayDay);
-
-          if (!cancelled) {
-            skipNextAutoDayLoadRef.current = true;
-            await applyBundlePayload(todayPayload);
-            setDay(todayPayload.day);
-            return;
-          }
-        } catch {
-          //
-        }
-
         const res = await fetch(
           buildRandomRequestUrl("/api/surprise", {
             fresh: FORCE_FRESH_MODE,
