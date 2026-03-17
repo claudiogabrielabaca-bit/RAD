@@ -32,6 +32,7 @@ const SURPRISE_HISTORY_MAX = 120;
 const TODAY_HISTORY_STORAGE_KEY_PREFIX = "rad:today-history:";
 const TODAY_HISTORY_MAX = 160;
 
+// Ajustá estos dos valores a gusto
 const MIN_DAY_TRANSITION_MS = 1000;
 const HERO_IMAGE_REVEAL_DELAY_MS = 150;
 
@@ -49,19 +50,6 @@ type CurrentUserResponse = {
 type TodayInHistoryResponse = SurpriseResponse & {
   restartedRound?: boolean;
 };
-
-type QueuedNavigation =
-  | { type: "open-day"; day: string; scrollToHighlight?: boolean }
-  | { type: "prev-day" }
-  | { type: "next-day" }
-  | { type: "prev-year" }
-  | { type: "next-year" }
-  | { type: "manual-day"; day: string }
-  | { type: "surprise"; scrollToResult?: boolean }
-  | { type: "today-in-history"; scrollToResult?: boolean }
-  | { type: "prev-highlight" }
-  | { type: "next-highlight" }
-  | { type: "highlight-index"; index: number };
 
 const BADGE_LABELS: Record<HighlightBadgeKey, string> = {
   selected: "Selected",
@@ -312,9 +300,9 @@ function getDiscoverTypeClasses(type?: DiscoverCard["type"]) {
     case "culture":
       return "border-fuchsia-400/25 bg-fuchsia-500/18 text-fuchsia-200";
     case "sports":
-      return "border-lime-500/18 bg-lime-500/18 text-lime-200";
+      return "border-lime-400/25 bg-lime-500/18 text-lime-200";
     case "discovery":
-      return "border-teal-500/18 bg-teal-500/18 text-teal-200";
+      return "border-teal-400/25 bg-teal-500/18 text-teal-200";
     case "crime":
       return "border-red-500/18 text-red-200";
     default:
@@ -584,22 +572,6 @@ async function loadDiscoverRandomDays(
   }
 }
 
-function preloadImage(src?: string | null) {
-  return new Promise<void>((resolve) => {
-    const normalizedSrc = src?.trim();
-    if (!normalizedSrc) {
-      resolve();
-      return;
-    }
-
-    const img = new window.Image();
-    img.decoding = "async";
-    img.onload = () => resolve();
-    img.onerror = () => resolve();
-    img.src = normalizedSrc;
-  });
-}
-
 const YEARS = Array.from(
   { length: new Date().getFullYear() - 1900 + 1 },
   (_, i) => String(1900 + i)
@@ -641,11 +613,9 @@ function Star({
 function DiscoverDayCard({
   card,
   onSelect,
-  disabled = false,
 }: {
   card: DiscoverCard;
   onSelect: (day: string) => void;
-  disabled?: boolean;
 }) {
   const badgeLabel = getDiscoverTypeLabel(card.type);
   const badgeClasses = getDiscoverTypeClasses(card.type);
@@ -654,8 +624,7 @@ function DiscoverDayCard({
     <button
       type="button"
       onClick={() => onSelect(card.day)}
-      disabled={disabled}
-      className="group relative h-[360px] overflow-hidden rounded-[30px] border border-white/8 bg-[#121212]/70 text-left shadow-[0_18px_70px_rgba(0,0,0,0.45)] transition duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:border-white/14 disabled:cursor-not-allowed disabled:opacity-60"
+      className="group relative h-[360px] overflow-hidden rounded-[30px] border border-white/8 bg-[#121212]/70 text-left shadow-[0_18px_70px_rgba(0,0,0,0.45)] transition duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:border-white/14"
     >
       {card.image ? (
         <img
@@ -746,10 +715,6 @@ export default function Page() {
   const dayBundleCacheRef = useRef<Map<string, SurpriseResponse>>(new Map());
   const prefetchingDaysRef = useRef<Set<string>>(new Set());
 
-  const queuedNavigationRef = useRef<QueuedNavigation | null>(null);
-  const navBusyRef = useRef(false);
-  const isMountedRef = useRef(true);
-
   const [day, setDay] = useState<string>(minDay);
   const [hasPickedInitialDay, setHasPickedInitialDay] = useState(false);
 
@@ -816,7 +781,6 @@ export default function Page() {
   const [minimumTransitionDone, setMinimumTransitionDone] = useState(true);
   const [heroImageLoading, setHeroImageLoading] = useState(false);
   const [todayHistoryNotice, setTodayHistoryNotice] = useState("");
-  const [navigationLocked, setNavigationLocked] = useState(false);
 
   const daysInSelectedMonth = getDaysInMonth(
     Number(selectedYear),
@@ -1002,7 +966,7 @@ export default function Page() {
     }
   }
 
-  async function applyBundlePayload(payload: SurpriseResponse) {
+  function applyBundlePayload(payload: SurpriseResponse) {
     cacheBundlePayload(payload);
 
     const items = payload.highlightData?.highlights?.length
@@ -1012,11 +976,10 @@ export default function Page() {
         : [];
 
     const nextHighlight = items[0] ?? null;
+    const currentImage = highlight?.image?.trim() || "";
     const nextImage = nextHighlight?.image?.trim() || "";
 
-    setHeroImageLoading(!!nextImage);
-
-    await preloadImage(nextImage);
+    setHeroImageLoading(!!nextImage && nextImage !== currentImage);
 
     setData(payload.dayData);
     setHighlights(items);
@@ -1024,36 +987,9 @@ export default function Page() {
     setActiveHighlightIndex(0);
     setLoadingDay(false);
     setLoadingHighlight(false);
-    setHeroImageLoading(false);
   }
 
-  function lockNavigation() {
-    navBusyRef.current = true;
-    setNavigationLocked(true);
-  }
-
-  function unlockNavigation() {
-    navBusyRef.current = false;
-    if (isMountedRef.current) {
-      setNavigationLocked(false);
-    }
-  }
-
-  function queueNavigation(action: QueuedNavigation) {
-    queuedNavigationRef.current = action;
-  }
-
-  async function flushQueuedNavigation() {
-    if (navBusyRef.current) return;
-
-    const queued = queuedNavigationRef.current;
-    if (!queued) return;
-
-    queuedNavigationRef.current = null;
-    await requestNavigation(queued);
-  }
-
-  async function openDayInternal(
+  async function openDay(
     nextDay: string,
     options?: { scrollToHighlight?: boolean }
   ) {
@@ -1080,7 +1016,7 @@ export default function Page() {
 
     if (cached) {
       skipNextAutoDayLoadRef.current = true;
-      await applyBundlePayload(cached);
+      applyBundlePayload(cached);
       setDay(cached.day);
       return;
     }
@@ -1091,7 +1027,7 @@ export default function Page() {
       if (transitionIdRef.current !== transitionId) return;
 
       skipNextAutoDayLoadRef.current = true;
-      await applyBundlePayload(payload);
+      applyBundlePayload(payload);
       setDay(payload.day);
     } catch {
       if (transitionIdRef.current !== transitionId) return;
@@ -1100,269 +1036,8 @@ export default function Page() {
     }
   }
 
-  async function goToSurpriseDayInternal(scrollToResult = false) {
-    beginDayTransition();
-    const transitionId = transitionIdRef.current;
-
-    try {
-      const res = await fetch(
-        buildRandomRequestUrl("/api/surprise", {
-          fresh: FORCE_FRESH_MODE,
-          currentDay: day,
-        }),
-        {
-          cache: "no-store",
-        }
-      );
-
-      const json = (await res.json().catch(() => null)) as
-        | SurpriseResponse
-        | null;
-
-      if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
-        showToast("No random day available.");
-        finishDayTransition(transitionId);
-        return;
-      }
-
-      rememberSurpriseDay(json.day);
-
-      if (json.day === day) {
-        await applyBundlePayload(json);
-        finishDayTransition(transitionId);
-
-        if (
-          scrollToResult &&
-          (json.highlightData.highlight || json.highlightData.highlights?.length)
-        ) {
-          requestAnimationFrame(() => {
-            scrollToHighlightBlock();
-          });
-        }
-
-        return;
-      }
-
-      skipNextAutoDayLoadRef.current = true;
-      pendingScrollToHighlightRef.current = scrollToResult;
-
-      await applyBundlePayload(json);
-      setDay(json.day);
-    } catch {
-      showToast("Could not load a random day.");
-      finishDayTransition(transitionId);
-    }
-  }
-
-  async function goToTodayInHistoryInternal(scrollToResult = false) {
-    beginDayTransition();
-    const transitionId = transitionIdRef.current;
-    const monthDay = getTodayHistoryMonthDay();
-
-    async function requestTodayHistory() {
-      const res = await fetch(
-        buildTodayInHistoryRequestUrl({
-          bundle: true,
-          fresh: FORCE_FRESH_MODE,
-          currentDay: day,
-        }),
-        {
-          cache: "no-store",
-        }
-      );
-
-      const json = (await res.json().catch(() => null)) as
-        | TodayInHistoryResponse
-        | { error?: string }
-        | null;
-
-      return { res, json };
-    }
-
-    try {
-      const { res, json } = await requestTodayHistory();
-
-      const payload =
-        res.ok &&
-        json &&
-        "day" in json &&
-        "dayData" in json &&
-        "highlightData" in json
-          ? (json as TodayInHistoryResponse)
-          : null;
-
-      if (!payload) {
-        showToast("No valid 'today in history' day available yet.");
-        finishDayTransition(transitionId);
-        return;
-      }
-
-      if (payload.restartedRound) {
-        clearTodayHistory(monthDay);
-        showTodayHistoryNotice(
-          `You explored all available moments for ${formatMonthDayLabel(
-            monthDay
-          )}. A new round has started.`
-        );
-      }
-
-      rememberTodayHistoryDay(payload.day);
-
-      if (payload.day === day) {
-        await applyBundlePayload(payload);
-        finishDayTransition(transitionId);
-
-        if (
-          scrollToResult &&
-          (payload.highlightData.highlight ||
-            payload.highlightData.highlights?.length)
-        ) {
-          requestAnimationFrame(() => {
-            scrollToHighlightBlock();
-          });
-        }
-
-        return;
-      }
-
-      skipNextAutoDayLoadRef.current = true;
-      pendingScrollToHighlightRef.current = scrollToResult;
-
-      await applyBundlePayload(payload);
-      setDay(payload.day);
-    } catch {
-      showToast("Could not load today in history.");
-      finishDayTransition(transitionId);
-    }
-  }
-
-  async function executeNavigation(action: QueuedNavigation): Promise<void> {
-    switch (action.type) {
-      case "open-day":
-        await openDayInternal(action.day, {
-          scrollToHighlight: !!action.scrollToHighlight,
-        });
-        return;
-
-      case "prev-day": {
-        const prev = getDayWithOffset(day, -1);
-        if (prev && prev >= minDay) {
-          await openDayInternal(prev, { scrollToHighlight: false });
-        }
-        return;
-      }
-
-      case "next-day": {
-        const next = getDayWithOffset(day, 1);
-        if (next && next <= today) {
-          await openDayInternal(next, { scrollToHighlight: false });
-        }
-        return;
-      }
-
-      case "prev-year": {
-        const nextDay = getDayWithYearShift(day, -1, minDay, today);
-        if (nextDay) {
-          await openDayInternal(nextDay, { scrollToHighlight: false });
-        }
-        return;
-      }
-
-      case "next-year": {
-        const nextDay = getDayWithYearShift(day, 1, minDay, today);
-        if (nextDay) {
-          await openDayInternal(nextDay, { scrollToHighlight: false });
-        }
-        return;
-      }
-
-      case "manual-day":
-        await openDayInternal(action.day, { scrollToHighlight: true });
-        return;
-
-      case "surprise":
-        await goToSurpriseDayInternal(!!action.scrollToResult);
-        return;
-
-      case "today-in-history":
-        await goToTodayInHistoryInternal(!!action.scrollToResult);
-        return;
-
-      case "prev-highlight":
-        if (highlights.length > 1) {
-          setActiveHighlightIndex((prev) =>
-            prev === 0 ? highlights.length - 1 : prev - 1
-          );
-        }
-        return;
-
-      case "next-highlight":
-        if (highlights.length > 1) {
-          setActiveHighlightIndex((prev) =>
-            prev === highlights.length - 1 ? 0 : prev + 1
-          );
-        }
-        return;
-
-      case "highlight-index":
-        if (
-          action.index >= 0 &&
-          action.index < highlights.length &&
-          highlights.length > 1
-        ) {
-          setActiveHighlightIndex(action.index);
-        }
-        return;
-    }
-  }
-
-  async function requestNavigation(action: QueuedNavigation) {
-    if (navBusyRef.current) {
-      queueNavigation(action);
-      return;
-    }
-
-    lockNavigation();
-
-    try {
-      await executeNavigation(action);
-    } finally {
-      unlockNavigation();
-      await flushQueuedNavigation();
-    }
-  }
-
-  async function openDay(
-    nextDay: string,
-    options?: { scrollToHighlight?: boolean }
-  ) {
-    await requestNavigation({
-      type: "open-day",
-      day: nextDay,
-      scrollToHighlight: !!options?.scrollToHighlight,
-    });
-  }
-
-  async function goToSurpriseDay(scrollToResult = false) {
-    await requestNavigation({
-      type: "surprise",
-      scrollToResult,
-    });
-  }
-
-  async function goToTodayInHistory(scrollToResult = false) {
-    await requestNavigation({
-      type: "today-in-history",
-      scrollToResult,
-    });
-  }
-
   useEffect(() => {
-    isMountedRef.current = true;
-
     return () => {
-      isMountedRef.current = false;
-
       if (toastTimeoutRef.current) {
         clearTimeout(toastTimeoutRef.current);
       }
@@ -1401,6 +1076,21 @@ export default function Page() {
   }, [day, hasPickedInitialDay]);
 
   useEffect(() => {
+  if (!hasPickedInitialDay) return;
+  if (!isValidDayString(day)) return;
+
+  const currentQueryDay = searchParams.get("day");
+
+  if (currentQueryDay === day) return;
+
+  const params = new URLSearchParams(searchParams.toString());
+  params.set("day", day);
+
+  router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+}, [day, hasPickedInitialDay, pathname, router, searchParams]);
+
+
+  useEffect(() => {
     if (didInitDayRef.current) return;
     didInitDayRef.current = true;
 
@@ -1419,7 +1109,7 @@ export default function Page() {
 
           if (!cancelled) {
             skipNextAutoDayLoadRef.current = true;
-            await applyBundlePayload(payload);
+            applyBundlePayload(payload);
             setDay(payload.day);
           }
         } catch {
@@ -1457,7 +1147,7 @@ export default function Page() {
           json?.highlightData
         ) {
           skipNextAutoDayLoadRef.current = true;
-          await applyBundlePayload(json);
+          applyBundlePayload(json);
           setDay(json.day);
           rememberSurpriseDay(json.day);
           return;
@@ -1703,6 +1393,142 @@ export default function Page() {
     }
   }
 
+  async function goToSurpriseDay(scrollToResult = false) {
+    beginDayTransition();
+    const transitionId = transitionIdRef.current;
+
+    try {
+      const res = await fetch(
+        buildRandomRequestUrl("/api/surprise", {
+          fresh: FORCE_FRESH_MODE,
+          currentDay: day,
+        }),
+        {
+          cache: "no-store",
+        }
+      );
+
+      const json = (await res.json().catch(() => null)) as
+        | SurpriseResponse
+        | null;
+
+      if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
+        showToast("No random day available.");
+        finishDayTransition(transitionId);
+        return;
+      }
+
+      rememberSurpriseDay(json.day);
+
+      if (json.day === day) {
+        applyBundlePayload(json);
+        finishDayTransition(transitionId);
+
+        if (
+          scrollToResult &&
+          (json.highlightData.highlight || json.highlightData.highlights?.length)
+        ) {
+          requestAnimationFrame(() => {
+            scrollToHighlightBlock();
+          });
+        }
+
+        return;
+      }
+
+      skipNextAutoDayLoadRef.current = true;
+      pendingScrollToHighlightRef.current = scrollToResult;
+
+      applyBundlePayload(json);
+      setDay(json.day);
+    } catch {
+      showToast("Could not load a random day.");
+      finishDayTransition(transitionId);
+    }
+  }
+
+  async function goToTodayInHistory(scrollToResult = false) {
+    beginDayTransition();
+    const transitionId = transitionIdRef.current;
+    const monthDay = getTodayHistoryMonthDay();
+
+    async function requestTodayHistory() {
+      const res = await fetch(
+        buildTodayInHistoryRequestUrl({
+          bundle: true,
+          fresh: FORCE_FRESH_MODE,
+          currentDay: day,
+        }),
+        {
+          cache: "no-store",
+        }
+      );
+
+      const json = (await res.json().catch(() => null)) as
+        | TodayInHistoryResponse
+        | { error?: string }
+        | null;
+
+      return { res, json };
+    }
+
+    try {
+      const { res, json } = await requestTodayHistory();
+
+      const payload =
+        res.ok &&
+        json &&
+        "day" in json &&
+        "dayData" in json &&
+        "highlightData" in json
+          ? (json as TodayInHistoryResponse)
+          : null;
+
+      if (!payload) {
+        showToast("No valid 'today in history' day available yet.");
+        finishDayTransition(transitionId);
+        return;
+      }
+
+      if (payload.restartedRound) {
+        clearTodayHistory(monthDay);
+        showTodayHistoryNotice(
+          `You explored all available moments for ${formatMonthDayLabel(
+            monthDay
+          )}. A new round has started.`
+        );
+      }
+
+      rememberTodayHistoryDay(payload.day);
+
+      if (payload.day === day) {
+        applyBundlePayload(payload);
+        finishDayTransition(transitionId);
+
+        if (
+          scrollToResult &&
+          (payload.highlightData.highlight ||
+            payload.highlightData.highlights?.length)
+        ) {
+          requestAnimationFrame(() => {
+            scrollToHighlightBlock();
+          });
+        }
+
+        return;
+      }
+
+      skipNextAutoDayLoadRef.current = true;
+      pendingScrollToHighlightRef.current = scrollToResult;
+
+      applyBundlePayload(payload);
+      setDay(payload.day);
+    } catch {
+      showToast("Could not load today in history.");
+      finishDayTransition(transitionId);
+    }
+  }
+
   useEffect(() => {
     if (!hasPickedInitialDay) return;
 
@@ -1771,7 +1597,7 @@ export default function Page() {
   }, [loadingHighlight, highlight]);
 
   useEffect(() => {
-    if (highlights.length <= 1 || isHighlightPaused || navigationLocked) return;
+    if (highlights.length <= 1 || isHighlightPaused) return;
 
     const interval = setInterval(() => {
       setActiveHighlightIndex((prev) => {
@@ -1781,7 +1607,7 @@ export default function Page() {
     }, 6000);
 
     return () => clearInterval(interval);
-  }, [highlights, isHighlightPaused, navigationLocked]);
+  }, [highlights, isHighlightPaused]);
 
   useEffect(() => {
     setHighlight(highlights[activeHighlightIndex] ?? null);
@@ -1789,34 +1615,53 @@ export default function Page() {
 
   function goToManualDay() {
     const nextDay = `${selectedYear}-${selectedMonth}-${selectedDay}`;
-    void requestNavigation({
-      type: "manual-day",
-      day: nextDay,
-    });
+    void openDay(nextDay, { scrollToHighlight: true });
   }
 
   function goToPreviousDay() {
-    void requestNavigation({ type: "prev-day" });
+    const prev = getDayWithOffset(day, -1);
+
+    if (prev && prev >= minDay) {
+      void openDay(prev, { scrollToHighlight: false });
+    }
   }
 
   function goToNextDay() {
-    void requestNavigation({ type: "next-day" });
+    const next = getDayWithOffset(day, 1);
+
+    if (next && next <= today) {
+      void openDay(next, { scrollToHighlight: false });
+    }
+  }
+
+  function shiftYearBy(delta: number) {
+    const nextDay = getDayWithYearShift(day, delta, minDay, today);
+
+    if (!nextDay) return;
+
+    void openDay(nextDay, { scrollToHighlight: false });
   }
 
   function goToPreviousYear() {
-    void requestNavigation({ type: "prev-year" });
+    shiftYearBy(-1);
   }
 
   function goToNextYear() {
-    void requestNavigation({ type: "next-year" });
+    shiftYearBy(1);
   }
 
   function goToPrevHighlight() {
-    void requestNavigation({ type: "prev-highlight" });
+    if (highlights.length <= 1) return;
+    setActiveHighlightIndex((prev) =>
+      prev === 0 ? highlights.length - 1 : prev - 1
+    );
   }
 
   function goToNextHighlight() {
-    void requestNavigation({ type: "next-highlight" });
+    if (highlights.length <= 1) return;
+    setActiveHighlightIndex((prev) =>
+      prev === highlights.length - 1 ? 0 : prev + 1
+    );
   }
 
   const isAtMinDay = day <= minDay;
@@ -2305,9 +2150,8 @@ export default function Page() {
                 <div className="mt-8 grid gap-3 sm:grid-cols-2">
                   <button
                     type="button"
-                    onClick={() => void goToSurpriseDay(true)}
-                    disabled={navigationLocked}
-                    className="group rounded-2xl border border-white/8 bg-white/[0.05] px-5 py-4 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => goToSurpriseDay(true)}
+                    className="group rounded-2xl border border-white/8 bg-white/[0.05] px-5 py-4 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl"
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.07] text-lg text-white">
@@ -2327,9 +2171,8 @@ export default function Page() {
 
                   <button
                     type="button"
-                    onClick={() => void goToTodayInHistory(true)}
-                    disabled={navigationLocked}
-                    className="group rounded-2xl border border-white/8 bg-white/[0.05] px-5 py-4 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl disabled:cursor-not-allowed disabled:opacity-60"
+                    onClick={() => goToTodayInHistory(true)}
+                    className="group rounded-2xl border border-white/8 bg-white/[0.05] px-5 py-4 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl"
                   >
                     <div className="flex items-center gap-3">
                       <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.07] text-lg text-white">
@@ -2361,8 +2204,7 @@ export default function Page() {
                     <select
                       value={selectedYear}
                       onChange={(e) => setSelectedYear(e.target.value)}
-                      disabled={navigationLocked}
-                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
                     >
                       {YEARS.map((year) => (
                         <option key={year} value={year}>
@@ -2374,8 +2216,7 @@ export default function Page() {
                     <select
                       value={selectedMonth}
                       onChange={(e) => setSelectedMonth(e.target.value)}
-                      disabled={navigationLocked}
-                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
                     >
                       {MONTHS.map((month) => (
                         <option key={month.value} value={month.value}>
@@ -2387,8 +2228,7 @@ export default function Page() {
                     <select
                       value={selectedDay}
                       onChange={(e) => setSelectedDay(e.target.value)}
-                      disabled={navigationLocked}
-                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
                     >
                       {DAYS.map((d) => (
                         <option key={d} value={d}>
@@ -2400,8 +2240,7 @@ export default function Page() {
                     <button
                       type="button"
                       onClick={goToManualDay}
-                      disabled={navigationLocked}
-                      className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
                     >
                       Go
                     </button>
@@ -2456,18 +2295,16 @@ export default function Page() {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => void goToSurpriseDay(false)}
-                    disabled={navigationLocked}
-                    className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => goToSurpriseDay(false)}
+                    className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
                   >
                     Surprise me
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => void goToTodayInHistory(false)}
-                    disabled={navigationLocked}
-                    className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => goToTodayInHistory(false)}
+                    className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
                   >
                     Today in history
                   </button>
@@ -2489,7 +2326,7 @@ export default function Page() {
                   <button
                     type="button"
                     onClick={goToPreviousYear}
-                    disabled={isAtMinYear || navigationLocked}
+                    disabled={isAtMinYear}
                     className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     «
@@ -2498,7 +2335,7 @@ export default function Page() {
                   <button
                     type="button"
                     onClick={goToPreviousDay}
-                    disabled={isAtMinDay || navigationLocked}
+                    disabled={isAtMinDay}
                     className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     ‹
@@ -2507,7 +2344,7 @@ export default function Page() {
                   <button
                     type="button"
                     onClick={goToNextDay}
-                    disabled={isAtToday || navigationLocked}
+                    disabled={isAtToday}
                     className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     ›
@@ -2516,7 +2353,7 @@ export default function Page() {
                   <button
                     type="button"
                     onClick={goToNextYear}
-                    disabled={isAtMaxYear || navigationLocked}
+                    disabled={isAtMaxYear}
                     className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     »
@@ -2546,7 +2383,7 @@ export default function Page() {
                   <button
                     type="button"
                     onClick={toggleFavoriteDay}
-                    disabled={loadingFavoriteDay || navigationLocked}
+                    disabled={loadingFavoriteDay}
                     aria-label={
                       isFavoriteDay
                         ? "Remove favorite day"
@@ -2573,14 +2410,15 @@ export default function Page() {
                     alt={decodeHtml(highlight.title) || "Historical highlight"}
                     revealDelayMs={HERO_IMAGE_REVEAL_DELAY_MS}
                     onLoadingChange={(loading) => {
-                      setHeroImageLoading(loading);
+                      if (isDayTransitioning || !minimumTransitionDone) {
+                        setHeroImageLoading(loading);
+                      } else if (!loading) {
+                        setHeroImageLoading(false);
+                      }
                     }}
                   />
-
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/58 to-black/18" />
-
-                  {heroImageLoading ? (
-                    <div className="absolute inset-0 z-10 bg-black/25 backdrop-blur-[2px]" />
+                   {heroImageLoading ? (
+                  <div className="absolute inset-0 z-10 bg-black/25 backdrop-blur-[2px]" />
                   ) : null}
 
                   <div className="relative flex h-full min-h-[320px] flex-col justify-end p-5 sm:p-6">
@@ -2651,8 +2489,7 @@ export default function Page() {
                           <button
                             type="button"
                             onClick={goToPrevHighlight}
-                            disabled={navigationLocked || highlights.length <= 1}
-                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
                           >
                             ←
                           </button>
@@ -2660,8 +2497,7 @@ export default function Page() {
                           <button
                             type="button"
                             onClick={goToNextHighlight}
-                            disabled={navigationLocked || highlights.length <= 1}
-                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-40"
+                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
                           >
                             →
                           </button>
@@ -2672,18 +2508,12 @@ export default function Page() {
                             <button
                               key={index}
                               type="button"
-                              onClick={() =>
-                                void requestNavigation({
-                                  type: "highlight-index",
-                                  index,
-                                })
-                              }
-                              disabled={navigationLocked}
+                              onClick={() => setActiveHighlightIndex(index)}
                               className={`h-2.5 w-2.5 rounded-full transition ${
                                 index === activeHighlightIndex
                                   ? "bg-white"
                                   : "bg-white/30"
-                              } disabled:cursor-not-allowed disabled:opacity-40`}
+                              }`}
                               aria-label={`Go to highlight ${index + 1}`}
                             />
                           ))}
@@ -3174,10 +3004,9 @@ export default function Page() {
                   <button
                     key={item.day}
                     onClick={() =>
-                      void openDay(item.day, { scrollToHighlight: false })
+                      openDay(item.day, { scrollToHighlight: false })
                     }
-                    disabled={navigationLocked}
-                    className="w-full rounded-xl border border-white/8 bg-black/20 p-4 text-left transition hover:bg-black/30 backdrop-blur-xl disabled:cursor-not-allowed disabled:opacity-60"
+                    className="w-full rounded-xl border border-white/8 bg-black/20 p-4 text-left transition hover:bg-black/30 backdrop-blur-xl"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
@@ -3225,10 +3054,9 @@ export default function Page() {
                   <button
                     key={item.day}
                     onClick={() =>
-                      void openDay(item.day, { scrollToHighlight: false })
+                      openDay(item.day, { scrollToHighlight: false })
                     }
-                    disabled={navigationLocked}
-                    className="w-full rounded-xl border border-white/8 bg-black/20 p-4 text-left transition hover:bg-black/30 backdrop-blur-xl disabled:cursor-not-allowed disabled:opacity-60"
+                    className="w-full rounded-xl border border-white/8 bg-black/20 p-4 text-left transition hover:bg-black/30 backdrop-blur-xl"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex min-w-0 items-start gap-3">
@@ -3289,9 +3117,8 @@ export default function Page() {
                 <DiscoverDayCard
                   key={`${card.day}-${index}`}
                   card={card}
-                  disabled={navigationLocked}
                   onSelect={(selectedDay) =>
-                    void openDay(selectedDay, { scrollToHighlight: true })
+                    openDay(selectedDay, { scrollToHighlight: true })
                   }
                 />
               ))}
@@ -3395,14 +3222,11 @@ export default function Page() {
 
       <CosmicLoading
         open={
-          navigationLocked &&
-          (
-            !minimumTransitionDone ||
-            isDayTransitioning ||
-            (loadingHighlight && !highlight) ||
-            (loadingDay && !data) ||
-            heroImageLoading
-          )
+          !minimumTransitionDone ||
+          isDayTransitioning ||
+          (loadingHighlight && !highlight) ||
+          (loadingDay && !data) ||
+          heroImageLoading
         }
         label="Searching historical archives..."
       />
@@ -3421,8 +3245,8 @@ export default function Page() {
         onAuthSuccess={(user) => {
           setCurrentUser(user ?? null);
           setLoadingCurrentUser(false);
-          void loadFavoriteDayStatus(day);
-          void loadDay(day);
+          loadFavoriteDayStatus(day);
+          loadDay(day);
         }}
       />
     </main>
