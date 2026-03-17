@@ -32,9 +32,9 @@ const SURPRISE_HISTORY_MAX = 120;
 const TODAY_HISTORY_STORAGE_KEY_PREFIX = "rad:today-history:";
 const TODAY_HISTORY_MAX = 160;
 
-// Ajustá estos dos valores a gusto
 const MIN_DAY_TRANSITION_MS = 1000;
-const HERO_IMAGE_REVEAL_DELAY_MS = 150;
+const HERO_IMAGE_REVEAL_DELAY_MS =0;
+const HIGHLIGHT_TRANSITION_LOCK_MS = 300;
 
 type CurrentUser = {
   id: string;
@@ -715,6 +715,12 @@ export default function Page() {
   const dayBundleCacheRef = useRef<Map<string, SurpriseResponse>>(new Map());
   const prefetchingDaysRef = useRef<Set<string>>(new Set());
 
+  const highlightTransitionLockRef = useRef(false);
+  const highlightTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
+  const highlightTransitionRunRef = useRef(0);
+
   const [day, setDay] = useState<string>(minDay);
   const [hasPickedInitialDay, setHasPickedInitialDay] = useState(false);
 
@@ -737,6 +743,10 @@ export default function Page() {
   const [activeHighlightIndex, setActiveHighlightIndex] = useState(0);
   const [isHighlightPaused, setIsHighlightPaused] = useState(false);
   const [loadingHighlight, setLoadingHighlight] = useState(false);
+  const [isHighlightTransitioning, setIsHighlightTransitioning] =
+    useState(false);
+  const [preferImmediateHighlightImageSwap, setPreferImmediateHighlightImageSwap] =
+    useState(false);
 
   const [isFavoriteDay, setIsFavoriteDay] = useState(false);
   const [loadingFavoriteDay, setLoadingFavoriteDay] = useState(false);
@@ -966,6 +976,17 @@ export default function Page() {
     }
   }
 
+  function resetHighlightLocalTransitionState() {
+    highlightTransitionLockRef.current = false;
+    setIsHighlightTransitioning(false);
+    setPreferImmediateHighlightImageSwap(false);
+
+    if (highlightTransitionTimerRef.current) {
+      clearTimeout(highlightTransitionTimerRef.current);
+      highlightTransitionTimerRef.current = null;
+    }
+  }
+
   function applyBundlePayload(payload: SurpriseResponse) {
     cacheBundlePayload(payload);
 
@@ -987,6 +1008,8 @@ export default function Page() {
     setActiveHighlightIndex(0);
     setLoadingDay(false);
     setLoadingHighlight(false);
+
+    resetHighlightLocalTransitionState();
   }
 
   async function openDay(
@@ -1036,6 +1059,67 @@ export default function Page() {
     }
   }
 
+  function preloadImage(src?: string | null) {
+    const normalizedSrc = src?.trim();
+
+    if (!normalizedSrc) {
+      return Promise.resolve();
+    }
+
+    return new Promise<void>((resolve) => {
+      const img = new window.Image();
+      img.decoding = "async";
+
+      const done = () => resolve();
+
+      img.onload = done;
+      img.onerror = done;
+      img.src = normalizedSrc;
+
+      if (img.complete) {
+        resolve();
+      }
+    });
+  }
+
+  async function transitionToHighlight(nextIndex: number) {
+    if (highlights.length <= 1) return;
+    if (nextIndex < 0 || nextIndex >= highlights.length) return;
+    if (nextIndex === activeHighlightIndex) return;
+    if (highlightTransitionLockRef.current) return;
+
+    highlightTransitionLockRef.current = true;
+    setIsHighlightTransitioning(true);
+    highlightTransitionRunRef.current += 1;
+
+    const runId = highlightTransitionRunRef.current;
+    const startedAt = Date.now();
+    const nextItem = highlights[nextIndex];
+    const nextImage = nextItem?.image?.trim() || "";
+
+    await preloadImage(nextImage);
+
+    if (highlightTransitionRunRef.current !== runId) return;
+
+    setPreferImmediateHighlightImageSwap(true);
+    setActiveHighlightIndex(nextIndex);
+
+    const elapsed = Date.now() - startedAt;
+    const remaining = Math.max(0, HIGHLIGHT_TRANSITION_LOCK_MS - elapsed);
+
+    if (highlightTransitionTimerRef.current) {
+      clearTimeout(highlightTransitionTimerRef.current);
+      highlightTransitionTimerRef.current = null;
+    }
+
+    highlightTransitionTimerRef.current = setTimeout(() => {
+      if (highlightTransitionRunRef.current !== runId) return;
+      highlightTransitionLockRef.current = false;
+      setIsHighlightTransitioning(false);
+      highlightTransitionTimerRef.current = null;
+    }, remaining);
+  }
+
   useEffect(() => {
     return () => {
       if (toastTimeoutRef.current) {
@@ -1048,6 +1132,10 @@ export default function Page() {
 
       if (minTransitionTimerRef.current) {
         clearTimeout(minTransitionTimerRef.current);
+      }
+
+      if (highlightTransitionTimerRef.current) {
+        clearTimeout(highlightTransitionTimerRef.current);
       }
     };
   }, []);
@@ -1076,19 +1164,18 @@ export default function Page() {
   }, [day, hasPickedInitialDay]);
 
   useEffect(() => {
-  if (!hasPickedInitialDay) return;
-  if (!isValidDayString(day)) return;
+    if (!hasPickedInitialDay) return;
+    if (!isValidDayString(day)) return;
 
-  const currentQueryDay = searchParams.get("day");
+    const currentQueryDay = searchParams.get("day");
 
-  if (currentQueryDay === day) return;
+    if (currentQueryDay === day) return;
 
-  const params = new URLSearchParams(searchParams.toString());
-  params.set("day", day);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("day", day);
 
-  router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-}, [day, hasPickedInitialDay, pathname, router, searchParams]);
-
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [day, hasPickedInitialDay, pathname, router, searchParams]);
 
   useEffect(() => {
     if (didInitDayRef.current) return;
@@ -1299,6 +1386,7 @@ export default function Page() {
       setHighlights(items);
       setHighlight(items[0] ?? null);
       setActiveHighlightIndex(0);
+      resetHighlightLocalTransitionState();
     } catch {
       if (requestId !== highlightRequestRef.current) return;
       setHighlights([]);
@@ -1597,21 +1685,39 @@ export default function Page() {
   }, [loadingHighlight, highlight]);
 
   useEffect(() => {
-    if (highlights.length <= 1 || isHighlightPaused) return;
+    if (highlights.length <= 1 || isHighlightPaused || isHighlightTransitioning)
+      return;
 
     const interval = setInterval(() => {
-      setActiveHighlightIndex((prev) => {
-        const next = prev + 1;
-        return next >= highlights.length ? 0 : next;
-      });
+      const nextIndex =
+        activeHighlightIndex + 1 >= highlights.length
+          ? 0
+          : activeHighlightIndex + 1;
+
+      void transitionToHighlight(nextIndex);
     }, 6000);
 
     return () => clearInterval(interval);
-  }, [highlights, isHighlightPaused]);
+  }, [
+    highlights,
+    isHighlightPaused,
+    isHighlightTransitioning,
+    activeHighlightIndex,
+  ]);
 
   useEffect(() => {
     setHighlight(highlights[activeHighlightIndex] ?? null);
   }, [activeHighlightIndex, highlights]);
+
+  useEffect(() => {
+    if (!preferImmediateHighlightImageSwap) return;
+
+    const raf = requestAnimationFrame(() => {
+      setPreferImmediateHighlightImageSwap(false);
+    });
+
+    return () => cancelAnimationFrame(raf);
+  }, [activeHighlightIndex, preferImmediateHighlightImageSwap]);
 
   function goToManualDay() {
     const nextDay = `${selectedYear}-${selectedMonth}-${selectedDay}`;
@@ -1652,16 +1758,16 @@ export default function Page() {
 
   function goToPrevHighlight() {
     if (highlights.length <= 1) return;
-    setActiveHighlightIndex((prev) =>
-      prev === 0 ? highlights.length - 1 : prev - 1
-    );
+    const nextIndex =
+      activeHighlightIndex === 0 ? highlights.length - 1 : activeHighlightIndex - 1;
+    void transitionToHighlight(nextIndex);
   }
 
   function goToNextHighlight() {
     if (highlights.length <= 1) return;
-    setActiveHighlightIndex((prev) =>
-      prev === highlights.length - 1 ? 0 : prev + 1
-    );
+    const nextIndex =
+      activeHighlightIndex === highlights.length - 1 ? 0 : activeHighlightIndex + 1;
+    void transitionToHighlight(nextIndex);
   }
 
   const isAtMinDay = day <= minDay;
@@ -2409,6 +2515,7 @@ export default function Page() {
                     src={highlight.image}
                     alt={decodeHtml(highlight.title) || "Historical highlight"}
                     revealDelayMs={HERO_IMAGE_REVEAL_DELAY_MS}
+                    preferImmediateSwap={preferImmediateHighlightImageSwap}
                     onLoadingChange={(loading) => {
                       if (isDayTransitioning || !minimumTransitionDone) {
                         setHeroImageLoading(loading);
@@ -2417,8 +2524,11 @@ export default function Page() {
                       }
                     }}
                   />
-                   {heroImageLoading ? (
-                  <div className="absolute inset-0 z-10 bg-black/25 backdrop-blur-[2px]" />
+
+                  {isHighlightTransitioning ? (
+                    <div className="absolute inset-0 z-20 bg-black/22 backdrop-blur-[3px] transition-opacity duration-150" />
+                  ) : heroImageLoading ? (
+                    <div className="absolute inset-0 z-10 bg-black/25 backdrop-blur-[2px]" />
                   ) : null}
 
                   <div className="relative flex h-full min-h-[320px] flex-col justify-end p-5 sm:p-6">
@@ -2489,7 +2599,8 @@ export default function Page() {
                           <button
                             type="button"
                             onClick={goToPrevHighlight}
-                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
+                            disabled={isHighlightTransitioning}
+                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             ←
                           </button>
@@ -2497,7 +2608,8 @@ export default function Page() {
                           <button
                             type="button"
                             onClick={goToNextHighlight}
-                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
+                            disabled={isHighlightTransitioning}
+                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             →
                           </button>
@@ -2508,12 +2620,13 @@ export default function Page() {
                             <button
                               key={index}
                               type="button"
-                              onClick={() => setActiveHighlightIndex(index)}
+                              onClick={() => void transitionToHighlight(index)}
+                              disabled={isHighlightTransitioning}
                               className={`h-2.5 w-2.5 rounded-full transition ${
                                 index === activeHighlightIndex
                                   ? "bg-white"
                                   : "bg-white/30"
-                              }`}
+                              } disabled:cursor-not-allowed disabled:opacity-50`}
                               aria-label={`Go to highlight ${index + 1}`}
                             />
                           ))}

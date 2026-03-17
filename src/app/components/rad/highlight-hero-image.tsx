@@ -8,6 +8,7 @@ type HighlightHeroImageProps = {
   className?: string;
   onLoadingChange?: (loading: boolean) => void;
   revealDelayMs?: number;
+  preferImmediateSwap?: boolean;
 };
 
 export default function HighlightHeroImage({
@@ -16,14 +17,19 @@ export default function HighlightHeroImage({
   className = "",
   onLoadingChange,
   revealDelayMs = 0,
+  preferImmediateSwap = false,
 }: HighlightHeroImageProps) {
   const normalizedSrc = src?.trim() || null;
 
   const [displaySrc, setDisplaySrc] = useState<string | null>(normalizedSrc);
   const lastLoadedSrcRef = useRef<string | null>(normalizedSrc);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadAttemptRef = useRef(0);
 
   useEffect(() => {
+    loadAttemptRef.current += 1;
+    const currentAttempt = loadAttemptRef.current;
+
     if (revealTimerRef.current) {
       clearTimeout(revealTimerRef.current);
       revealTimerRef.current = null;
@@ -42,17 +48,25 @@ export default function HighlightHeroImage({
       return;
     }
 
-    onLoadingChange?.(true);
+    if (preferImmediateSwap) {
+      setDisplaySrc(normalizedSrc);
+      lastLoadedSrcRef.current = normalizedSrc;
+      onLoadingChange?.(false);
+      return;
+    }
 
-    // CLAVE: ocultar la imagen anterior apenas cambia el src
-    setDisplaySrc(null);
+    onLoadingChange?.(true);
 
     const img = new window.Image();
     img.decoding = "async";
     img.src = normalizedSrc;
 
     const handleLoad = () => {
+      if (loadAttemptRef.current !== currentAttempt) return;
+
       revealTimerRef.current = setTimeout(() => {
+        if (loadAttemptRef.current !== currentAttempt) return;
+
         setDisplaySrc(normalizedSrc);
         lastLoadedSrcRef.current = normalizedSrc;
         onLoadingChange?.(false);
@@ -61,7 +75,9 @@ export default function HighlightHeroImage({
     };
 
     const handleError = () => {
-      setDisplaySrc(null);
+      if (loadAttemptRef.current !== currentAttempt) return;
+
+      // Si falla la nueva, mantenemos visible la anterior para evitar vacío/flicker.
       onLoadingChange?.(false);
     };
 
@@ -77,7 +93,7 @@ export default function HighlightHeroImage({
         revealTimerRef.current = null;
       }
     };
-  }, [normalizedSrc, onLoadingChange, revealDelayMs]);
+  }, [normalizedSrc, onLoadingChange, revealDelayMs, preferImmediateSwap]);
 
   return (
     <div className={`absolute inset-0 overflow-hidden ${className}`}>
