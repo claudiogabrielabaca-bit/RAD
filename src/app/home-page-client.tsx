@@ -379,7 +379,9 @@ function getRecentTodayHistory(monthDay = getTodayHistoryMonthDay()) {
   if (typeof window === "undefined") return [];
 
   try {
-    const raw = window.localStorage.getItem(getTodayHistoryStorageKey(monthDay));
+    const raw = window.localStorage.getItem(
+      getTodayHistoryStorageKey(monthDay)
+    );
     if (!raw) return [];
 
     const parsed = JSON.parse(raw);
@@ -735,8 +737,10 @@ export default function Page() {
   const [activeHighlightIndex, setActiveHighlightIndex] = useState(0);
   const [isHighlightPaused, setIsHighlightPaused] = useState(false);
   const [loadingHighlight, setLoadingHighlight] = useState(false);
-  const [preferImmediateHighlightImageSwap, setPreferImmediateHighlightImageSwap] =
-    useState(false);
+  const [
+    preferImmediateHighlightImageSwap,
+    setPreferImmediateHighlightImageSwap,
+  ] = useState(false);
 
   const [isFavoriteDay, setIsFavoriteDay] = useState(false);
   const [loadingFavoriteDay, setLoadingFavoriteDay] = useState(false);
@@ -1669,8 +1673,9 @@ export default function Page() {
   }
 
   function goToToday() {
-  void openDay(today, { scrollToHighlight: true });
+    void openDay(today, { scrollToHighlight: true });
   }
+
   function goToPreviousDay() {
     const prev = getDayWithOffset(day, -1);
 
@@ -1706,14 +1711,18 @@ export default function Page() {
   function goToPrevHighlight() {
     if (highlights.length <= 1) return;
     const nextIndex =
-      activeHighlightIndex === 0 ? highlights.length - 1 : activeHighlightIndex - 1;
+      activeHighlightIndex === 0
+        ? highlights.length - 1
+        : activeHighlightIndex - 1;
     void transitionToHighlight(nextIndex);
   }
 
   function goToNextHighlight() {
     if (highlights.length <= 1) return;
     const nextIndex =
-      activeHighlightIndex === highlights.length - 1 ? 0 : activeHighlightIndex + 1;
+      activeHighlightIndex === highlights.length - 1
+        ? 0
+        : activeHighlightIndex + 1;
     void transitionToHighlight(nextIndex);
   }
 
@@ -2242,60 +2251,59 @@ export default function Page() {
                     Choose a specific day between 1900 and today.
                   </div>
 
-                 <div className="mt-4 flex flex-wrap items-center gap-3">
-  <select
-    value={selectedYear}
-    onChange={(e) => setSelectedYear(e.target.value)}
-    className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
-  >
-    {YEARS.map((year) => (
-      <option key={year} value={year}>
-        {year}
-      </option>
-    ))}
-  </select>
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <select
+                      value={selectedYear}
+                      onChange={(e) => setSelectedYear(e.target.value)}
+                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+                    >
+                      {YEARS.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
 
-  <select
-    value={selectedMonth}
-    onChange={(e) => setSelectedMonth(e.target.value)}
-    className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
-  >
-    {MONTHS.map((month) => (
-      <option key={month.value} value={month.value}>
-        {month.label}
-      </option>
-    ))}
-  </select>
+                    <select
+                      value={selectedMonth}
+                      onChange={(e) => setSelectedMonth(e.target.value)}
+                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+                    >
+                      {MONTHS.map((month) => (
+                        <option key={month.value} value={month.value}>
+                          {month.label}
+                        </option>
+                      ))}
+                    </select>
 
-  <select
-    value={selectedDay}
-    onChange={(e) => setSelectedDay(e.target.value)}
-    className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
-  >
-    {DAYS.map((d) => (
-      <option key={d} value={d}>
-        {d}
-      </option>
-    ))}
-  </select>
+                    <select
+                      value={selectedDay}
+                      onChange={(e) => setSelectedDay(e.target.value)}
+                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+                    >
+                      {DAYS.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
 
-  <button
-    type="button"
-    onClick={goToManualDay}
-    className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
-  >
-    Go
-  </button>
+                    <button
+                      type="button"
+                      onClick={goToManualDay}
+                      className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+                    >
+                      Go
+                    </button>
 
-  <button
-    type="button"
-    onClick={goToToday}
-    className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
-  >
-    Today
-  </button>
-</div>
-
+                    <button
+                      type="button"
+                      onClick={goToToday}
+                      className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+                    >
+                      Today
+                    </button>
+                  </div>
 
                   {toast ? (
                     <div className="mt-4 text-sm text-zinc-300">{toast}</div>
@@ -2336,699 +2344,707 @@ export default function Page() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 rounded-2xl border border-white/8 bg-black/20 p-3 sm:p-4 backdrop-blur-xl">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
-                    Quick actions
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => goToSurpriseDay(false)}
-                    className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
-                  >
-                    Surprise me
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => goToTodayInHistory(false)}
-                    className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
-                  >
-                    Today in history
-                  </button>
-                </div>
-
-                {todayHistoryNotice ? (
-                  <div className="rounded-xl border border-sky-400/15 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/90 backdrop-blur-xl">
-                    ↻ {todayHistoryNotice}
-                  </div>
-                ) : null}
-
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
-                    Step through time
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={goToPreviousYear}
-                    disabled={isAtMinYear}
-                    className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    «
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={goToPreviousDay}
-                    disabled={isAtMinDay}
-                    className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    ‹
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={goToNextDay}
-                    disabled={isAtToday}
-                    className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    ›
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={goToNextYear}
-                    disabled={isAtMaxYear}
-                    className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    »
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {!hasPickedInitialDay ? (
-              <div className="mt-6 overflow-hidden rounded-2xl border border-white/8 bg-black/20 p-5">
-                <div className="animate-pulse">
-                  <div className="h-4 w-28 rounded bg-white/10" />
-                  <div className="mt-4 h-8 w-2/3 rounded bg-white/10" />
-                  <div className="mt-3 h-4 w-full rounded bg-white/10" />
-                  <div className="mt-2 h-4 w-5/6 rounded bg-white/10" />
-                  <div className="mt-2 h-4 w-4/6 rounded bg-white/10" />
-                </div>
-              </div>
-            ) : highlight ? (
-              <div
-                ref={highlightBlockRef}
-                className="mt-6 overflow-hidden rounded-2xl border border-white/8 bg-black/20"
-                onMouseEnter={() => setIsHighlightPaused(true)}
-                onMouseLeave={() => setIsHighlightPaused(false)}
-              >
-                <div className="relative min-h-[320px]">
-                  <button
-                    type="button"
-                    onClick={toggleFavoriteDay}
-                    disabled={loadingFavoriteDay}
-                    aria-label={
-                      isFavoriteDay
-                        ? "Remove favorite day"
-                        : "Set as favorite day"
-                    }
-                    title={
-                      isFavoriteDay
-                        ? "Remove favorite day"
-                        : "Set as favorite day"
-                    }
-                    className={`absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-xl transition ${
-                      isFavoriteDay
-                        ? "border-yellow-400/30 bg-yellow-500/18 text-yellow-300 hover:bg-yellow-500/22"
-                        : "border-white/15 bg-black/40 text-white hover:bg-black/48"
-                    } disabled:cursor-not-allowed disabled:opacity-60`}
-                  >
-                    <span className="text-2xl leading-none">
-                      {isFavoriteDay ? "★" : "☆"}
-                    </span>
-                  </button>
-
-                  <HighlightHeroImage
-                    src={highlight.image}
-                    alt={decodeHtml(highlight.title) || "Historical highlight"}
-                    revealDelayMs={HERO_IMAGE_REVEAL_DELAY_MS}
-                    preferImmediateSwap={preferImmediateHighlightImageSwap}
-                    onLoadingChange={(loading: boolean) => {
-                      if (isDayTransitioning || !minimumTransitionDone) {
-                        setHeroImageLoading(loading);
-                      } else if (!loading) {
-                        setHeroImageLoading(false);
-                      }
-                    }}
-                  />
-
-                  <div className="absolute inset-0 z-[1] bg-gradient-to-r from-black/55 via-black/24 to-transparent" />
-                  <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/36 via-transparent to-black/28" />
-
-                  {heroImageLoading ? (
-                    <div className="absolute inset-0 z-10 bg-black/25 backdrop-blur-[2px]" />
-                  ) : null}
-
-                  <div className="relative z-20 flex h-full min-h-[320px] flex-col justify-end p-5 sm:p-6">
-                    <div className="text-sm text-zinc-200/90">In this day</div>
-                    <div className="text-2xl font-semibold text-white">
-                      {formatDisplayDate(day)}
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap items-center gap-2">
-                      {highlight.year ? (
-                        <span className="rounded-md bg-white/12 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-xl">
-                          {highlight.year}
-                        </span>
-                      ) : null}
-
-                      {activeBadges.map((badge) => {
-                        const style = getBadgeStyle(badge);
-
-                        return (
-                          <span
-                            key={badge}
-                            className={`rounded-md border px-2.5 py-1 text-xs font-medium uppercase tracking-wide backdrop-blur-xl ${style.pill} ${style.text} ${style.border}`}
-                          >
-                            {getBadgeLabel(badge)}
-                          </span>
-                        );
-                      })}
-                    </div>
-
-                    {highlight.title ? (
-                      <div className="mt-3 text-3xl font-semibold leading-tight text-white">
-                        {highlight.title}
-                      </div>
-                    ) : null}
-
-                    <div className="mt-3 max-w-3xl text-sm leading-6 text-zinc-100/90">
-                      {highlight.text}
-                    </div>
-
-                    <div className="mt-4 flex flex-col items-start gap-2">
-                      {highlight.articleUrl ? (
-                        <a
-                          href={highlight.articleUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex w-fit items-center rounded-lg border border-white/15 bg-white/[0.08] px-4 py-2 text-sm font-medium text-white backdrop-blur-xl transition hover:bg-white/[0.12]"
-                        >
-                          Read on Wikipedia
-                        </a>
-                      ) : null}
-
-                      <div className="text-sm text-zinc-200/85">
-                        Think we&apos;re missing an important event?
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => setShowSuggestModal(true)}
-                        className="inline-flex w-fit items-center rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm font-medium text-white backdrop-blur-xl transition hover:bg-white/[0.12]"
-                      >
-                        Suggest an event
-                      </button>
-                    </div>
-
-                    {highlights.length > 1 ? (
-                      <div className="mt-5 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={goToPrevHighlight}
-                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
-                          >
-                            ←
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={goToNextHighlight}
-                            className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
-                          >
-                            →
-                          </button>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          {highlights.map((_, index) => (
-                            <button
-                              key={index}
-                              type="button"
-                              onClick={() => void transitionToHighlight(index)}
-                              className={`h-2.5 w-2.5 rounded-full transition ${
-                                index === activeHighlightIndex
-                                  ? "bg-white"
-                                  : "bg-white/30"
-                              }`}
-                              aria-label={`Go to highlight ${index + 1}`}
-                            />
-                          ))}
-                        </div>
-
-                        <div className="text-xs text-zinc-300">
-                          {activeHighlightIndex + 1}/{highlights.length}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            <div
-              ref={rateBoxRef}
-              className="mt-6 scroll-mt-24 overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl"
-            >
-              <div className="relative">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.03),transparent_28%)]" />
-
-                <div className="relative p-5 sm:p-6">
-                  <div className="max-w-2xl">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
-                      Your reaction
-                    </div>
-
-                    <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-                      <div>
-                        <h3 className="text-xl font-semibold text-white">
-                          Rate this day
-                        </h3>
-                        <p className="mt-1 text-sm leading-6 text-zinc-400">
-                          Share your take on this moment in history.
-                        </p>
-                      </div>
-
-                      {myReview ? (
-                        <div className="rounded-2xl border border-emerald-400/18 bg-emerald-500/10 px-4 py-2 text-right backdrop-blur-xl">
-                          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-300/90">
-                            Your current rating
-                          </div>
-                          <div className="mt-1 text-lg font-semibold text-white">
-                            ★ {myReview.stars}.0
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div className="mt-6 rounded-[24px] border border-white/8 bg-white/[0.03] p-5 backdrop-blur-2xl">
-                    {!currentUser ? (
-                      <div className="mb-5 rounded-2xl border border-amber-400/18 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
-                        <div className="text-sm font-medium text-amber-200">
-                          Login required to interact
-                        </div>
-                        <div className="mt-1 text-xs text-amber-100/80">
-                          You can explore freely, but ratings, favorites, likes
-                          and replies only work with an account and are the only
-                          ones that count in stats.
-                        </div>
-                      </div>
-                    ) : currentUser.emailVerified === false ? (
-                      <div className="mb-5 rounded-2xl border border-amber-400/18 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
-                        <div className="text-sm font-medium text-amber-200">
-                          Verify your email to interact
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-amber-100/80">
-                          <span>
-                            Your account exists, but you should verify your email
-                            first.
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openAuthModal("verify-email", currentUser.email)
-                            }
-                            className="rounded-lg border border-amber-300/18 bg-amber-400/10 px-3 py-1.5 text-amber-100 transition hover:bg-amber-400/18"
-                          >
-                            Verify now
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {myReview ? (
-                      <div className="mb-5 rounded-2xl border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 backdrop-blur-xl">
-                        <div className="text-sm font-medium text-emerald-300">
-                          You already rated this day.
-                        </div>
-                        <div className="mt-1 text-xs text-emerald-200/80">
-                          You can update your review below whenever you want.
-                        </div>
-                      </div>
-                    ) : null}
-
-                    <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                      <div className="flex flex-wrap items-center gap-4">
-                        <div className="flex items-center gap-1">
-                          {Array.from({ length: 5 }).map((_, i) => {
-                            const v = i + 1;
-                            return (
-                              <Star
-                                key={v}
-                                filled={v <= shownStars}
-                                title={`${v} star${v > 1 ? "s" : ""}`}
-                                onMouseEnter={() => setHoverStars(v)}
-                                onMouseLeave={() => setHoverStars(0)}
-                                onClick={() => setStars(v)}
-                              />
-                            );
-                          })}
-                        </div>
-
-                        <div className="min-w-[56px] text-2xl font-semibold tracking-tight text-white">
-                          {shownStars ? `${shownStars}/5` : "—/5"}
-                        </div>
-                      </div>
-
-                      <div className="text-sm text-zinc-400 md:text-right">
-                        {shownStars
-                          ? "Choose how this day feels to you"
-                          : "Select a rating from 1 to 5 stars"}
-                      </div>
-                    </div>
-
-                    <div className="mt-6">
-                      <div className="mb-2 text-sm font-medium text-zinc-200">
-                        Review
-                      </div>
-                      <textarea
-                        value={review}
-                        onChange={(e) =>
-                          setReview(e.target.value.slice(0, REVIEW_MAX_LENGTH))
-                        }
-                        maxLength={REVIEW_MAX_LENGTH}
-                        placeholder="Add a short review, reaction, or opinion about this day..."
-                        className="h-28 w-full resize-none rounded-[20px] border border-white/8 bg-[#101010]/90 px-4 py-4 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-white/14 focus:ring-2 focus:ring-white/10"
-                      />
-                      <div className="mt-2 flex justify-end">
-                        <div
-                          className={`text-xs ${
-                            review.length >= REVIEW_MAX_LENGTH
-                              ? "text-red-400"
-                              : review.length >= REVIEW_MAX_LENGTH - 40
-                                ? "text-amber-300"
-                                : "text-zinc-500"
-                          }`}
-                        >
-                          {review.length} / {REVIEW_MAX_LENGTH}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-6 flex flex-wrap items-center gap-3">
-                      <button
-                        onClick={submit}
-                        disabled={saving}
-                        className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
-                      >
-                        {saving
-                          ? "Saving..."
-                          : myReview
-                            ? "Update your review"
-                            : "Rate this day"}
-                      </button>
-
-                      {toast ? (
-                        <div className="text-sm text-zinc-300">{toast}</div>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-white/8 bg-black/18 p-5 backdrop-blur-2xl">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-lg font-semibold text-zinc-100">
-                    Community reactions
-                  </div>
-                  <div className="mt-1 text-sm text-zinc-400">
-                    See how people rated this day
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setReviewsSort("helpful")}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                      reviewsSort === "helpful"
-                        ? "border border-white/8 bg-white/[0.08] text-white"
-                        : "text-zinc-400 hover:text-zinc-200"
-                    }`}
-                  >
-                    Most helpful
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setReviewsSort("newest")}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                      reviewsSort === "newest"
-                        ? "border border-white/8 bg-white/[0.08] text-white"
-                        : "text-zinc-400 hover:text-zinc-200"
-                    }`}
-                  >
-                    Newest
-                  </button>
-                </div>
-              </div>
-
-              {myReview ? (
-                <div ref={myReviewBlockRef} className="mt-5">
-                  <div className="mb-2 text-sm font-medium text-zinc-200">
-                    Your rating
-                  </div>
-
-                  <div className="rounded-2xl border border-emerald-400/18 bg-emerald-500/5 p-4 backdrop-blur-xl">
+              <div className="rounded-2xl border border-white/8 bg-black/20 p-4 sm:p-5 backdrop-blur-xl">
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="flex flex-col gap-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <div className="text-yellow-400">
-                        {"★".repeat(clamp(myReview.stars, 0, 5))}
-                        <span className="text-zinc-700">
-                          {"★".repeat(5 - clamp(myReview.stars, 0, 5))}
-                        </span>
-                      </div>
-
-                      <span className="rounded-md border border-emerald-400/20 bg-emerald-500/18 px-2 py-0.5 text-xs font-medium text-emerald-300">
-                        Your review
+                      <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
+                        Quick actions
                       </span>
+                    </div>
 
-                      <div className="text-xs text-zinc-400">
-                        {formatReviewDate(myReview.createdAt)}
-                      </div>
-
+                    <div className="flex flex-wrap items-center gap-3">
                       <button
                         type="button"
-                        onClick={() => {
-                          setStars(myReview.stars);
-                          setHoverStars(0);
-                          setReview(myReview.review);
-                          rateBoxRef.current?.scrollIntoView({
-                            behavior: "smooth",
-                            block: "start",
-                          });
-                        }}
-                        className="text-xs text-zinc-300 underline underline-offset-4 transition hover:text-white"
+                        onClick={() => goToSurpriseDay(false)}
+                        className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
                       >
-                        Edit
+                        Surprise me
                       </button>
 
                       <button
                         type="button"
-                        onClick={() => deleteReview(myReview.id)}
-                        disabled={deletingReviewId === myReview.id}
-                        className="text-xs text-red-300 underline underline-offset-4 transition hover:text-red-200 disabled:opacity-50"
+                        onClick={() => goToTodayInHistory(false)}
+                        className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
                       >
-                        {deletingReviewId === myReview.id
-                          ? "Deleting..."
-                          : "Delete"}
+                        Today in history
                       </button>
                     </div>
 
-                    {hasReviewText(myReview.review) ? (
-                      <div className="mt-3 text-sm leading-6 text-zinc-200">
-                        {myReview.review}
+                    {todayHistoryNotice ? (
+                      <div className="rounded-xl border border-sky-400/15 bg-sky-500/10 px-3 py-2 text-xs text-sky-100/90 backdrop-blur-xl">
+                        ↻ {todayHistoryNotice}
                       </div>
                     ) : null}
+                  </div>
 
-                    <div
-                      className={`${
-                        hasReviewText(myReview.review) ? "mt-3" : "mt-2"
-                      } flex flex-wrap items-center gap-4`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleLike(myReview.id)}
-                        className="inline-flex items-center gap-2 text-sm text-zinc-400 transition hover:text-zinc-200"
-                      >
-                        <span
-                          className={`text-base ${
-                            myReview.likedByMe
-                              ? "text-pink-400"
-                              : "text-zinc-500"
-                          }`}
-                        >
-                          ♥
-                        </span>
-                        <span>{myReview.likesCount}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!currentUser) {
-                            openAuthModal("login");
-                            return;
-                          }
-
-                          if (requireVerifiedEmail()) return;
-
-                          setReplyingToId((prev) =>
-                            prev === myReview.id ? null : myReview.id
-                          );
-                        }}
-                        className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
-                      >
-                        Reply
-                      </button>
+                  <div className="flex flex-col gap-3 lg:items-start">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
+                           Step through time
+                      </span>
                     </div>
 
-                    <ReplyList
-                      replies={myReview.replies}
-                      deletingReplyId={deletingReplyId}
-                      onDeleteReply={deleteReply}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={goToPreviousYear}
+                        disabled={isAtMinYear}
+                        className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        «
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={goToPreviousDay}
+                        disabled={isAtMinDay}
+                        className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        ‹
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={goToNextDay}
+                        disabled={isAtToday}
+                        className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        ›
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={goToNextYear}
+                        disabled={isAtMaxYear}
+                        className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        »
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {!hasPickedInitialDay ? (
+                <div className="mt-6 overflow-hidden rounded-2xl border border-white/8 bg-black/20 p-5">
+                  <div className="animate-pulse">
+                    <div className="h-4 w-28 rounded bg-white/10" />
+                    <div className="mt-4 h-8 w-2/3 rounded bg-white/10" />
+                    <div className="mt-3 h-4 w-full rounded bg-white/10" />
+                    <div className="mt-2 h-4 w-5/6 rounded bg-white/10" />
+                    <div className="mt-2 h-4 w-4/6 rounded bg-white/10" />
+                  </div>
+                </div>
+              ) : highlight ? (
+                <div
+                  ref={highlightBlockRef}
+                  className="mt-6 overflow-hidden rounded-2xl border border-white/8 bg-black/20"
+                  onMouseEnter={() => setIsHighlightPaused(true)}
+                  onMouseLeave={() => setIsHighlightPaused(false)}
+                >
+                  <div className="relative min-h-[320px]">
+                    <button
+                      type="button"
+                      onClick={toggleFavoriteDay}
+                      disabled={loadingFavoriteDay}
+                      aria-label={
+                        isFavoriteDay
+                          ? "Remove favorite day"
+                          : "Set as favorite day"
+                      }
+                      title={
+                        isFavoriteDay
+                          ? "Remove favorite day"
+                          : "Set as favorite day"
+                      }
+                      className={`absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-xl transition ${
+                        isFavoriteDay
+                          ? "border-yellow-400/30 bg-yellow-500/18 text-yellow-300 hover:bg-yellow-500/22"
+                          : "border-white/15 bg-black/40 text-white hover:bg-black/48"
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
+                    >
+                      <span className="text-2xl leading-none">
+                        {isFavoriteDay ? "★" : "☆"}
+                      </span>
+                    </button>
+
+                    <HighlightHeroImage
+                      src={highlight.image}
+                      alt={
+                        decodeHtml(highlight.title) || "Historical highlight"
+                      }
+                      revealDelayMs={HERO_IMAGE_REVEAL_DELAY_MS}
+                      preferImmediateSwap={preferImmediateHighlightImageSwap}
+                      onLoadingChange={(loading: boolean) => {
+                        if (isDayTransitioning || !minimumTransitionDone) {
+                          setHeroImageLoading(loading);
+                        } else if (!loading) {
+                          setHeroImageLoading(false);
+                        }
+                      }}
                     />
 
-                    {replyingToId === myReview.id ? (
-                      <ReplyComposer
-                        value={replyTextByRating[myReview.id] ?? ""}
-                        onChange={(value) =>
-                          setReplyTextByRating((prev) => ({
-                            ...prev,
-                            [myReview.id]: value,
-                          }))
-                        }
-                        onSubmit={() => submitReply(myReview.id)}
-                        onCancel={() => setReplyingToId(null)}
-                        sending={sendingReplyId === myReview.id}
-                      />
+                    <div className="absolute inset-0 z-[1] bg-gradient-to-r from-black/55 via-black/24 to-transparent" />
+                    <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/36 via-transparent to-black/28" />
+
+                    {heroImageLoading ? (
+                      <div className="absolute inset-0 z-10 bg-black/25 backdrop-blur-[2px]" />
                     ) : null}
+
+                    <div className="relative z-20 flex h-full min-h-[320px] flex-col justify-end p-5 sm:p-6">
+                      <div className="text-sm text-zinc-200/90">In this day</div>
+                      <div className="text-2xl font-semibold text-white">
+                        {formatDisplayDate(day)}
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                        {highlight.year ? (
+                          <span className="rounded-md bg-white/12 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-xl">
+                            {highlight.year}
+                          </span>
+                        ) : null}
+
+                        {activeBadges.map((badge) => {
+                          const style = getBadgeStyle(badge);
+
+                          return (
+                            <span
+                              key={badge}
+                              className={`rounded-md border px-2.5 py-1 text-xs font-medium uppercase tracking-wide backdrop-blur-xl ${style.pill} ${style.text} ${style.border}`}
+                            >
+                              {getBadgeLabel(badge)}
+                            </span>
+                          );
+                        })}
+                      </div>
+
+                      {highlight.title ? (
+                        <div className="mt-3 text-3xl font-semibold leading-tight text-white">
+                          {highlight.title}
+                        </div>
+                      ) : null}
+
+                      <div className="mt-3 max-w-3xl text-sm leading-6 text-zinc-100/90">
+                        {highlight.text}
+                      </div>
+
+                      <div className="mt-4 flex flex-col items-start gap-2">
+                        {highlight.articleUrl ? (
+                          <a
+                            href={highlight.articleUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex w-fit items-center rounded-lg border border-white/15 bg-white/[0.08] px-4 py-2 text-sm font-medium text-white backdrop-blur-xl transition hover:bg-white/[0.12]"
+                          >
+                            Read on Wikipedia
+                          </a>
+                        ) : null}
+
+                        <div className="text-sm text-zinc-200/85">
+                          Think we&apos;re missing an important event?
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowSuggestModal(true)}
+                          className="inline-flex w-fit items-center rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm font-medium text-white backdrop-blur-xl transition hover:bg-white/[0.12]"
+                        >
+                          Suggest an event
+                        </button>
+                      </div>
+
+                      {highlights.length > 1 ? (
+                        <div className="mt-5 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={goToPrevHighlight}
+                              className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
+                            >
+                              ←
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={goToNextHighlight}
+                              className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
+                            >
+                              →
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            {highlights.map((_, index) => (
+                              <button
+                                key={index}
+                                type="button"
+                                onClick={() => void transitionToHighlight(index)}
+                                className={`h-2.5 w-2.5 rounded-full transition ${
+                                  index === activeHighlightIndex
+                                    ? "bg-white"
+                                    : "bg-white/30"
+                                }`}
+                                aria-label={`Go to highlight ${index + 1}`}
+                              />
+                            ))}
+                          </div>
+
+                          <div className="text-xs text-zinc-300">
+                            {activeHighlightIndex + 1}/{highlights.length}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               ) : null}
 
-              <div className="mt-5">
-                <div className="mb-2 text-sm font-medium text-zinc-200">
-                  Latest reviews ({otherReviews.length})
-                </div>
+              <div
+                ref={rateBoxRef}
+                className="mt-6 scroll-mt-24 overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl"
+              >
+                <div className="relative">
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.03),transparent_28%)]" />
 
-                {loadingDay ? (
-                  <div className="mb-3 text-xs text-zinc-400">Loading…</div>
-                ) : null}
+                  <div className="relative p-5 sm:p-6">
+                    <div className="max-w-2xl">
+                      <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+                        Your reaction
+                      </div>
 
-                <div className="space-y-3">
-                  {sortedOtherReviews.slice(0, 8).map((r) => {
-                    const compact = !hasReviewText(r.review);
-
-                    return (
-                      <div
-                        key={r.id}
-                        className="rounded-2xl border border-white/8 bg-black/20 p-4 backdrop-blur-xl"
-                      >
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="text-yellow-400">
-                            {"★".repeat(clamp(r.stars, 0, 5))}
-                            <span className="text-zinc-700">
-                              {"★".repeat(5 - clamp(r.stars, 0, 5))}
-                            </span>
-                          </div>
-
-                          <span className="rounded-md border border-white/8 bg-white/[0.05] px-2 py-0.5 text-xs text-zinc-300">
-                            {r.authorLabel}
-                          </span>
-
-                          <div className="text-xs text-zinc-400">
-                            {formatReviewDate(r.createdAt)}
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={() => reportReview(r.id)}
-                            disabled={reportingReviewId === r.id}
-                            className="ml-auto text-xs text-amber-300 underline underline-offset-4 transition hover:text-amber-200 disabled:opacity-50"
-                          >
-                            {reportingReviewId === r.id
-                              ? "Reporting..."
-                              : "Report"}
-                          </button>
+                      <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+                        <div>
+                          <h3 className="text-xl font-semibold text-white">
+                            Rate this day
+                          </h3>
+                          <p className="mt-1 text-sm leading-6 text-zinc-400">
+                            Share your take on this moment in history.
+                          </p>
                         </div>
 
-                        {!compact ? (
-                          <div className="mt-3 text-sm leading-6 text-zinc-200">
-                            {r.review}
+                        {myReview ? (
+                          <div className="rounded-2xl border border-emerald-400/18 bg-emerald-500/10 px-4 py-2 text-right backdrop-blur-xl">
+                            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-300/90">
+                              Your current rating
+                            </div>
+                            <div className="mt-1 text-lg font-semibold text-white">
+                              ★ {myReview.stars}.0
+                            </div>
                           </div>
-                        ) : null}
-
-                        <div
-                          className={`${
-                            compact ? "mt-2" : "mt-3"
-                          } flex flex-wrap items-center gap-4`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => toggleLike(r.id)}
-                            className="inline-flex items-center gap-2 text-sm text-zinc-400 transition hover:text-zinc-200"
-                          >
-                            <span
-                              className={`text-base ${
-                                r.likedByMe ? "text-pink-400" : "text-zinc-500"
-                              }`}
-                            >
-                              ♥
-                            </span>
-                            <span>{r.likesCount}</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (!currentUser) {
-                                openAuthModal("login");
-                                return;
-                              }
-
-                              if (requireVerifiedEmail()) return;
-
-                              setReplyingToId((prev) =>
-                                prev === r.id ? null : r.id
-                              );
-                            }}
-                            className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
-                          >
-                            Reply
-                          </button>
-                        </div>
-
-                        <ReplyList
-                          replies={r.replies}
-                          deletingReplyId={deletingReplyId}
-                          onDeleteReply={deleteReply}
-                        />
-
-                        {replyingToId === r.id ? (
-                          <ReplyComposer
-                            value={replyTextByRating[r.id] ?? ""}
-                            onChange={(value) =>
-                              setReplyTextByRating((prev) => ({
-                                ...prev,
-                                [r.id]: value,
-                              }))
-                            }
-                            onSubmit={() => submitReply(r.id)}
-                            onCancel={() => setReplyingToId(null)}
-                            sending={sendingReplyId === r.id}
-                          />
                         ) : null}
                       </div>
-                    );
-                  })}
-
-                  {otherReviews.length === 0 && !myReview ? (
-                    <div className="rounded-xl border border-white/8 bg-black/15 p-4 text-sm text-zinc-400">
-                      No reviews yet. Be the first.
                     </div>
+
+                    <div className="mt-6 rounded-[24px] border border-white/8 bg-white/[0.03] p-5 backdrop-blur-2xl">
+                      {!currentUser ? (
+                        <div className="mb-5 rounded-2xl border border-amber-400/18 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
+                          <div className="text-sm font-medium text-amber-200">
+                            Login required to interact
+                          </div>
+                          <div className="mt-1 text-xs text-amber-100/80">
+                            You can explore freely, but ratings, favorites, likes
+                            and replies only work with an account and are the
+                            only ones that count in stats.
+                          </div>
+                        </div>
+                      ) : currentUser.emailVerified === false ? (
+                        <div className="mb-5 rounded-2xl border border-amber-400/18 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
+                          <div className="text-sm font-medium text-amber-200">
+                            Verify your email to interact
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-amber-100/80">
+                            <span>
+                              Your account exists, but you should verify your
+                              email first.
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                openAuthModal("verify-email", currentUser.email)
+                              }
+                              className="rounded-lg border border-amber-300/18 bg-amber-400/10 px-3 py-1.5 text-amber-100 transition hover:bg-amber-400/18"
+                            >
+                              Verify now
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {myReview ? (
+                        <div className="mb-5 rounded-2xl border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 backdrop-blur-xl">
+                          <div className="text-sm font-medium text-emerald-300">
+                            You already rated this day.
+                          </div>
+                          <div className="mt-1 text-xs text-emerald-200/80">
+                            You can update your review below whenever you want.
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                        <div className="flex flex-wrap items-center gap-4">
+                          <div className="flex items-center gap-1">
+                            {Array.from({ length: 5 }).map((_, i) => {
+                              const v = i + 1;
+                              return (
+                                <Star
+                                  key={v}
+                                  filled={v <= shownStars}
+                                  title={`${v} star${v > 1 ? "s" : ""}`}
+                                  onMouseEnter={() => setHoverStars(v)}
+                                  onMouseLeave={() => setHoverStars(0)}
+                                  onClick={() => setStars(v)}
+                                />
+                              );
+                            })}
+                          </div>
+
+                          <div className="min-w-[56px] text-2xl font-semibold tracking-tight text-white">
+                            {shownStars ? `${shownStars}/5` : "—/5"}
+                          </div>
+                        </div>
+
+                        <div className="text-sm text-zinc-400 md:text-right">
+                          {shownStars
+                            ? "Choose how this day feels to you"
+                            : "Select a rating from 1 to 5 stars"}
+                        </div>
+                      </div>
+
+                      <div className="mt-6">
+                        <div className="mb-2 text-sm font-medium text-zinc-200">
+                          Review
+                        </div>
+                        <textarea
+                          value={review}
+                          onChange={(e) =>
+                            setReview(e.target.value.slice(0, REVIEW_MAX_LENGTH))
+                          }
+                          maxLength={REVIEW_MAX_LENGTH}
+                          placeholder="Add a short review, reaction, or opinion about this day..."
+                          className="h-28 w-full resize-none rounded-[20px] border border-white/8 bg-[#101010]/90 px-4 py-4 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-white/14 focus:ring-2 focus:ring-white/10"
+                        />
+                        <div className="mt-2 flex justify-end">
+                          <div
+                            className={`text-xs ${
+                              review.length >= REVIEW_MAX_LENGTH
+                                ? "text-red-400"
+                                : review.length >= REVIEW_MAX_LENGTH - 40
+                                  ? "text-amber-300"
+                                  : "text-zinc-500"
+                            }`}
+                          >
+                            {review.length} / {REVIEW_MAX_LENGTH}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 flex flex-wrap items-center gap-3">
+                        <button
+                          onClick={submit}
+                          disabled={saving}
+                          className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
+                        >
+                          {saving
+                            ? "Saving..."
+                            : myReview
+                              ? "Update your review"
+                              : "Rate this day"}
+                        </button>
+
+                        {toast ? (
+                          <div className="text-sm text-zinc-300">{toast}</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-white/8 bg-black/18 p-5 backdrop-blur-2xl">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-lg font-semibold text-zinc-100">
+                      Community reactions
+                    </div>
+                    <div className="mt-1 text-sm text-zinc-400">
+                      See how people rated this day
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setReviewsSort("helpful")}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                        reviewsSort === "helpful"
+                          ? "border border-white/8 bg-white/[0.08] text-white"
+                          : "text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      Most helpful
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setReviewsSort("newest")}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                        reviewsSort === "newest"
+                          ? "border border-white/8 bg-white/[0.08] text-white"
+                          : "text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      Newest
+                    </button>
+                  </div>
+                </div>
+
+                {myReview ? (
+                  <div ref={myReviewBlockRef} className="mt-5">
+                    <div className="mb-2 text-sm font-medium text-zinc-200">
+                      Your rating
+                    </div>
+
+                    <div className="rounded-2xl border border-emerald-400/18 bg-emerald-500/5 p-4 backdrop-blur-xl">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="text-yellow-400">
+                          {"★".repeat(clamp(myReview.stars, 0, 5))}
+                          <span className="text-zinc-700">
+                            {"★".repeat(5 - clamp(myReview.stars, 0, 5))}
+                          </span>
+                        </div>
+
+                        <span className="rounded-md border border-emerald-400/20 bg-emerald-500/18 px-2 py-0.5 text-xs font-medium text-emerald-300">
+                          Your review
+                        </span>
+
+                        <div className="text-xs text-zinc-400">
+                          {formatReviewDate(myReview.createdAt)}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStars(myReview.stars);
+                            setHoverStars(0);
+                            setReview(myReview.review);
+                            rateBoxRef.current?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
+                          }}
+                          className="text-xs text-zinc-300 underline underline-offset-4 transition hover:text-white"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => deleteReview(myReview.id)}
+                          disabled={deletingReviewId === myReview.id}
+                          className="text-xs text-red-300 underline underline-offset-4 transition hover:text-red-200 disabled:opacity-50"
+                        >
+                          {deletingReviewId === myReview.id
+                            ? "Deleting..."
+                            : "Delete"}
+                        </button>
+                      </div>
+
+                      {hasReviewText(myReview.review) ? (
+                        <div className="mt-3 text-sm leading-6 text-zinc-200">
+                          {myReview.review}
+                        </div>
+                      ) : null}
+
+                      <div
+                        className={`${
+                          hasReviewText(myReview.review) ? "mt-3" : "mt-2"
+                        } flex flex-wrap items-center gap-4`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => toggleLike(myReview.id)}
+                          className="inline-flex items-center gap-2 text-sm text-zinc-400 transition hover:text-zinc-200"
+                        >
+                          <span
+                            className={`text-base ${
+                              myReview.likedByMe
+                                ? "text-pink-400"
+                                : "text-zinc-500"
+                            }`}
+                          >
+                            ♥
+                          </span>
+                          <span>{myReview.likesCount}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!currentUser) {
+                              openAuthModal("login");
+                              return;
+                            }
+
+                            if (requireVerifiedEmail()) return;
+
+                            setReplyingToId((prev) =>
+                              prev === myReview.id ? null : myReview.id
+                            );
+                          }}
+                          className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
+                        >
+                          Reply
+                        </button>
+                      </div>
+
+                      <ReplyList
+                        replies={myReview.replies}
+                        deletingReplyId={deletingReplyId}
+                        onDeleteReply={deleteReply}
+                      />
+
+                      {replyingToId === myReview.id ? (
+                        <ReplyComposer
+                          value={replyTextByRating[myReview.id] ?? ""}
+                          onChange={(value) =>
+                            setReplyTextByRating((prev) => ({
+                              ...prev,
+                              [myReview.id]: value,
+                            }))
+                          }
+                          onSubmit={() => submitReply(myReview.id)}
+                          onCancel={() => setReplyingToId(null)}
+                          sending={sendingReplyId === myReview.id}
+                        />
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="mt-5">
+                  <div className="mb-2 text-sm font-medium text-zinc-200">
+                    Latest reviews ({otherReviews.length})
+                  </div>
+
+                  {loadingDay ? (
+                    <div className="mb-3 text-xs text-zinc-400">Loading…</div>
                   ) : null}
+
+                  <div className="space-y-3">
+                    {sortedOtherReviews.slice(0, 8).map((r) => {
+                      const compact = !hasReviewText(r.review);
+
+                      return (
+                        <div
+                          key={r.id}
+                          className="rounded-2xl border border-white/8 bg-black/20 p-4 backdrop-blur-xl"
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <div className="text-yellow-400">
+                              {"★".repeat(clamp(r.stars, 0, 5))}
+                              <span className="text-zinc-700">
+                                {"★".repeat(5 - clamp(r.stars, 0, 5))}
+                              </span>
+                            </div>
+
+                            <span className="rounded-md border border-white/8 bg-white/[0.05] px-2 py-0.5 text-xs text-zinc-300">
+                              {r.authorLabel}
+                            </span>
+
+                            <div className="text-xs text-zinc-400">
+                              {formatReviewDate(r.createdAt)}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => reportReview(r.id)}
+                              disabled={reportingReviewId === r.id}
+                              className="ml-auto text-xs text-amber-300 underline underline-offset-4 transition hover:text-amber-200 disabled:opacity-50"
+                            >
+                              {reportingReviewId === r.id
+                                ? "Reporting..."
+                                : "Report"}
+                            </button>
+                          </div>
+
+                          {!compact ? (
+                            <div className="mt-3 text-sm leading-6 text-zinc-200">
+                              {r.review}
+                            </div>
+                          ) : null}
+
+                          <div
+                            className={`${
+                              compact ? "mt-2" : "mt-3"
+                            } flex flex-wrap items-center gap-4`}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => toggleLike(r.id)}
+                              className="inline-flex items-center gap-2 text-sm text-zinc-400 transition hover:text-zinc-200"
+                            >
+                              <span
+                                className={`text-base ${
+                                  r.likedByMe ? "text-pink-400" : "text-zinc-500"
+                                }`}
+                              >
+                                ♥
+                              </span>
+                              <span>{r.likesCount}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!currentUser) {
+                                  openAuthModal("login");
+                                  return;
+                                }
+
+                                if (requireVerifiedEmail()) return;
+
+                                setReplyingToId((prev) =>
+                                  prev === r.id ? null : r.id
+                                );
+                              }}
+                              className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
+                            >
+                              Reply
+                            </button>
+                          </div>
+
+                          <ReplyList
+                            replies={r.replies}
+                            deletingReplyId={deletingReplyId}
+                            onDeleteReply={deleteReply}
+                          />
+
+                          {replyingToId === r.id ? (
+                            <ReplyComposer
+                              value={replyTextByRating[r.id] ?? ""}
+                              onChange={(value) =>
+                                setReplyTextByRating((prev) => ({
+                                  ...prev,
+                                  [r.id]: value,
+                                }))
+                              }
+                              onSubmit={() => submitReply(r.id)}
+                              onCancel={() => setReplyingToId(null)}
+                              sending={sendingReplyId === r.id}
+                            />
+                          ) : null}
+                        </div>
+                      );
+                    })}
+
+                    {otherReviews.length === 0 && !myReview ? (
+                      <div className="rounded-xl border border-white/8 bg-black/15 p-4 text-sm text-zinc-400">
+                        No reviews yet. Be the first.
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
