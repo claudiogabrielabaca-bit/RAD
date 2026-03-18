@@ -1,10 +1,15 @@
 "use client";
 
+import React, { useState } from "react";
 import { ReplyItem } from "@/app/lib/rad-types";
 
 function formatReviewDate(date?: string) {
   if (!date) return "";
   return new Date(date).toLocaleString();
+}
+
+function isLongReply(text?: string, limit = 140) {
+  return !!text && text.trim().length > limit;
 }
 
 export default function ReplyList({
@@ -16,6 +21,10 @@ export default function ReplyList({
   deletingReplyId: string | null;
   onDeleteReply: (replyId: string) => void;
 }) {
+  const [expandedReplies, setExpandedReplies] = useState<
+    Record<string, boolean>
+  >({});
+
   if (!replies?.length) return null;
 
   return (
@@ -46,8 +55,29 @@ export default function ReplyList({
             ) : null}
           </div>
 
-          <div className="mt-2 text-sm leading-6 text-zinc-200">
-            {reply.text}
+          <div className="mt-2">
+            <div
+              className={`text-sm leading-6 text-zinc-200 break-all [overflow-wrap:anywhere] ${
+                expandedReplies[reply.id] ? "" : "line-clamp-3"
+              }`}
+            >
+              {reply.text}
+            </div>
+
+            {isLongReply(reply.text) ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedReplies((prev) => ({
+                    ...prev,
+                    [reply.id]: !prev[reply.id],
+                  }))
+                }
+                className="mt-2 inline-flex items-center rounded-lg border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
+              >
+                {expandedReplies[reply.id] ? "Show less" : "Show more"}
+              </button>
+            ) : null}
           </div>
         </div>
       ))}

@@ -248,6 +248,10 @@ function hasReviewText(text?: string) {
   return !!text && text.trim().length > 0;
 }
 
+function isLongReview(text?: string, limit = 140) {
+  return !!text && text.trim().length > limit;
+}
+
 function getDiscoverTypeLabel(type?: DiscoverCard["type"]) {
   switch (type) {
     case "births":
@@ -609,7 +613,6 @@ function Star({
     </button>
   );
 }
-
 function DiscoverDayCard({
   card,
   onSelect,
@@ -751,6 +754,10 @@ export default function Page() {
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string>("");
+
+  const [expandedReviews, setExpandedReviews] = useState<Record<string, boolean>>(
+    {}
+  );
 
   const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
   const [reportingReviewId, setReportingReviewId] = useState<string | null>(
@@ -1385,6 +1392,7 @@ export default function Page() {
     if (requireVerifiedEmail()) return;
 
     try {
+      setToast("");
       setLoadingFavoriteDay(true);
 
       const res = await fetch("/api/favorite-day", {
@@ -1398,17 +1406,12 @@ export default function Page() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        showToast(json?.error ?? "Could not update favorite day.");
         return;
       }
 
       setIsFavoriteDay(!!json?.isFavorite);
-      showToast(
-        json?.message ??
-          (json?.isFavorite ? "Favorite day saved." : "Removed from favorites.")
-      );
     } catch {
-      showToast("Could not update favorite day.");
+      //
     } finally {
       setLoadingFavoriteDay(false);
     }
@@ -2140,7 +2143,7 @@ export default function Page() {
                     Loading...
                   </div>
                 ) : currentUser ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     {currentUser.emailVerified === false ? (
                       <button
                         type="button"
@@ -2381,7 +2384,7 @@ export default function Page() {
                   <div className="flex flex-col gap-3 lg:items-start">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
-                           Step through time
+                        Step through time
                       </span>
                     </div>
 
@@ -2684,7 +2687,7 @@ export default function Page() {
 
                       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                         <div className="flex flex-wrap items-center gap-4">
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-2">
                             {Array.from({ length: 5 }).map((_, i) => {
                               const v = i + 1;
                               return (
@@ -2852,8 +2855,31 @@ export default function Page() {
                       </div>
 
                       {hasReviewText(myReview.review) ? (
-                        <div className="mt-3 text-sm leading-6 text-zinc-200">
-                          {myReview.review}
+                        <div className="mt-3">
+                      <div
+  className={`text-sm leading-6 text-zinc-200 break-all [overflow-wrap:anywhere] ${
+    expandedReviews[myReview.id] ? "" : "line-clamp-3"
+  }`}
+>
+  {myReview.review}
+</div>
+
+                          {isLongReview(myReview.review) ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setExpandedReviews((prev) => ({
+                                  ...prev,
+                                  [myReview.id]: !prev[myReview.id],
+                                }))
+                              }
+                              className="mt-2 inline-flex items-center rounded-lg border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
+                            >
+                              {expandedReviews[myReview.id]
+                                ? "Show less"
+                                : "Show more"}
+                            </button>
+                          ) : null}
                         </div>
                       ) : null}
 
@@ -2970,8 +2996,31 @@ export default function Page() {
                           </div>
 
                           {!compact ? (
-                            <div className="mt-3 text-sm leading-6 text-zinc-200">
-                              {r.review}
+                            <div className="mt-3">
+                           <div
+  className={`text-sm leading-6 text-zinc-200 break-all [overflow-wrap:anywhere] ${
+    expandedReviews[r.id] ? "" : "line-clamp-3"
+  }`}
+>
+  {r.review}
+</div>
+
+                              {isLongReview(r.review) ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedReviews((prev) => ({
+                                      ...prev,
+                                      [r.id]: !prev[r.id],
+                                    }))
+                                  }
+                                  className="mt-2 inline-flex items-center rounded-lg border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
+                                >
+                                  {expandedReviews[r.id]
+                                    ? "Show less"
+                                    : "Show more"}
+                                </button>
+                              ) : null}
                             </div>
                           ) : null}
 
