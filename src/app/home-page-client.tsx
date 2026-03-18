@@ -1668,6 +1668,9 @@ export default function Page() {
     void openDay(nextDay, { scrollToHighlight: true });
   }
 
+  function goToToday() {
+  void openDay(today, { scrollToHighlight: true });
+  }
   function goToPreviousDay() {
     const prev = getDayWithOffset(day, -1);
 
@@ -2239,51 +2242,60 @@ export default function Page() {
                     Choose a specific day between 1900 and today.
                   </div>
 
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <select
-                      value={selectedYear}
-                      onChange={(e) => setSelectedYear(e.target.value)}
-                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
-                    >
-                      {YEARS.map((year) => (
-                        <option key={year} value={year}>
-                          {year}
-                        </option>
-                      ))}
-                    </select>
+                 <div className="mt-4 flex flex-wrap items-center gap-3">
+  <select
+    value={selectedYear}
+    onChange={(e) => setSelectedYear(e.target.value)}
+    className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+  >
+    {YEARS.map((year) => (
+      <option key={year} value={year}>
+        {year}
+      </option>
+    ))}
+  </select>
 
-                    <select
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(e.target.value)}
-                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
-                    >
-                      {MONTHS.map((month) => (
-                        <option key={month.value} value={month.value}>
-                          {month.label}
-                        </option>
-                      ))}
-                    </select>
+  <select
+    value={selectedMonth}
+    onChange={(e) => setSelectedMonth(e.target.value)}
+    className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+  >
+    {MONTHS.map((month) => (
+      <option key={month.value} value={month.value}>
+        {month.label}
+      </option>
+    ))}
+  </select>
 
-                    <select
-                      value={selectedDay}
-                      onChange={(e) => setSelectedDay(e.target.value)}
-                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
-                    >
-                      {DAYS.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
+  <select
+    value={selectedDay}
+    onChange={(e) => setSelectedDay(e.target.value)}
+    className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+  >
+    {DAYS.map((d) => (
+      <option key={d} value={d}>
+        {d}
+      </option>
+    ))}
+  </select>
 
-                    <button
-                      type="button"
-                      onClick={goToManualDay}
-                      className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
-                    >
-                      Go
-                    </button>
-                  </div>
+  <button
+    type="button"
+    onClick={goToManualDay}
+    className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+  >
+    Go
+  </button>
+
+  <button
+    type="button"
+    onClick={goToToday}
+    className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+  >
+    Today
+  </button>
+</div>
+
 
                   {toast ? (
                     <div className="mt-4 text-sm text-zinc-300">{toast}</div>
