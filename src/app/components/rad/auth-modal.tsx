@@ -102,6 +102,29 @@ function PasswordField({
   );
 }
 
+function ContextLink({
+  text,
+  action,
+  onClick,
+}: {
+  text: string;
+  action: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="mt-5 flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-zinc-500">{text}</span>
+      <button
+        type="button"
+        onClick={onClick}
+        className="font-medium text-zinc-200 underline underline-offset-4 transition hover:text-white"
+      >
+        {action}
+      </button>
+    </div>
+  );
+}
+
 export default function AuthModal({
   open,
   view,
@@ -298,13 +321,13 @@ export default function AuthModal({
   const subtitle = useMemo(() => {
     switch (view) {
       case "login":
-        return "Step 1: enter your email and password.";
+        return "Enter your email and password to access your account.";
       case "login-code":
-        return "Step 2: enter the access code sent to your email.";
+        return "Enter the access code sent to your email.";
       case "register":
-        return "Create your RAD account to save ratings and favorites.";
+        return "Create your RAD account and start saving ratings and favorites.";
       case "forgot-password":
-        return "Enter your email and generate a recovery code.";
+        return "Enter your email and request a recovery code.";
       case "reset-password":
         return "Use your recovery code and choose a new password.";
       case "verify-email":
@@ -325,12 +348,16 @@ export default function AuthModal({
       const json = await res.json().catch(() => null);
 
       if (res.ok) {
-        onAuthSuccess?.(json?.user ?? null);
-      } else {
-        onAuthSuccess?.(null);
+        const user = json?.user ?? null;
+        onAuthSuccess?.(user);
+        return user as MeUser | null;
       }
+
+      onAuthSuccess?.(null);
+      return null;
     } catch {
       onAuthSuccess?.(null);
+      return null;
     }
   }
 
@@ -402,6 +429,16 @@ export default function AuthModal({
         return;
       }
 
+      if (json?.user) {
+        onAuthSuccess?.(json.user);
+        setMessage("Logged in successfully.");
+
+        setTimeout(() => {
+          onClose();
+        }, 450);
+        return;
+      }
+
       setError("Unexpected login response.");
     } catch {
       resetTurnstile();
@@ -441,7 +478,7 @@ export default function AuthModal({
 
       setTimeout(() => {
         onClose();
-      }, 500);
+      }, 450);
     } catch {
       setError("Could not validate login code.");
     } finally {
@@ -519,9 +556,13 @@ export default function AuthModal({
         return;
       }
 
+      await refreshUserAndNotify();
+      setCurrentUserEmailVerified(false);
+
       goToView("verify-email", json?.user?.email ?? normalized, {
         nextMessage:
-          json?.message ?? "Account created successfully. Verify your email.",
+          json?.message ??
+          "Account created successfully. You're already signed in. Verify your email when you're ready.",
         nextDevCode: json?.devCode ?? "",
       });
     } catch {
@@ -678,11 +719,15 @@ export default function AuthModal({
       setCurrentUserEmailVerified(true);
       setCode("");
 
-      await refreshUserAndNotify();
+      const nextUser = await refreshUserAndNotify();
 
       setTimeout(() => {
-        goToView("login", normalized);
-      }, 900);
+        if (nextUser) {
+          onClose();
+        } else {
+          goToView("login", normalized);
+        }
+      }, 700);
     } catch {
       resetTurnstile();
       setError("Could not verify email.");
@@ -739,19 +784,19 @@ export default function AuthModal({
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/75 p-4 backdrop-blur-md">
       <div className="absolute inset-0" onClick={onClose} aria-hidden="true" />
 
-      <div className="relative z-[91] w-full max-w-lg overflow-hidden rounded-[30px] border border-white/10 bg-[#121212]/95 shadow-[0_30px_90px_rgba(0,0,0,0.55)]">
+      <div className="relative z-[91] w-full max-w-[560px] overflow-hidden rounded-[32px] border border-white/10 bg-[#121212]/95 shadow-[0_30px_90px_rgba(0,0,0,0.55)]">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.06),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.03),transparent_26%)]" />
 
-        <div className="relative p-6 sm:p-7">
+        <div className="relative p-7">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
                 RAD Account
               </div>
-              <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">
+              <h2 className="mt-2 text-[2.1rem] font-semibold tracking-tight text-white leading-none">
                 {title}
               </h2>
-              <p className="mt-2 max-w-md text-sm leading-6 text-zinc-400">
+              <p className="mt-3 max-w-md text-sm leading-6 text-zinc-400">
                 {subtitle}
               </p>
             </div>
@@ -759,63 +804,59 @@ export default function AuthModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-zinc-300 transition hover:bg-white/10"
+              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-zinc-300 transition hover:bg-white/10"
             >
               Close
             </button>
           </div>
 
-          <div className="mt-6 rounded-2xl border border-white/10 bg-black/25 p-4 backdrop-blur-xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => goToView("login", email)}
-                className={`rounded-xl px-3 py-2 text-sm transition ${
-                  view === "login"
-                    ? "bg-white text-black"
-                    : "bg-white/5 text-zinc-300 hover:bg-white/10"
-                }`}
-              >
-                Log in
-              </button>
+          {view === "login" ? (
+            <ContextLink
+              text="Don't have an account yet?"
+              action="Create account"
+              onClick={() => goToView("register", email)}
+            />
+          ) : null}
 
-              <button
-                type="button"
-                onClick={() => goToView("register", email)}
-                className={`rounded-xl px-3 py-2 text-sm transition ${
-                  view === "register"
-                    ? "bg-white text-black"
-                    : "bg-white/5 text-zinc-300 hover:bg-white/10"
-                }`}
-              >
-                Create account
-              </button>
+          {view === "register" ? (
+            <ContextLink
+              text="Already have an account?"
+              action="Log in"
+              onClick={() => goToView("login", email)}
+            />
+          ) : null}
 
-              {view === "login-code" ? (
-                <div className="rounded-xl bg-white px-3 py-2 text-sm text-black">
-                  Login code
-                </div>
-              ) : null}
+          {view === "forgot-password" ? (
+            <ContextLink
+              text="Remembered your password?"
+              action="Back to login"
+              onClick={() => goToView("login", email)}
+            />
+          ) : null}
 
-              {view === "forgot-password" ? (
-                <div className="rounded-xl bg-white px-3 py-2 text-sm text-black">
-                  Forgot password
-                </div>
-              ) : null}
+          {view === "reset-password" ? (
+            <ContextLink
+              text="Need to generate a new recovery code?"
+              action="Back"
+              onClick={() => goToView("forgot-password", email)}
+            />
+          ) : null}
 
-              {view === "reset-password" ? (
-                <div className="rounded-xl bg-white px-3 py-2 text-sm text-black">
-                  Reset password
-                </div>
-              ) : null}
+          {view === "login-code" ? (
+            <ContextLink
+              text={email ? `We sent a code to ${email}.` : "We sent a code to your email."}
+              action="Use another email"
+              onClick={() => goToView("login", email)}
+            />
+          ) : null}
 
-              {view === "verify-email" ? (
-                <div className="rounded-xl bg-white px-3 py-2 text-sm text-black">
-                  Verify email
-                </div>
-              ) : null}
-            </div>
-          </div>
+          {view === "verify-email" ? (
+            <ContextLink
+              text="Want to verify later?"
+              action="Close"
+              onClick={onClose}
+            />
+          ) : null}
 
           {message ? (
             <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-emerald-200">
@@ -841,7 +882,7 @@ export default function AuthModal({
           ) : null}
 
           {view === "login" ? (
-            <form onSubmit={handleLogin} className="mt-6 space-y-4">
+            <form onSubmit={handleLogin} className="mt-6 space-y-5">
               <div>
                 <label className="mb-2 block text-sm text-zinc-300">Email</label>
                 <input
@@ -868,7 +909,7 @@ export default function AuthModal({
                 onTokenChange={setTurnstileToken}
               />
 
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                 <button
                   type="submit"
                   disabled={loading}
@@ -889,7 +930,7 @@ export default function AuthModal({
           ) : null}
 
           {view === "login-code" ? (
-            <form onSubmit={handleLoginCode} className="mt-6 space-y-4">
+            <form onSubmit={handleLoginCode} className="mt-6 space-y-5">
               <div>
                 <label className="mb-2 block text-sm text-zinc-300">Email</label>
                 <input
@@ -916,7 +957,7 @@ export default function AuthModal({
                 />
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+              <div className="flex flex-wrap items-center gap-3 pt-1">
                 <button
                   type="submit"
                   disabled={loading || !codeIsComplete}
@@ -933,20 +974,12 @@ export default function AuthModal({
                 >
                   {secondaryLoading ? "Generating..." : "Resend code"}
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => goToView("login", email)}
-                  className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-white"
-                >
-                  Back
-                </button>
               </div>
             </form>
           ) : null}
 
           {view === "register" ? (
-            <form onSubmit={handleRegister} className="mt-6 space-y-4">
+            <form onSubmit={handleRegister} className="mt-6 space-y-5">
               <div>
                 <label className="mb-2 block text-sm text-zinc-300">Email</label>
                 <input
@@ -992,7 +1025,7 @@ export default function AuthModal({
                 onTokenChange={setTurnstileToken}
               />
 
-              <div className="pt-2">
+              <div className="pt-1">
                 <button
                   type="submit"
                   disabled={loading}
@@ -1005,7 +1038,7 @@ export default function AuthModal({
           ) : null}
 
           {view === "forgot-password" ? (
-            <form onSubmit={handleForgotPassword} className="mt-6 space-y-4">
+            <form onSubmit={handleForgotPassword} className="mt-6 space-y-5">
               <div>
                 <label className="mb-2 block text-sm text-zinc-300">Email</label>
                 <input
@@ -1023,7 +1056,7 @@ export default function AuthModal({
                 onTokenChange={setTurnstileToken}
               />
 
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+              <div className="pt-1">
                 <button
                   type="submit"
                   disabled={loading}
@@ -1031,20 +1064,12 @@ export default function AuthModal({
                 >
                   {loading ? "Generating..." : "Send recovery code"}
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => goToView("login", email)}
-                  className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-white"
-                >
-                  Back to login
-                </button>
               </div>
             </form>
           ) : null}
 
           {view === "reset-password" ? (
-            <form onSubmit={handleResetPassword} className="mt-6 space-y-4">
+            <form onSubmit={handleResetPassword} className="mt-6 space-y-5">
               <div>
                 <label className="mb-2 block text-sm text-zinc-300">Email</label>
                 <input
@@ -1089,7 +1114,7 @@ export default function AuthModal({
                 onToggle={() => setShowConfirmPassword((prev) => !prev)}
               />
 
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+              <div className="pt-1">
                 <button
                   type="submit"
                   disabled={loading || !codeIsComplete}
@@ -1097,20 +1122,12 @@ export default function AuthModal({
                 >
                   {loading ? "Updating..." : "Reset password"}
                 </button>
-
-                <button
-                  type="button"
-                  onClick={() => goToView("forgot-password", email)}
-                  className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-white"
-                >
-                  Back
-                </button>
               </div>
             </form>
           ) : null}
 
           {view === "verify-email" ? (
-            <form onSubmit={handleVerifyEmail} className="mt-6 space-y-4">
+            <form onSubmit={handleVerifyEmail} className="mt-6 space-y-5">
               <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
                 <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">
                   Verification status
@@ -1119,7 +1136,7 @@ export default function AuthModal({
                 <div className="mt-2 text-sm text-zinc-200">
                   {currentUserEmailVerified === true
                     ? "Your email is already verified."
-                    : "Your email is not verified yet."}
+                    : "Your account already exists and you're signed in. You only need to verify your email now."}
                 </div>
 
                 {email ? (
@@ -1148,7 +1165,7 @@ export default function AuthModal({
                 onTokenChange={setTurnstileToken}
               />
 
-              <div className="flex flex-wrap items-center gap-3 pt-2">
+              <div className="flex flex-wrap items-center gap-3 pt-1">
                 <button
                   type="submit"
                   disabled={
@@ -1168,14 +1185,6 @@ export default function AuthModal({
                   className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:bg-white/10 disabled:opacity-60"
                 >
                   {secondaryLoading ? "Generating..." : "Resend code"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => goToView("login", email)}
-                  className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-white"
-                >
-                  Back to login
                 </button>
               </div>
             </form>

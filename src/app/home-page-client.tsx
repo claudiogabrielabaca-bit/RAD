@@ -24,7 +24,7 @@ import type {
 
 const REVIEW_MAX_LENGTH = 280;
 const REPLY_MAX_LENGTH = 220;
-const HIGHLIGHT_SCROLL_OFFSET = 350;
+const HIGHLIGHT_SCROLL_OFFSET = 290;
 const FORCE_FRESH_MODE = false;
 const SURPRISE_HISTORY_STORAGE_KEY = "rad:surprise-history";
 const SURPRISE_HISTORY_MAX = 120;
@@ -613,6 +613,7 @@ function Star({
     </button>
   );
 }
+
 function DiscoverDayCard({
   card,
   onSelect,
@@ -892,6 +893,24 @@ export default function Page() {
       behavior: "smooth",
     });
   }
+ function requireReplyInteraction() {
+  if (!currentUser) {
+    openAuthModal("login");
+    return true;
+  }
+
+  if (currentUser.emailVerified === false) {
+    openAuthModal("verify-email", currentUser.email);
+    return true;
+  }
+
+  return false;
+}
+
+
+
+
+
 
   function beginDayTransition() {
     transitionIdRef.current += 1;
@@ -2164,21 +2183,40 @@ export default function Page() {
                     </Link>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-4 sm:gap-5">
                     <button
                       type="button"
                       onClick={() => openAuthModal("login")}
-                      className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.09] backdrop-blur-xl"
+                      className="text-[15px] font-semibold tracking-[-0.01em] text-zinc-300 transition hover:text-white"
                     >
                       Log in
                     </button>
 
+                    <span aria-hidden="true" className="h-6 w-px bg-white/14" />
+
                     <button
                       type="button"
                       onClick={() => openAuthModal("register")}
-                      className="rounded-xl border border-white/8 bg-white/[0.1] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.14] backdrop-blur-xl"
+                      className="group inline-flex h-[56px] items-center gap-3 rounded-[20px] border border-white/10 bg-white/[0.06] pl-3 pr-5 text-white shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl transition hover:border-white/14 hover:bg-white/[0.1]"
                     >
-                      Register
+                      <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-white/10 bg-white/[0.06] text-white shadow-inner shadow-black/25">
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 24 24"
+                          className="h-[17px] w-[17px]"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.9"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <path d="M12 3.8l2.1 4.26 4.7.68-3.4 3.31.8 4.67L12 14.5l-4.2 2.22.8-4.67-3.4-3.31 4.7-.68L12 3.8z" />
+                        </svg>
+                      </span>
+
+                      <span className="text-[15px] font-semibold tracking-[-0.01em]">
+                        Register
+                      </span>
                     </button>
                   </div>
                 )}
@@ -2856,13 +2894,13 @@ export default function Page() {
 
                       {hasReviewText(myReview.review) ? (
                         <div className="mt-3">
-                      <div
-  className={`text-sm leading-6 text-zinc-200 break-all [overflow-wrap:anywhere] ${
-    expandedReviews[myReview.id] ? "" : "line-clamp-3"
-  }`}
->
-  {myReview.review}
-</div>
+                          <div
+                            className={`text-sm leading-6 text-zinc-200 break-all [overflow-wrap:anywhere] ${
+                              expandedReviews[myReview.id] ? "" : "line-clamp-3"
+                            }`}
+                          >
+                            {myReview.review}
+                          </div>
 
                           {isLongReview(myReview.review) ? (
                             <button
@@ -2929,6 +2967,7 @@ export default function Page() {
                         replies={myReview.replies}
                         deletingReplyId={deletingReplyId}
                         onDeleteReply={deleteReply}
+                        onRequireInteraction={requireReplyInteraction}
                       />
 
                       {replyingToId === myReview.id ? (
@@ -2997,13 +3036,13 @@ export default function Page() {
 
                           {!compact ? (
                             <div className="mt-3">
-                           <div
-  className={`text-sm leading-6 text-zinc-200 break-all [overflow-wrap:anywhere] ${
-    expandedReviews[r.id] ? "" : "line-clamp-3"
-  }`}
->
-  {r.review}
-</div>
+                              <div
+                                className={`text-sm leading-6 text-zinc-200 break-all [overflow-wrap:anywhere] ${
+                                  expandedReviews[r.id] ? "" : "line-clamp-3"
+                                }`}
+                              >
+                                {r.review}
+                              </div>
 
                               {isLongReview(r.review) ? (
                                 <button
@@ -3068,6 +3107,8 @@ export default function Page() {
                             replies={r.replies}
                             deletingReplyId={deletingReplyId}
                             onDeleteReply={deleteReply}
+                            onRequireInteraction={requireReplyInteraction}
+
                           />
 
                           {replyingToId === r.id ? (

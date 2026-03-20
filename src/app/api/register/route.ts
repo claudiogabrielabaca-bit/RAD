@@ -1,69 +1,93 @@
-import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
+import { prisma } from "@/app/lib/prisma";
 import {
+  createSession,
   generateNumericCode,
   hashAuthCode,
   hashPassword,
 } from "@/app/lib/auth";
-import { sendMail } from "@/app/lib/mail";
-import { verifyTurnstileToken } from "@/app/lib/turnstile";
-import {
-  buildRateLimitKey,
-  consumeRateLimit,
-  createRateLimitResponse,
-} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const EMAIL_VERIFY_TTL_MINUTES = 20;
+
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function normalizeUsername(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function isValidUsername(username: string) {
+  return /^[a-z0-9_]{3,20}$/.test(username);
+}
+
+async function verifyTurnstileToken(token: string) {
+  if (!token) return false;
+
+  if (process.env.NODE_ENV !== "production" && token === "local-dev-bypass") {
+    return true;
+  }
+
+  const secret =
+    process.env.TURNSTILE_SECRET_KEY ||
+    process.env.CLOUDFLARE_TURNSTILE_SECRET_KEY ||
+    "";
+
+  if (!secret) {
+    return process.env.NODE_ENV !== "production";
+  }
+
+  try {
+    const body = new URLSearchParams();
+    body.set("secret", secret);
+    body.set("response", token);
+
+    const res = await fetch(
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+      {
+        method: "POST",
+        body,
+      }
+    );
+
+    const json = await res.json().catch(() => null);
+
+    return !!json?.success;
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
 
-    const email = body?.email?.toString().trim().toLowerCase();
-    const username = body?.username?.toString().trim().toLowerCase();
-    const password = body?.password?.toString() ?? "";
-    const turnstileToken = body?.turnstileToken?.toString() ?? "";
+    const email = normalizeEmail(body?.email ?? "");
+    const username = normalizeUsername(body?.username ?? "");
+    const password = typeof body?.password === "string" ? body.password : "";
+    const turnstileToken =
+      typeof body?.turnstileToken === "string" ? body.turnstileToken : "";
 
-    if (!email || !email.includes("@")) {
-      return NextResponse.json({ error: "Invalid email." }, { status: 400 });
-    }
-
-    const rateLimit = await consumeRateLimit({
-      action: "register",
-      key: buildRateLimitKey(req, email),
-      limit: 4,
-      windowMs: 60 * 60 * 1000,
-    });
-
-    if (!rateLimit.ok) {
-      return createRateLimitResponse(
-        rateLimit.retryAfterSec,
-        "Too many registration attempts. Please try again later."
-      );
-    }
-
-    const turnstile = await verifyTurnstileToken(turnstileToken, req);
-
-    if (!turnstile.ok) {
+    if (!isValidEmail(email)) {
       return NextResponse.json(
-        { error: "Security check failed. Please try again." },
+        { error: "Enter a valid email address." },
         { status: 400 }
       );
     }
 
-    if (!username || username.length < 3 || username.length > 20) {
-      return NextResponse.json(
-        { error: "Username must be between 3 and 20 characters." },
-        { status: 400 }
-      );
-    }
-
-    if (!/^[a-z0-9_]+$/.test(username)) {
+    if (!isValidUsername(username)) {
       return NextResponse.json(
         {
           error:
-            "Username can only contain lowercase letters, numbers and underscores.",
+            "Username must be 3 to 20 characters and use only lowercase letters, numbers, or underscores.",
         },
         { status: 400 }
       );
@@ -76,38 +100,49 @@ export async function POST(req: Request) {
       );
     }
 
-    const existingEmail = await prisma.user.findUnique({
-      where: { email },
-      select: { id: true },
+    const turnstileOk = await verifyTurnstileToken(turnstileToken);
+
+    if (!turnstileOk) {
+      return NextResponse.json(
+        { error: "Security check failed. Please try again." },
+        { status: 400 }
+      );
+    }
+
+    const existing = await prisma.user.findFirst({
+      where: {
+        OR: [{ email }, { username }],
+      },
+      select: {
+        email: true,
+        username: true,
+      },
     });
 
-    if (existingEmail) {
+    if (existing?.email === email) {
       return NextResponse.json(
-        { error: "Email already in use." },
+        { error: "That email is already registered." },
         { status: 409 }
       );
     }
 
-    const existingUsername = await prisma.user.findUnique({
-      where: { username },
-      select: { id: true },
-    });
-
-    if (existingUsername) {
+    if (existing?.username === username) {
       return NextResponse.json(
-        { error: "Username already taken." },
+        { error: "That username is already taken." },
         { status: 409 }
       );
     }
 
+    const passwordHash = await hashPassword(password);
     const verifyCode = generateNumericCode(6);
-    const verifyCodeHash = hashAuthCode({
+    const emailVerifyCode = hashAuthCode({
       email,
       code: verifyCode,
       purpose: "verify",
     });
-    const verifyExpiresAt = new Date(Date.now() + 1000 * 60 * 15);
-    const passwordHash = await hashPassword(password);
+    const emailVerifyExpiresAt = new Date(
+      Date.now() + EMAIL_VERIFY_TTL_MINUTES * 60 * 1000
+    );
 
     const user = await prisma.user.create({
       data: {
@@ -115,8 +150,8 @@ export async function POST(req: Request) {
         username,
         passwordHash,
         emailVerified: false,
-        emailVerifyCode: verifyCodeHash,
-        emailVerifyExpiresAt: verifyExpiresAt,
+        emailVerifyCode,
+        emailVerifyExpiresAt,
         emailVerifyAttempts: 0,
       },
       select: {
@@ -124,47 +159,24 @@ export async function POST(req: Request) {
         email: true,
         username: true,
         emailVerified: true,
+        createdAt: true,
       },
     });
 
-    let emailSent = false;
-
-    try {
-      const mailResult = await sendMail({
-        to: email,
-        subject: "Verify your RAD account",
-        text: `Welcome to RAD!
-
-Your verification code is: ${verifyCode}
-
-This code expires in 15 minutes.`,
-        html: `
-          <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
-            <h2>Welcome to RAD</h2>
-            <p>Your verification code is:</p>
-            <div style="font-size:32px;font-weight:700;letter-spacing:6px;margin:16px 0;">
-              ${verifyCode}
-            </div>
-            <p>This code expires in <strong>15 minutes</strong>.</p>
-            <p>You can enter it in the verification screen to activate your account.</p>
-          </div>
-        `,
-      });
-
-      console.log("register verification email sent:", mailResult?.id);
-      emailSent = true;
-    } catch (mailError) {
-      console.error("register mail send error:", mailError);
-    }
+    await createSession(user.id);
 
     return NextResponse.json(
       {
         ok: true,
-        user,
-        emailSent,
-        message: emailSent
-          ? "Account created. Check your email to verify your account."
-          : "Account created, but we could not send the verification email. Request a new code.",
+        message:
+          "Account created successfully. You're already signed in. Verify your email when you're ready.",
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          emailVerified: user.emailVerified,
+          createdAt: user.createdAt.toISOString(),
+        },
         devCode: process.env.NODE_ENV !== "production" ? verifyCode : undefined,
       },
       {
@@ -175,6 +187,16 @@ This code expires in 15 minutes.`,
     );
   } catch (error) {
     console.error("register POST error:", error);
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === "P2002") {
+        return NextResponse.json(
+          { error: "Email or username already exists." },
+          { status: 409 }
+        );
+      }
+    }
+
     return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }

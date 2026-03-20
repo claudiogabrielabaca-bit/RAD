@@ -50,10 +50,16 @@ export type HighlightResponse = {
 
 export type ReplyItem = {
   id: string;
+  ratingId: string;
   text: string;
   createdAt?: string;
   isMine?: boolean;
   authorLabel: string;
+  parentReplyId?: string | null;
+  likesCount: number;
+  likedByMe: boolean;
+  reportedByMe?: boolean;
+  replies: ReplyItem[];
 };
 
 export type ReviewItem = {
@@ -112,6 +118,7 @@ export type FavoriteDayResponse = {
   isFavorite: boolean;
   favoriteDay: string | null;
 };
+
 export type SurpriseResponse = {
   day: string;
   source?: "cache" | "generated";

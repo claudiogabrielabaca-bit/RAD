@@ -22,6 +22,7 @@ export async function POST(req: Request) {
 
     const ratingId = body?.ratingId;
     const text = body?.text;
+    const rawParentReplyId = body?.parentReplyId;
 
     if (!ratingId || typeof ratingId !== "string") {
       return NextResponse.json({ error: "Invalid ratingId" }, { status: 400 });
@@ -41,15 +42,59 @@ export async function POST(req: Request) {
       );
     }
 
+    const parentReplyId =
+      rawParentReplyId === null || rawParentReplyId === undefined
+        ? null
+        : typeof rawParentReplyId === "string"
+          ? rawParentReplyId
+          : "__invalid__";
+
+    if (parentReplyId === "__invalid__") {
+      return NextResponse.json(
+        { error: "Invalid parentReplyId" },
+        { status: 400 }
+      );
+    }
+
     const rating = await prisma.rating.findUnique({
       where: { id: ratingId },
-      select: {
-        id: true,
-      },
+      select: { id: true },
     });
 
     if (!rating) {
       return NextResponse.json({ error: "Review not found" }, { status: 404 });
+    }
+
+    if (parentReplyId) {
+      const parentReply = await prisma.ratingReply.findUnique({
+        where: { id: parentReplyId },
+        select: {
+          id: true,
+          ratingId: true,
+          parentReplyId: true,
+        },
+      });
+
+      if (!parentReply) {
+        return NextResponse.json(
+          { error: "Parent reply not found" },
+          { status: 404 }
+        );
+      }
+
+      if (parentReply.ratingId !== ratingId) {
+        return NextResponse.json(
+          { error: "Parent reply does not belong to this review" },
+          { status: 400 }
+        );
+      }
+
+      if (parentReply.parentReplyId) {
+        return NextResponse.json(
+          { error: "Only one nested reply level is allowed." },
+          { status: 400 }
+        );
+      }
     }
 
     const reply = await prisma.ratingReply.create({
@@ -57,14 +102,15 @@ export async function POST(req: Request) {
         ratingId,
         userId: user.id,
         anonId: null,
+        parentReplyId,
         text: text.trim(),
       },
-      select: {
-        id: true,
-        ratingId: true,
-        text: true,
-        createdAt: true,
-        updatedAt: true,
+      include: {
+        user: {
+          select: {
+            username: true,
+          },
+        },
       },
     });
 
@@ -72,10 +118,17 @@ export async function POST(req: Request) {
       {
         ok: true,
         reply: {
-          ...reply,
+          id: reply.id,
+          ratingId: reply.ratingId,
+          parentReplyId: reply.parentReplyId,
+          text: reply.text,
           createdAt: reply.createdAt.toISOString(),
-          updatedAt: reply.updatedAt.toISOString(),
           isMine: true,
+          authorLabel: reply.user?.username ? `@${reply.user.username}` : "User",
+          likesCount: 0,
+          likedByMe: false,
+          reportedByMe: false,
+          replies: [],
         },
       },
       {

@@ -35,6 +35,8 @@ model User {
   likes                  RatingLike[]
   reports                ReviewReport[]
   replies                RatingReply[]
+  replyLikes             ReplyLike[]
+  replyReports           ReplyReport[]
   favoriteDays           FavoriteDay[]
   surpriseDecks          SurpriseDeck[]
 }
@@ -101,16 +103,57 @@ model ReviewReport {
 }
 
 model RatingReply {
-  id        String   @id @default(cuid())
-  ratingId  String
+  id            String        @id @default(cuid())
+  ratingId      String
+  anonId        String?
+  userId        String?
+  parentReplyId String?
+  text          String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  rating        Rating        @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  user          User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentReply   RatingReply?  @relation("ReplyThread", fields: [parentReplyId], references: [id], onDelete: Cascade)
+  childReplies  RatingReply[] @relation("ReplyThread")
+  likes         ReplyLike[]
+  reports       ReplyReport[]
+
+  @@index([ratingId])
+  @@index([parentReplyId])
+}
+
+model ReplyLike {
+  id        String      @id @default(cuid())
+  replyId   String
   anonId    String?
   userId    String?
-  text      String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime    @default(now())
 
-  rating    Rating   @relation(fields: [ratingId], references: [id], onDelete: Cascade)
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reply      RatingReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  user       User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([replyId, anonId], name: "reply_like_anon_unique")
+  @@unique([replyId, userId], name: "reply_like_user_unique")
+  @@index([replyId])
+}
+
+model ReplyReport {
+  id        String      @id @default(cuid())
+  replyId   String
+  anonId    String?
+  userId    String?
+  reason    String
+  status    String      @default("pending")
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  reply      RatingReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  user       User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([replyId, anonId], name: "reply_report_anon_unique")
+  @@unique([replyId, userId], name: "reply_report_user_unique")
+  @@index([replyId])
 }
 
 model FavoriteDay {
