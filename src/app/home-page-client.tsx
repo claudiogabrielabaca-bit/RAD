@@ -2473,170 +2473,168 @@ export default function Page() {
                     <div className="mt-2 h-4 w-4/6 rounded bg-white/10" />
                   </div>
                 </div>
-              ) : highlight ? (
-                <div
-                  ref={highlightBlockRef}
-                  className="mt-6 overflow-hidden rounded-2xl border border-white/8 bg-black/20"
-                  onMouseEnter={() => setIsHighlightPaused(true)}
-                  onMouseLeave={() => setIsHighlightPaused(false)}
+ ) : highlight ? (
+  <div
+    ref={highlightBlockRef}
+    className="mt-6 space-y-3"
+    onMouseEnter={() => setIsHighlightPaused(true)}
+    onMouseLeave={() => setIsHighlightPaused(false)}
+  >
+    <div className="relative h-[400px] overflow-hidden rounded-2xl border border-white/8 bg-black/20 sm:h-[460px] lg:h-[500px]">
+      <button
+        type="button"
+        onClick={toggleFavoriteDay}
+        disabled={loadingFavoriteDay}
+        aria-label={
+          isFavoriteDay ? "Remove favorite day" : "Set as favorite day"
+        }
+        title={isFavoriteDay ? "Remove favorite day" : "Set as favorite day"}
+        className={`absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-xl transition ${
+          isFavoriteDay
+            ? "border-yellow-400/30 bg-yellow-500/18 text-yellow-300 hover:bg-yellow-500/22"
+            : "border-white/15 bg-black/40 text-white hover:bg-black/48"
+        } disabled:cursor-not-allowed disabled:opacity-60`}
+      >
+        <span className="text-2xl leading-none">
+          {isFavoriteDay ? "★" : "☆"}
+        </span>
+      </button>
+
+      <HighlightHeroImage
+        src={highlight.image}
+        alt={decodeHtml(highlight.title) || "Historical highlight"}
+        revealDelayMs={HERO_IMAGE_REVEAL_DELAY_MS}
+        preferImmediateSwap={preferImmediateHighlightImageSwap}
+        onLoadingChange={(loading: boolean) => {
+          if (isDayTransitioning || !minimumTransitionDone) {
+            setHeroImageLoading(loading);
+          } else if (!loading) {
+            setHeroImageLoading(false);
+          }
+        }}
+      />
+
+      <div className="absolute inset-0 z-[1] bg-gradient-to-r from-black/82 via-black/56 to-black/18" />
+      <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/28 via-transparent to-black/62" />
+
+      {heroImageLoading ? (
+        <div className="absolute inset-0 z-10 bg-black/30 backdrop-blur-[2px]" />
+      ) : null}
+
+      <div className="relative z-20 flex h-full items-end p-6 sm:p-8">
+        <div className="max-w-[760px]">
+          <div className="text-sm text-zinc-200/90">In this day</div>
+
+          <div className="mt-1 text-2xl font-semibold text-white sm:text-3xl">
+            {formatDisplayDate(day)}
+          </div>
+
+          <div className="mt-5 flex min-h-[32px] flex-wrap items-center gap-2">
+            {highlight.year ? (
+              <span className="rounded-md bg-white/12 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-xl">
+                {highlight.year}
+              </span>
+            ) : null}
+
+            {activeBadges.map((badge) => {
+              const style = getBadgeStyle(badge);
+
+              return (
+                <span
+                  key={badge}
+                  className={`rounded-md border px-2.5 py-1 text-xs font-medium uppercase tracking-wide backdrop-blur-xl ${style.pill} ${style.text} ${style.border}`}
                 >
-                  <div className="relative min-h-[420px] sm:min-h-[470px]">
-                    <button
-                      type="button"
-                      onClick={toggleFavoriteDay}
-                      disabled={loadingFavoriteDay}
-                      aria-label={
-                        isFavoriteDay
-                          ? "Remove favorite day"
-                          : "Set as favorite day"
-                      }
-                      title={
-                        isFavoriteDay
-                          ? "Remove favorite day"
-                          : "Set as favorite day"
-                      }
-                      className={`absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-xl transition ${
-                        isFavoriteDay
-                          ? "border-yellow-400/30 bg-yellow-500/18 text-yellow-300 hover:bg-yellow-500/22"
-                          : "border-white/15 bg-black/40 text-white hover:bg-black/48"
-                      } disabled:cursor-not-allowed disabled:opacity-60`}
-                    >
-                      <span className="text-2xl leading-none">
-                        {isFavoriteDay ? "★" : "☆"}
-                      </span>
-                    </button>
+                  {getBadgeLabel(badge)}
+                </span>
+              );
+            })}
+          </div>
 
-                    <HighlightHeroImage
-                      src={highlight.image}
-                      alt={
-                        decodeHtml(highlight.title) || "Historical highlight"
-                      }
-                      revealDelayMs={HERO_IMAGE_REVEAL_DELAY_MS}
-                      preferImmediateSwap={preferImmediateHighlightImageSwap}
-                      onLoadingChange={(loading: boolean) => {
-                        if (isDayTransitioning || !minimumTransitionDone) {
-                          setHeroImageLoading(loading);
-                        } else if (!loading) {
-                          setHeroImageLoading(false);
-                        }
-                      }}
-                    />
+          {highlight.title ? (
+            <h2 className="mt-5 max-w-[13ch] text-[clamp(2.4rem,5vw,4.8rem)] font-semibold leading-[0.96] tracking-tight text-white">
+              {highlight.title}
+            </h2>
+          ) : null}
 
-                    <div className="absolute inset-0 z-[1] bg-gradient-to-r from-black/55 via-black/24 to-transparent" />
-                    <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/36 via-transparent to-black/28" />
+          <div className="mt-5 max-w-4xl text-[17px] leading-8 text-zinc-100/90">
+            {highlight.text}
+          </div>
+        </div>
+      </div>
+    </div>
 
-                    {heroImageLoading ? (
-                      <div className="absolute inset-0 z-10 bg-black/25 backdrop-blur-[2px]" />
-                    ) : null}
+    <div className="rounded-2xl border border-white/8 bg-black/20 p-4 backdrop-blur-xl">
+      <div className="grid gap-4 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+        <div className="flex flex-wrap items-center gap-3">
+          {highlight.articleUrl ? (
+            <a
+              href={highlight.articleUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-11 items-center rounded-xl border border-white/15 bg-white/[0.08] px-4 text-sm font-medium text-white transition hover:bg-white/[0.12]"
+            >
+              Read on Wikipedia
+            </a>
+          ) : (
+            <div className="hidden h-11 sm:block" />
+          )}
 
-                    <div className="relative z-20 flex h-full min-h-[420px] flex-col justify-end p-6 sm:p-8">
-                      <div className="text-sm text-zinc-200/90">In this day</div>
-                      <div className="text-2xl font-semibold text-white">
-                        {formatDisplayDate(day)}
-                      </div>
+          <button
+            type="button"
+            onClick={() => setShowSuggestModal(true)}
+            className="inline-flex h-11 items-center rounded-xl border border-white/15 bg-white/[0.08] px-4 text-sm font-medium text-white transition hover:bg-white/[0.12]"
+          >
+            Suggest an event
+          </button>
+        </div>
 
-                      <div className="mt-4 flex flex-wrap items-center gap-2">
-                        {highlight.year ? (
-                          <span className="rounded-md bg-white/12 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-xl">
-                            {highlight.year}
-                          </span>
-                        ) : null}
+{highlights.length > 1 ? (
+  <div className="flex min-w-[56px] items-center justify-center gap-2">
+    {highlights.map((_, index) => (
+      <button
+        key={index}
+        type="button"
+        onClick={() => void transitionToHighlight(index)}
+        className={`h-2.5 w-2.5 rounded-full transition ${
+          index === activeHighlightIndex ? "bg-white" : "bg-white/30"
+        }`}
+        aria-label={`Go to highlight ${index + 1}`}
+      />
+    ))}
+  </div>
+) : null}
 
-                        {activeBadges.map((badge) => {
-                          const style = getBadgeStyle(badge);
+        <div className="flex items-center justify-end gap-3">
+          {highlights.length > 1 ? (
+            <>
+              <button
+                type="button"
+                onClick={goToPrevHighlight}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-white/[0.08] text-sm text-white transition hover:bg-white/[0.12]"
+              >
+                ←
+              </button>
 
-                          return (
-                            <span
-                              key={badge}
-                              className={`rounded-md border px-2.5 py-1 text-xs font-medium uppercase tracking-wide backdrop-blur-xl ${style.pill} ${style.text} ${style.border}`}
-                            >
-                              {getBadgeLabel(badge)}
-                            </span>
-                          );
-                        })}
-                      </div>
+              <button
+                type="button"
+                onClick={goToNextHighlight}
+                className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-white/[0.08] text-sm text-white transition hover:bg-white/[0.12]"
+              >
+                →
+              </button>
 
-                      {highlight.title ? (
-                        <div className="mt-4 text-4xl font-semibold leading-[1.05] text-white sm:text-5xl">
-                          {highlight.title}
-                        </div>
-                      ) : null}
-
-                      <div className="mt-4 max-w-4xl text-base leading-8 text-zinc-100/90">
-                        {highlight.text}
-                      </div>
-
-                      <div className="mt-4 flex flex-col items-start gap-2">
-                        {highlight.articleUrl ? (
-                          <a
-                            href={highlight.articleUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex w-fit items-center rounded-lg border border-white/15 bg-white/[0.08] px-4 py-2 text-sm font-medium text-white backdrop-blur-xl transition hover:bg-white/[0.12]"
-                          >
-                            Read on Wikipedia
-                          </a>
-                        ) : null}
-
-                        <div className="text-sm text-zinc-200/85">
-                          Think we&apos;re missing an important event?
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => setShowSuggestModal(true)}
-                          className="inline-flex w-fit items-center rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm font-medium text-white backdrop-blur-xl transition hover:bg-white/[0.12]"
-                        >
-                          Suggest an event
-                        </button>
-                      </div>
-
-                      {highlights.length > 1 ? (
-                        <div className="mt-5 flex items-center justify-between gap-4">
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={goToPrevHighlight}
-                              className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
-                            >
-                              ←
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={goToNextHighlight}
-                              className="rounded-lg border border-white/15 bg-white/[0.08] px-3 py-1.5 text-sm text-white transition hover:bg-white/[0.12]"
-                            >
-                              →
-                            </button>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            {highlights.map((_, index) => (
-                              <button
-                                key={index}
-                                type="button"
-                                onClick={() => void transitionToHighlight(index)}
-                                className={`h-2.5 w-2.5 rounded-full transition ${
-                                  index === activeHighlightIndex
-                                    ? "bg-white"
-                                    : "bg-white/30"
-                                }`}
-                                aria-label={`Go to highlight ${index + 1}`}
-                              />
-                            ))}
-                          </div>
-
-                          <div className="text-xs text-zinc-300">
-                            {activeHighlightIndex + 1}/{highlights.length}
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              ) : null}
-
+              <div className="min-w-[36px] text-right text-xs text-zinc-300">
+                {activeHighlightIndex + 1}/{highlights.length}
+              </div>
+            </>
+          ) : (
+            <div className="h-11 w-[106px]" />
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+) : null}
               <div
                 ref={rateBoxRef}
                 className="mt-6 scroll-mt-24 overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl"
