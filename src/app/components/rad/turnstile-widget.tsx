@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 
 declare global {
   interface Window {
@@ -96,7 +96,6 @@ export default function TurnstileWidget({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const widgetIdRef = useRef<string | number | null>(null);
-  const [devBypassEnabled, setDevBypassEnabled] = useState(false);
 
   const publicSiteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? "";
 
@@ -112,7 +111,7 @@ export default function TurnstileWidget({
 
   useEffect(() => {
     if (isLocalDev) {
-      onTokenChange(devBypassEnabled ? "local-dev-bypass" : "");
+      onTokenChange("local-dev-bypass");
       return;
     }
 
@@ -170,47 +169,22 @@ export default function TurnstileWidget({
         containerRef.current.innerHTML = "";
       }
     };
-  }, [devBypassEnabled, isLocalDev, onTokenChange, publicSiteKey, resetKey, theme]);
+  }, [isLocalDev, onTokenChange, publicSiteKey, resetKey, theme]);
 
   if (isLocalDev) {
-    return (
-      <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4">
-        <div className="mb-2 text-xs uppercase tracking-[0.16em] text-amber-300">
-          Security check
-        </div>
-
-        <div className="mb-3 text-sm text-amber-100">
-          Local development bypass is active for localhost.
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setDevBypassEnabled((prev) => !prev)}
-          className={`rounded-xl px-4 py-2 text-sm font-medium transition ${
-            devBypassEnabled
-              ? "bg-emerald-500 text-white"
-              : "bg-white/10 text-zinc-200 hover:bg-white/15"
-          }`}
-        >
-          {devBypassEnabled ? "Bypass enabled" : "Enable local bypass"}
-        </button>
-      </div>
-    );
+    return null;
   }
 
   if (!publicSiteKey) {
     return (
-      <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-200">
+      <div className="text-sm text-red-300">
         Security check is unavailable. Please try again later.
       </div>
     );
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <div className="mb-3 text-xs uppercase tracking-[0.16em] text-zinc-500">
-        Security check
-      </div>
+    <div className="w-fit">
       <div ref={containerRef} />
     </div>
   );
