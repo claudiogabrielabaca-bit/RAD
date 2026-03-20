@@ -856,6 +856,20 @@ export default function Page() {
     return false;
   }
 
+  function requireReplyInteraction() {
+    if (!currentUser) {
+      openAuthModal("login");
+      return true;
+    }
+
+    if (currentUser.emailVerified === false) {
+      openAuthModal("verify-email", currentUser.email);
+      return true;
+    }
+
+    return false;
+  }
+
   function showToast(message: string, duration = 2500) {
     setToast(message);
 
@@ -893,24 +907,6 @@ export default function Page() {
       behavior: "smooth",
     });
   }
- function requireReplyInteraction() {
-  if (!currentUser) {
-    openAuthModal("login");
-    return true;
-  }
-
-  if (currentUser.emailVerified === false) {
-    openAuthModal("verify-email", currentUser.email);
-    return true;
-  }
-
-  return false;
-}
-
-
-
-
-
 
   function beginDayTransition() {
     transitionIdRef.current += 1;
@@ -2149,10 +2145,10 @@ export default function Page() {
   }
 
   return (
-    <main className="min-h-screen bg-[#050505] text-zinc-100">
-      <div className="mx-auto max-w-6xl px-6 py-10">
+    <main className="min-h-screen bg-[#050505] text-[17px] text-zinc-100">
+      <div className="mx-auto max-w-[1280px] px-8 py-12 xl:px-10">
         <div className="flex flex-col gap-6">
-          <section className="overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.02))] shadow-[0_24px_80px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
+          <section className="overflow-hidden rounded-[36px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.02))] shadow-[0_30px_100px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
             <div className="relative">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.07),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.035),transparent_28%)]" />
 
@@ -2183,7 +2179,7 @@ export default function Page() {
                     </Link>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-4 sm:gap-5">
+                  <div className="flex items-center gap-5 sm:gap-6">
                     <button
                       type="button"
                       onClick={() => openAuthModal("login")}
@@ -2197,7 +2193,7 @@ export default function Page() {
                     <button
                       type="button"
                       onClick={() => openAuthModal("register")}
-                      className="group inline-flex h-[56px] items-center gap-3 rounded-[20px] border border-white/10 bg-white/[0.06] pl-3 pr-5 text-white shadow-[0_10px_30px_rgba(0,0,0,0.28)] backdrop-blur-xl transition hover:border-white/14 hover:bg-white/[0.1]"
+                      className="group inline-flex h-[62px] items-center gap-3 rounded-[22px] border border-white/10 bg-white/[0.06] pl-3.5 pr-6 text-white shadow-[0_14px_40px_rgba(0,0,0,0.32)] backdrop-blur-xl transition hover:border-white/14 hover:bg-white/[0.1]"
                     >
                       <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-white/10 bg-white/[0.06] text-white shadow-inner shadow-black/25">
                         <svg
@@ -2222,17 +2218,17 @@ export default function Page() {
                 )}
               </div>
 
-              <div className="relative p-6 sm:p-8">
-                <div className="max-w-2xl">
+              <div className="relative p-8 sm:p-10 lg:p-12">
+                <div className="max-w-4xl">
                   <div className="text-sm font-medium uppercase tracking-[0.18em] text-zinc-500">
                     Explore a day
                   </div>
 
-                  <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                  <h2 className="mt-4 max-w-4xl text-4xl font-semibold leading-[1.02] tracking-tight text-white sm:text-5xl lg:text-[4.25rem]">
                     Discover what happened on any day in human history
                   </h2>
 
-                  <p className="mt-3 max-w-xl text-sm leading-6 text-zinc-300 sm:text-base">
+                  <p className="mt-5 max-w-3xl text-base leading-8 text-zinc-300 sm:text-[1.18rem]">
                     Jump to a random moment, revisit this day in another year,
                     or choose an exact date to explore births, deaths, and key
                     historical events.
@@ -2243,18 +2239,18 @@ export default function Page() {
                   <button
                     type="button"
                     onClick={() => goToSurpriseDay(true)}
-                    className="group rounded-2xl border border-white/8 bg-white/[0.05] px-5 py-4 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl"
+                    className="group rounded-[28px] border border-white/8 bg-white/[0.05] px-6 py-6 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.07] text-lg text-white">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-[20px] border border-white/8 bg-white/[0.07] text-xl text-white">
                         ✦
                       </div>
 
                       <div>
-                        <div className="text-base font-semibold text-white">
+                        <div className="text-xl font-semibold text-white">
                           Surprise me
                         </div>
-                        <div className="mt-1 text-sm text-zinc-400">
+                        <div className="mt-1.5 text-base leading-7 text-zinc-400">
                           Jump into a random day and see what history gives you.
                         </div>
                       </div>
@@ -2264,18 +2260,18 @@ export default function Page() {
                   <button
                     type="button"
                     onClick={() => goToTodayInHistory(true)}
-                    className="group rounded-2xl border border-white/8 bg-white/[0.05] px-5 py-4 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl"
+                    className="group rounded-[28px] border border-white/8 bg-white/[0.05] px-6 py-6 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl"
                   >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.07] text-lg text-white">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-[20px] border border-white/8 bg-white/[0.07] text-xl text-white">
                         🗓
                       </div>
 
                       <div>
-                        <div className="text-base font-semibold text-white">
+                        <div className="text-xl font-semibold text-white">
                           Today in history
                         </div>
-                        <div className="mt-1 text-sm text-zinc-400">
+                        <div className="mt-1.5 text-base leading-7 text-zinc-400">
                           See what happened on this same month and day in a
                           different year.
                         </div>
@@ -2284,11 +2280,11 @@ export default function Page() {
                   </button>
                 </div>
 
-                <div className="mt-8 rounded-2xl border border-white/8 bg-black/25 p-5 backdrop-blur-xl">
-                  <div className="text-sm font-medium text-zinc-200">
+                <div className="mt-10 rounded-[30px] border border-white/8 bg-black/25 p-7 backdrop-blur-xl">
+                  <div className="text-xl font-semibold text-zinc-100">
                     Pick an exact date
                   </div>
-                  <div className="mt-1 text-sm text-zinc-400">
+                  <div className="mt-2 text-base text-zinc-400">
                     Choose a specific day between 1900 and today.
                   </div>
 
@@ -2296,7 +2292,7 @@ export default function Page() {
                     <select
                       value={selectedYear}
                       onChange={(e) => setSelectedYear(e.target.value)}
-                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+                      className="rounded-2xl border border-white/8 bg-[#121212] px-5 py-3.5 text-base text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
                     >
                       {YEARS.map((year) => (
                         <option key={year} value={year}>
@@ -2308,7 +2304,7 @@ export default function Page() {
                     <select
                       value={selectedMonth}
                       onChange={(e) => setSelectedMonth(e.target.value)}
-                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+                      className="rounded-2xl border border-white/8 bg-[#121212] px-5 py-3.5 text-base text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
                     >
                       {MONTHS.map((month) => (
                         <option key={month.value} value={month.value}>
@@ -2320,7 +2316,7 @@ export default function Page() {
                     <select
                       value={selectedDay}
                       onChange={(e) => setSelectedDay(e.target.value)}
-                      className="rounded-xl border border-white/8 bg-[#121212] px-4 py-3 text-sm text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
+                      className="rounded-2xl border border-white/8 bg-[#121212] px-5 py-3.5 text-base text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
                     >
                       {DAYS.map((d) => (
                         <option key={d} value={d}>
@@ -2332,7 +2328,7 @@ export default function Page() {
                     <button
                       type="button"
                       onClick={goToManualDay}
-                      className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+                      className="rounded-2xl bg-white px-6 py-3.5 text-base font-semibold text-black transition hover:bg-zinc-200"
                     >
                       Go
                     </button>
@@ -2340,7 +2336,7 @@ export default function Page() {
                     <button
                       type="button"
                       onClick={goToToday}
-                      className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200"
+                      className="rounded-2xl bg-white px-6 py-3.5 text-base font-semibold text-black transition hover:bg-zinc-200"
                     >
                       Today
                     </button>
@@ -2355,15 +2351,15 @@ export default function Page() {
           </section>
         </div>
 
-        <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-[1fr_360px]">
-          <section className="rounded-2xl border border-white/8 bg-white/[0.04] p-6 shadow-[0_18px_60px_rgba(0,0,0,0.34)] backdrop-blur-2xl">
+        <div className="mt-12 grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_390px]">
+          <section className="rounded-[30px] border border-white/8 bg-white/[0.04] p-7 shadow-[0_20px_70px_rgba(0,0,0,0.36)] backdrop-blur-2xl">
             <div className="flex flex-col gap-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
                     Now exploring
                   </div>
-                  <div className="mt-2 text-2xl font-semibold text-white sm:text-3xl">
+                  <div className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
                     {day}
                   </div>
                 </div>
@@ -2484,7 +2480,7 @@ export default function Page() {
                   onMouseEnter={() => setIsHighlightPaused(true)}
                   onMouseLeave={() => setIsHighlightPaused(false)}
                 >
-                  <div className="relative min-h-[320px]">
+                  <div className="relative min-h-[420px] sm:min-h-[470px]">
                     <button
                       type="button"
                       onClick={toggleFavoriteDay}
@@ -2533,7 +2529,7 @@ export default function Page() {
                       <div className="absolute inset-0 z-10 bg-black/25 backdrop-blur-[2px]" />
                     ) : null}
 
-                    <div className="relative z-20 flex h-full min-h-[320px] flex-col justify-end p-5 sm:p-6">
+                    <div className="relative z-20 flex h-full min-h-[420px] flex-col justify-end p-6 sm:p-8">
                       <div className="text-sm text-zinc-200/90">In this day</div>
                       <div className="text-2xl font-semibold text-white">
                         {formatDisplayDate(day)}
@@ -2561,12 +2557,12 @@ export default function Page() {
                       </div>
 
                       {highlight.title ? (
-                        <div className="mt-3 text-3xl font-semibold leading-tight text-white">
+                        <div className="mt-4 text-4xl font-semibold leading-[1.05] text-white sm:text-5xl">
                           {highlight.title}
                         </div>
                       ) : null}
 
-                      <div className="mt-3 max-w-3xl text-sm leading-6 text-zinc-100/90">
+                      <div className="mt-4 max-w-4xl text-base leading-8 text-zinc-100/90">
                         {highlight.text}
                       </div>
 
@@ -3108,7 +3104,6 @@ export default function Page() {
                             deletingReplyId={deletingReplyId}
                             onDeleteReply={deleteReply}
                             onRequireInteraction={requireReplyInteraction}
-
                           />
 
                           {replyingToId === r.id ? (
