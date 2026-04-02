@@ -185,6 +185,7 @@ export default function ProfilePageClient() {
   const [bioDraft, setBioDraft] = useState("");
   const [bioSaving, setBioSaving] = useState(false);
   const [bioError, setBioError] = useState("");
+  const [expandedFavoriteCards, setExpandedFavoriteCards] = useState<Record<string, boolean>>({});
 
   async function loadProfile() {
     setLoading(true);
@@ -213,12 +214,6 @@ export default function ProfilePageClient() {
     } finally {
       setLoading(false);
     }
-  }
-
-  async function handleLogout() {
-    await fetch("/api/logout", { method: "POST" }).catch(() => {});
-    router.push(returnTo);
-    router.refresh();
   }
 
   useEffect(() => {
@@ -312,37 +307,19 @@ export default function ProfilePageClient() {
   }
 
   const { user, stats, latestRatings, ratings, favoriteDays } = data;
+  const displayedRatings = showAllRatings ? ratings : latestRatings;
 
   return (
     <>
       <main className="min-h-screen bg-transparent text-zinc-100">
         <div className="mx-auto max-w-7xl px-6 py-10">
-          <div className="mb-5 flex items-center justify-between gap-4">
-            <div>
-              <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                Your account
-              </div>
-              <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
-                Profile
-              </h1>
+          <div className="mb-5">
+            <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+              Your account
             </div>
-
-            <div className="flex items-center gap-2">
-              <Link
-                href={returnTo}
-                className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-200 transition hover:bg-black/30"
-              >
-                Back home
-              </Link>
-
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200"
-              >
-                Logout
-              </button>
-            </div>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white">
+              Profile
+            </h1>
           </div>
 
           <section className="relative overflow-hidden rounded-[36px] border border-white/10 bg-white/[0.045] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl">
@@ -503,10 +480,23 @@ export default function ProfilePageClient() {
                     favorite.preview?.type
                   );
 
+                  const isExpanded = !!expandedFavoriteCards[favorite.id];
+
                   return (
                     <article
                       key={favorite.id}
-                      className="group relative h-[430px] min-w-[290px] max-w-[290px] overflow-hidden rounded-[30px] border border-white/10 bg-black/30"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() =>
+                        router.push(`/?day=${encodeURIComponent(favorite.day)}`)
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          router.push(`/?day=${encodeURIComponent(favorite.day)}`);
+                        }
+                      }}
+                      className="group relative h-[430px] min-w-[290px] max-w-[290px] cursor-pointer overflow-hidden rounded-[30px] border border-white/10 bg-black/30"
                     >
                       {favorite.preview?.image ? (
                         <div
@@ -533,16 +523,28 @@ export default function ProfilePageClient() {
                         </span>
                       </div>
 
-                      <div className="absolute bottom-4 left-4 right-4 rounded-[26px] border border-white/10 bg-[rgba(17,17,17,0.78)] p-5 shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+                      <div
+                        className={`absolute bottom-4 left-4 right-4 rounded-[26px] border border-white/10 bg-[rgba(17,17,17,0.78)] shadow-[0_20px_40px_rgba(0,0,0,0.28)] backdrop-blur-xl transition-all ${
+                          isExpanded ? "p-5" : "p-4"
+                        }`}
+                      >
                         <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-400">
                           {favorite.day}
                         </div>
 
-                        <div className="mt-2 text-[2rem] font-semibold leading-[1.05] tracking-tight text-white">
+                        <div
+                          className={`mt-2 font-semibold leading-[1.05] tracking-tight text-white ${
+                            isExpanded ? "text-[2rem]" : "text-[1.65rem]"
+                          }`}
+                        >
                           {title}
                         </div>
 
-                        <div className="mt-3 line-clamp-3 text-sm leading-6 text-zinc-300">
+                        <div
+                          className={`mt-3 text-sm leading-6 text-zinc-300 ${
+                            isExpanded ? "" : "line-clamp-2"
+                          }`}
+                        >
                           {description}
                         </div>
 
@@ -552,18 +554,26 @@ export default function ProfilePageClient() {
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-2">
-                          <Link
-                            href={`/?day=${encodeURIComponent(favorite.day)}`}
-                            className="rounded-xl bg-white px-3 py-2 text-xs font-medium text-black transition hover:bg-zinc-200"
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedFavoriteCards((prev) => ({
+                                ...prev,
+                                [favorite.id]: !prev[favorite.id],
+                              }));
+                            }}
+                            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-zinc-100 transition hover:bg-white/10"
                           >
-                            Open on home
-                          </Link>
+                            {isExpanded ? "Read less" : "Read more"}
+                          </button>
 
                           {favorite.preview?.articleUrl ? (
                             <a
                               href={favorite.preview.articleUrl}
                               target="_blank"
                               rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
                               className="rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-xs text-zinc-200 transition hover:bg-black/40"
                             >
                               Read source
@@ -582,10 +592,12 @@ export default function ProfilePageClient() {
             <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-2xl font-semibold text-white">
-                  Latest reviews
+                  {showAllRatings ? "Full archive" : "Latest reviews"}
                 </h2>
                 <p className="mt-1 text-sm text-zinc-400">
-                  Your 5 most recent ratings.
+                  {showAllRatings
+                    ? `Full history of the days you rated with your account. ${ratings.length} total rating${ratings.length === 1 ? "" : "s"}.`
+                    : "Your 5 most recent ratings."}
                 </p>
               </div>
 
@@ -600,16 +612,27 @@ export default function ProfilePageClient() {
               ) : null}
             </div>
 
-            {latestRatings.length === 0 ? (
+            {displayedRatings.length === 0 ? (
               <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
                 You have not rated any day yet.
               </div>
             ) : (
               <div className="space-y-4">
-                {latestRatings.map((rating) => (
+                {displayedRatings.map((rating) => (
                   <article
                     key={rating.id}
-                    className="rounded-2xl border border-white/10 bg-black/20 p-4"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() =>
+                      router.push(`/?day=${encodeURIComponent(rating.day)}`)
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        router.push(`/?day=${encodeURIComponent(rating.day)}`);
+                      }
+                    }}
+                    className="cursor-pointer rounded-2xl border border-white/10 bg-black/20 p-4"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -621,13 +644,6 @@ export default function ProfilePageClient() {
                           {formatDateTime(rating.updatedAt)}
                         </div>
                       </div>
-
-                      <Link
-                        href={`/?day=${encodeURIComponent(rating.day)}`}
-                        className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 transition hover:bg-white/10"
-                      >
-                        Open on home
-                      </Link>
                     </div>
 
                     <p className="mt-4 text-sm leading-6 text-zinc-300">
@@ -640,66 +656,6 @@ export default function ProfilePageClient() {
               </div>
             )}
           </section>
-
-          {ratings.length > 5 ? (
-            <section className="mt-8 rounded-[28px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl">
-              <div className="mb-5 flex items-end justify-between gap-4">
-                <div>
-                  <h2 className="text-2xl font-semibold text-white">
-                    Full archive
-                  </h2>
-                  <p className="mt-1 text-sm text-zinc-400">
-                    Full history of the days you rated with your account.
-                  </p>
-                </div>
-
-                <div className="text-sm text-zinc-500">
-                  {ratings.length} total rating{ratings.length === 1 ? "" : "s"}
-                </div>
-              </div>
-
-              {showAllRatings ? (
-                <div className="space-y-4">
-                  {ratings.map((rating) => (
-                    <article
-                      key={rating.id}
-                      className="rounded-2xl border border-white/10 bg-black/20 p-4"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <div>
-                          <div className="text-base font-semibold text-white">
-                            {rating.day}
-                          </div>
-                          <div className="mt-1 text-xs text-zinc-500">
-                            {renderStars(rating.stars)} • Updated{" "}
-                            {formatDateTime(rating.updatedAt)}
-                          </div>
-                        </div>
-
-                        <Link
-                          href={`/?day=${encodeURIComponent(rating.day)}`}
-                          className="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-zinc-200 transition hover:bg-white/10"
-                        >
-                          Open on home
-                        </Link>
-                      </div>
-
-                      <p className="mt-4 text-sm leading-6 text-zinc-300">
-                        {rating.review?.trim()
-                          ? rating.review
-                          : "No written review for this rating."}
-                      </p>
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
-                  Click <span className="text-zinc-200">Show full archive</span>{" "}
-                  to see all your ratings.
-                </div>
-              )}
-            </section>
-          ) : null}
         </div>
       </main>
 

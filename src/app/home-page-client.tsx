@@ -1,7 +1,8 @@
 "use client";
+import { useHomeDeleteActions } from "@/app/hooks/use-home-delete-actions";
+import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ReplyList from "@/app/components/rad/reply-list";
 import ReplyComposer from "@/app/components/rad/reply-composer";
@@ -9,7 +10,28 @@ import AuthModal, { type AuthView } from "@/app/components/rad/auth-modal";
 import CosmicLoading from "@/app/components/rad/cosmic-loading";
 import HighlightHeroImage from "@/app/components/rad/highlight-hero-image";
 import { decodeHtml } from "@/app/lib/html";
-
+import SocialPostModal from "@/app/components/rad/social-post-modal";
+import ReviewActionsMenu from "@/app/components/rad/review-actions-menu";
+import ConfirmModal from "@/app/components/rad/confirm-modal";
+import {
+  getBadgeStyle,
+  getBadgeLabel,
+  getHighlightBadges,
+  clamp,
+  formatAvg,
+  pad2,
+  getDaysInMonth,
+  formatDisplayDate,
+  formatCompactViews,
+  formatReviewDate,
+  hasReviewText,
+  isLongReview,
+  getDiscoverTypeLabel,
+  getDiscoverTypeClasses,
+  truncateText,
+  isValidDayString,
+  formatMonthDayLabel,
+} from "@/app/lib/home-page-utils";
 import type {
   DayResponse,
   DiscoverCard,
@@ -21,681 +43,65 @@ import type {
   SurpriseResponse,
   TopItem,
 } from "@/app/lib/rad-types";
+import {
+  DAY_BACK_HISTORY_MAX,
+  setRecentSurpriseHistory,
+  rememberSurpriseDay,
+  getTodayHistoryMonthDay,
+  rememberTodayHistoryDay,
+  clearTodayHistory,
+  getStoredDayBackHistory,
+  setStoredDayBackHistory,
+  buildRandomRequestUrl,
+  buildTodayInHistoryRequestUrl,
+  getDayWithOffset,
+  getDayWithYearShift,
+} from "@/app/lib/home-page-history";
+import DiscoverDayCard, { Star } from "@/app/components/rad/discover-day-card";
+import { loadDiscoverRandomDays, YEARS, MONTHS } from "@/app/lib/home-page-discover";
+import {
+  type CurrentUser,
+  type CurrentUserResponse,
+  closeHomeAuthModal,
+  openHomeAuthModal,
+  refreshHomeCurrentUser,
+  requireVerifiedHomeInteraction,
+} from "@/app/lib/home-page-auth";
 
 const REVIEW_MAX_LENGTH = 280;
 const REPLY_MAX_LENGTH = 220;
 const HIGHLIGHT_SCROLL_OFFSET = 290;
 const FORCE_FRESH_MODE = false;
-const SURPRISE_HISTORY_STORAGE_KEY = "rad:surprise-history";
-const SURPRISE_HISTORY_MAX = 120;
-const TODAY_HISTORY_STORAGE_KEY_PREFIX = "rad:today-history:";
-const TODAY_HISTORY_MAX = 160;
+
 
 const MIN_DAY_TRANSITION_MS = 1000;
 const HERO_IMAGE_REVEAL_DELAY_MS = 150;
-
-type CurrentUser = {
-  id: string;
-  email: string;
-  username: string;
-  emailVerified?: boolean;
-} | null;
-
-type CurrentUserResponse = {
-  user: CurrentUser;
-};
 
 type TodayInHistoryResponse = SurpriseResponse & {
   restartedRound?: boolean;
 };
 
-const BADGE_LABELS: Record<HighlightBadgeKey, string> = {
-  selected: "Selected",
-  event: "Event",
-  birth: "Birth",
-  death: "Death",
-  events: "Event",
-  births: "Birth",
-  deaths: "Death",
-  war: "War",
-  disaster: "Disaster",
-  politics: "Politics",
-  science: "Science",
-  culture: "Culture",
-  sports: "Sports",
-  discovery: "Discovery",
-  crime: "Crime",
-  general: "General",
-  none: "No data",
-};
-
-const BADGE_STYLES: Record<
-  HighlightBadgeKey,
-  { pill: string; text: string; border: string }
-> = {
-  selected: {
-    pill: "bg-white/12",
-    text: "text-white",
-    border: "border-white/15",
-  },
-  event: {
-    pill: "bg-sky-500/18",
-    text: "text-sky-200",
-    border: "border-sky-400/25",
-  },
-  events: {
-    pill: "bg-sky-500/18",
-    text: "text-sky-200",
-    border: "border-sky-400/25",
-  },
-  birth: {
-    pill: "bg-emerald-500/18",
-    text: "text-emerald-200",
-    border: "border-emerald-400/25",
-  },
-  births: {
-    pill: "bg-emerald-500/18",
-    text: "text-emerald-200",
-    border: "border-emerald-400/25",
-  },
-  death: {
-    pill: "bg-rose-500/18",
-    text: "text-rose-200",
-    border: "border-rose-400/25",
-  },
-  deaths: {
-    pill: "bg-rose-500/18",
-    text: "text-rose-200",
-    border: "border-rose-400/25",
-  },
-  war: {
-    pill: "bg-amber-500/18",
-    text: "text-amber-200",
-    border: "border-amber-400/25",
-  },
-  disaster: {
-    pill: "bg-orange-500/18",
-    text: "text-orange-200",
-    border: "border-orange-400/25",
-  },
-  politics: {
-    pill: "bg-indigo-500/18",
-    text: "text-indigo-200",
-    border: "border-indigo-400/25",
-  },
-  science: {
-    pill: "bg-cyan-500/18",
-    text: "text-cyan-200",
-    border: "border-cyan-400/25",
-  },
-  culture: {
-    pill: "bg-fuchsia-500/18",
-    text: "text-fuchsia-200",
-    border: "border-fuchsia-400/25",
-  },
-  sports: {
-    pill: "bg-lime-500/18",
-    text: "text-lime-200",
-    border: "border-lime-400/25",
-  },
-  discovery: {
-    pill: "bg-teal-500/18",
-    text: "text-teal-200",
-    border: "border-teal-400/25",
-  },
-  crime: {
-    pill: "bg-red-500/18",
-    text: "text-red-200",
-    border: "border-red-400/25",
-  },
-  general: {
-    pill: "bg-zinc-500/18",
-    text: "text-zinc-200",
-    border: "border-zinc-400/25",
-  },
-  none: {
-    pill: "bg-zinc-500/18",
-    text: "text-zinc-200",
-    border: "border-zinc-400/25",
-  },
-};
-
-function getBadgeStyle(key: HighlightBadgeKey) {
-  return BADGE_STYLES[key] ?? BADGE_STYLES.none;
-}
-
-function getBadgeLabel(key: HighlightBadgeKey) {
-  return BADGE_LABELS[key] ?? "Unknown";
-}
-
-function normalizeLegacyTypeToBadges(
-  type?: LegacyHighlightType,
-  secondaryType?: LegacyHighlightType | null
-): HighlightBadgeKey[] {
-  const badges: HighlightBadgeKey[] = [];
-
-  if (type && type !== "none") {
-    badges.push(type);
-  }
-
-  if (secondaryType && secondaryType !== "none" && secondaryType !== type) {
-    badges.push(secondaryType);
-  }
-
-  return badges;
-}
-
-function getHighlightBadges(item?: HighlightItem | null): HighlightBadgeKey[] {
-  if (!item) return [];
-
-  const badges: HighlightBadgeKey[] = [];
-
-  if (item.kind && item.kind !== "none") {
-    badges.push(item.kind);
-  }
-
-  if (item.category && item.category !== "general") {
-    badges.push(item.category);
-  }
-
-  if (badges.length > 0) {
-    return badges;
-  }
-
-  return normalizeLegacyTypeToBadges(item.type, item.secondaryType);
-}
-
-function clamp(n: number, a: number, b: number) {
-  return Math.max(a, Math.min(b, n));
-}
-
-function formatAvg(n: number) {
-  if (!n || Number.isNaN(n)) return "0.0";
-  return (Math.round(n * 10) / 10).toFixed(1);
-}
-
-function pad2(n: number | string) {
-  return String(n).padStart(2, "0");
-}
-
-function getDaysInMonth(year: number, month: number) {
-  return new Date(year, month, 0).getDate();
-}
-
-function formatDisplayDate(date: string) {
-  const [year, month, day] = date.split("-");
-  const localDate = new Date(Number(year), Number(month) - 1, Number(day));
-
-  return localDate.toLocaleDateString("en-US", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
-
-function formatCompactViews(n: number) {
-  if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
-}
-
-function formatReviewDate(date?: string) {
-  if (!date) return "";
-  return new Date(date).toLocaleString();
-}
-
-function hasReviewText(text?: string) {
-  return !!text && text.trim().length > 0;
-}
-
-function isLongReview(text?: string, limit = 140) {
-  return !!text && text.trim().length > limit;
-}
-
-function getDiscoverTypeLabel(type?: DiscoverCard["type"]) {
-  switch (type) {
-    case "births":
-      return "Birth";
-    case "deaths":
-      return "Death";
-    case "events":
-      return "Event";
-    case "war":
-      return "War";
-    case "disaster":
-      return "Disaster";
-    case "politics":
-      return "Politics";
-    case "science":
-      return "Science";
-    case "culture":
-      return "Culture";
-    case "sports":
-      return "Sports";
-    case "discovery":
-      return "Discovery";
-    case "crime":
-      return "Crime";
-    case "selected":
-      return "Selected";
-    default:
-      return "History";
-  }
-}
-
-function getDiscoverTypeClasses(type?: DiscoverCard["type"]) {
-  switch (type) {
-    case "births":
-      return "border-emerald-400/25 bg-emerald-500/18 text-emerald-200";
-    case "deaths":
-      return "border-rose-400/25 bg-rose-500/18 text-rose-200";
-    case "events":
-      return "border-sky-400/25 bg-sky-500/18 text-sky-200";
-    case "war":
-      return "border-amber-400/25 bg-amber-500/18 text-amber-200";
-    case "disaster":
-      return "border-orange-400/25 bg-orange-500/18 text-orange-200";
-    case "politics":
-      return "border-indigo-400/25 bg-indigo-500/18 text-indigo-200";
-    case "science":
-      return "border-cyan-400/25 bg-cyan-500/18 text-cyan-200";
-    case "culture":
-      return "border-fuchsia-400/25 bg-fuchsia-500/18 text-fuchsia-200";
-    case "sports":
-      return "border-lime-400/25 bg-lime-500/18 text-lime-200";
-    case "discovery":
-      return "border-teal-400/25 bg-teal-500/18 text-teal-200";
-    case "crime":
-      return "border-red-500/18 text-red-200";
-    default:
-      return "border-white/10 bg-black/45 text-white";
-  }
-}
-
-function truncateText(text: string, max = 78) {
-  if (!text) return "";
-  if (text.length <= max) return text;
-  return `${text.slice(0, max).trim()}...`;
-}
-
-function isValidDayString(value?: string | null): value is string {
-  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function getRecentSurpriseHistory() {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = window.localStorage.getItem(SURPRISE_HISTORY_STORAGE_KEY);
-    if (!raw) return [];
-
-    const parsed = JSON.parse(raw);
-
-    if (!Array.isArray(parsed)) return [];
-
-    return Array.from(
-      new Set(
-        parsed.filter(
-          (item): item is string =>
-            typeof item === "string" && isValidDayString(item)
-        )
-      )
-    ).slice(0, SURPRISE_HISTORY_MAX);
-  } catch {
-    return [];
-  }
-}
-
-function setRecentSurpriseHistory(days: string[]) {
-  if (typeof window === "undefined") return;
-
-  try {
-    const safe = Array.from(
-      new Set(days.filter((item) => isValidDayString(item)))
-    ).slice(0, SURPRISE_HISTORY_MAX);
-
-    window.localStorage.setItem(
-      SURPRISE_HISTORY_STORAGE_KEY,
-      JSON.stringify(safe)
-    );
-  } catch {
-    //
-  }
-}
-
-function rememberSurpriseDay(day: string) {
-  if (!isValidDayString(day)) return;
-
-  const current = getRecentSurpriseHistory().filter((item) => item !== day);
-  setRecentSurpriseHistory([day, ...current]);
-}
-
-function getTodayHistoryMonthDay() {
-  const now = new Date();
-  return `${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
-}
-
-function getTodayHistoryStorageKey(monthDay = getTodayHistoryMonthDay()) {
-  return `${TODAY_HISTORY_STORAGE_KEY_PREFIX}${monthDay}`;
-}
-
-function getRecentTodayHistory(monthDay = getTodayHistoryMonthDay()) {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = window.localStorage.getItem(
-      getTodayHistoryStorageKey(monthDay)
-    );
-    if (!raw) return [];
-
-    const parsed = JSON.parse(raw);
-
-    if (!Array.isArray(parsed)) return [];
-
-    return Array.from(
-      new Set(
-        parsed.filter(
-          (item): item is string =>
-            typeof item === "string" && isValidDayString(item)
-        )
-      )
-    ).slice(0, TODAY_HISTORY_MAX);
-  } catch {
-    return [];
-  }
-}
-
-function setRecentTodayHistory(
-  days: string[],
-  monthDay = getTodayHistoryMonthDay()
-) {
-  if (typeof window === "undefined") return;
-
-  try {
-    const safe = Array.from(
-      new Set(days.filter((item) => isValidDayString(item)))
-    ).slice(0, TODAY_HISTORY_MAX);
-
-    window.localStorage.setItem(
-      getTodayHistoryStorageKey(monthDay),
-      JSON.stringify(safe)
-    );
-  } catch {
-    //
-  }
-}
-
-function rememberTodayHistoryDay(day: string) {
-  if (!isValidDayString(day)) return;
-
-  const monthDay = day.slice(5, 10);
-  const current = getRecentTodayHistory(monthDay).filter((item) => item !== day);
-  setRecentTodayHistory([day, ...current], monthDay);
-}
-
-function clearTodayHistory(monthDay = getTodayHistoryMonthDay()) {
-  if (typeof window === "undefined") return;
-
-  try {
-    window.localStorage.removeItem(getTodayHistoryStorageKey(monthDay));
-  } catch {
-    //
-  }
-}
-
-function formatMonthDayLabel(monthDay: string) {
-  const [month, day] = monthDay.split("-").map(Number);
-  const date = new Date(2000, month - 1, day);
-
-  return date.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-  });
-}
-
-function buildRandomRequestUrl(
-  basePath: string,
-  options?: {
-    fresh?: boolean;
-    currentDay?: string;
-  }
-) {
-  const params = new URLSearchParams();
-
-  if (options?.fresh) {
-    params.set("fresh", "1");
-  }
-
-  const excludeDays = getRecentSurpriseHistory();
-
-  if (options?.currentDay && isValidDayString(options.currentDay)) {
-    excludeDays.unshift(options.currentDay);
-  }
-
-  const uniqueExcludeDays = Array.from(
-    new Set(excludeDays.filter((item) => isValidDayString(item)))
-  ).slice(0, SURPRISE_HISTORY_MAX);
-
-  if (uniqueExcludeDays.length > 0) {
-    params.set("excludeDays", uniqueExcludeDays.join(","));
-  }
-
-  const query = params.toString();
-  return query ? `${basePath}?${query}` : basePath;
-}
-
-function buildTodayInHistoryRequestUrl(options?: {
-  fresh?: boolean;
-  currentDay?: string;
-  bundle?: boolean;
-}) {
-  const params = new URLSearchParams();
-
-  if (options?.bundle) {
-    params.set("bundle", "1");
-  }
-
-  if (options?.fresh) {
-    params.set("fresh", "1");
-  }
-
-  const monthDay = getTodayHistoryMonthDay();
-  const excludeDays = getRecentTodayHistory(monthDay);
-
-  if (
-    options?.currentDay &&
-    isValidDayString(options.currentDay) &&
-    options.currentDay.slice(5, 10) === monthDay
-  ) {
-    excludeDays.unshift(options.currentDay);
-  }
-
-  const uniqueExcludeDays = Array.from(
-    new Set(excludeDays.filter((item) => isValidDayString(item)))
-  ).slice(0, TODAY_HISTORY_MAX);
-
-  if (uniqueExcludeDays.length > 0) {
-    params.set("excludeDays", uniqueExcludeDays.join(","));
-  }
-
-  const query = params.toString();
-  return query ? `/api/today-valid-day?${query}` : "/api/today-valid-day";
-}
-
-function getDayWithOffset(baseDay: string, offset: number) {
-  if (!isValidDayString(baseDay)) return null;
-
-  const d = new Date(`${baseDay}T00:00:00`);
-  d.setDate(d.getDate() + offset);
-  return d.toISOString().slice(0, 10);
-}
-
-function getDayWithYearShift(
-  baseDay: string,
-  delta: number,
-  minDay: string,
-  maxDay: string
-) {
-  if (!isValidDayString(baseDay)) return null;
-
-  const [y, m, d] = baseDay.split("-").map(Number);
-  const targetYear = y + delta;
-  const currentRealYear = new Date().getFullYear();
-
-  if (targetYear < 1900 || targetYear > currentRealYear) return null;
-
-  const maxDayInMonth = getDaysInMonth(targetYear, m);
-  const safeDay = Math.min(d, maxDayInMonth);
-  const candidate = `${targetYear}-${pad2(m)}-${pad2(safeDay)}`;
-
-  if (candidate < minDay || candidate > maxDay) return null;
-
-  return candidate;
-}
-
-async function loadDiscoverRandomDays(
-  n = 5,
-  fresh = FORCE_FRESH_MODE
-): Promise<DiscoverCard[]> {
-  try {
-    const res = await fetch(
-      `/api/discover?count=${n}${fresh ? "&fresh=1" : ""}`,
-      {
-        cache: "no-store",
-      }
-    );
-
-    if (!res.ok) {
-      throw new Error("Failed to load discover cards");
+type PendingDeleteAction =
+  | {
+      kind: "review";
+      id: string;
     }
+  | {
+      kind: "reply";
+      id: string;
+    }
+  | null;
 
-    const json = await res.json();
-    return (json.cards ?? []) as DiscoverCard[];
-  } catch {
-    return [];
-  }
-}
-
-const YEARS = Array.from(
-  { length: new Date().getFullYear() - 1900 + 1 },
-  (_, i) => String(1900 + i)
-).reverse();
-
-const MONTHS = Array.from({ length: 12 }, (_, i) => ({
-  value: pad2(i + 1),
-  label: new Date(2000, i, 1).toLocaleString("en-US", { month: "long" }),
-}));
-
-function Star({
-  filled,
-  onClick,
-  onMouseEnter,
-  onMouseLeave,
-  title,
+export default function Page({
+  initialBundle = null,
 }: {
-  filled: boolean;
-  onClick?: () => void;
-  onMouseEnter?: () => void;
-  onMouseLeave?: () => void;
-  title?: string;
+  initialBundle?: SurpriseResponse | null;
 }) {
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      className="text-3xl leading-none transition-transform hover:scale-105"
-      aria-label={title ?? "star"}
-    >
-      <span className={filled ? "text-yellow-400" : "text-zinc-700"}>★</span>
-    </button>
-  );
-}
-
-function DiscoverDayCard({
-  card,
-  onSelect,
-}: {
-  card: DiscoverCard;
-  onSelect: (day: string) => void;
-}) {
-  const badgeLabel = getDiscoverTypeLabel(card.type);
-  const badgeClasses = getDiscoverTypeClasses(card.type);
-
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(card.day)}
-      className="group relative h-[360px] overflow-hidden rounded-[30px] border border-white/8 bg-[#121212]/70 text-left shadow-[0_18px_70px_rgba(0,0,0,0.45)] transition duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:border-white/14"
-    >
-      {card.image ? (
-        <img
-          src={card.image}
-          alt={card.title}
-          className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
-        />
-      ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] via-[#121212] to-black" />
-      )}
-
-      <div className="absolute inset-0 bg-gradient-to-b from-black/10 via-black/20 to-black/90" />
-
-      <div className="absolute left-4 right-4 top-4 z-20 flex items-center justify-between gap-2">
-        <span className="rounded-full border border-white/10 bg-black/45 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white backdrop-blur-xl">
-          20th century
-        </span>
-
-        <span
-          className={`rounded-md border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] backdrop-blur-xl ${badgeClasses}`}
-        >
-          {badgeLabel}
-        </span>
-      </div>
-
-      <div className="absolute bottom-0 left-0 right-0 z-20 p-4">
-        <div className="min-h-[156px] rounded-[24px] border border-white/10 bg-black/58 p-4 backdrop-blur-2xl">
-          <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-300">
-            {card.day}
-          </div>
-
-          <div className="mt-2 line-clamp-2 min-h-[56px] text-[32px] leading-[1.05] font-semibold text-white">
-            <div className="text-xl leading-tight">{card.title}</div>
-          </div>
-
-          <div className="mt-2 line-clamp-2 min-h-[40px] text-sm leading-5 text-zinc-300">
-            {truncateText(card.text, 88)}
-          </div>
-
-          <div className="mt-4 flex items-end justify-between gap-3">
-            <div className="flex items-center gap-2 text-zinc-200">
-              <span className="text-sm">★</span>
-              <span className="text-sm font-semibold">
-                {formatAvg(card.avg)}
-              </span>
-            </div>
-
-            <div className="text-xs text-zinc-300">
-              {card.count} vote{card.count === 1 ? "" : "s"}
-            </div>
-
-            <div className="text-xs text-zinc-400">
-              {formatCompactViews(card.views)} views
-            </div>
-          </div>
-        </div>
-      </div>
-    </button>
-  );
-}
-
-export default function Page() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const minDay = "1900-01-01";
+  const minDay = "1800-01-01";
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   const rateBoxRef = useRef<HTMLDivElement | null>(null);
@@ -710,19 +116,25 @@ export default function Page() {
   );
   const consumedProfileJumpRef = useRef(false);
   const didInitDayRef = useRef(false);
-  const transitionIdRef = useRef(0);
 
   const dayRequestRef = useRef(0);
   const highlightRequestRef = useRef(0);
   const skipNextAutoDayLoadRef = useRef(false);
 
-  const dayBundleCacheRef = useRef<Map<string, SurpriseResponse>>(new Map());
-  const prefetchingDaysRef = useRef<Set<string>>(new Set());
+  const dayBackHistoryRef = useRef<string[]>([]);
+  const isGoingBackRef = useRef(false);
 
-  const [day, setDay] = useState<string>(minDay);
-  const [hasPickedInitialDay, setHasPickedInitialDay] = useState(false);
+  const initialHighlightItems = initialBundle?.highlightData?.highlights?.length
+    ? initialBundle.highlightData.highlights
+    : initialBundle?.highlightData?.highlight
+      ? [initialBundle.highlightData.highlight]
+      : [];
 
-  const [selectedYear, setSelectedYear] = useState("1900");
+  const [day, setDay] = useState<string>(initialBundle?.day ?? minDay);
+  const [hasPickedInitialDay, setHasPickedInitialDay] = useState(!!initialBundle);
+  const [canGoBack, setCanGoBack] = useState(false);
+
+  const [selectedYear, setSelectedYear] = useState("1800");
   const [selectedMonth, setSelectedMonth] = useState("01");
   const [selectedDay, setSelectedDay] = useState("01");
 
@@ -733,11 +145,15 @@ export default function Page() {
   const [authView, setAuthView] = useState<AuthView>("login");
   const [authEmail, setAuthEmail] = useState("");
 
-  const [data, setData] = useState<DayResponse | null>(null);
+  const [data, setData] = useState<DayResponse | null>(
+    initialBundle?.dayData ?? null
+  );
   const [loadingDay, setLoadingDay] = useState(false);
 
-  const [highlight, setHighlight] = useState<HighlightItem | null>(null);
-  const [highlights, setHighlights] = useState<HighlightItem[]>([]);
+  const [highlight, setHighlight] = useState<HighlightItem | null>(
+    initialHighlightItems[0] ?? null
+  );
+  const [highlights, setHighlights] = useState<HighlightItem[]>(initialHighlightItems);
   const [activeHighlightIndex, setActiveHighlightIndex] = useState(0);
   const [isHighlightPaused, setIsHighlightPaused] = useState(false);
   const [loadingHighlight, setLoadingHighlight] = useState(false);
@@ -786,6 +202,8 @@ export default function Page() {
   const [suggestSending, setSuggestSending] = useState(false);
   const [suggestToast, setSuggestToast] = useState("");
 
+  const [socialPostOpen, setSocialPostOpen] = useState(false);
+
   const [discoverDays, setDiscoverDays] = useState<DiscoverCard[]>([]);
   const [loadingDiscover, setLoadingDiscover] = useState(false);
 
@@ -817,6 +235,45 @@ export default function Page() {
 
   function closeAuthModal() {
     setAuthModalOpen(false);
+  }
+
+  function syncDayBackHistory(nextHistory: string[]) {
+    const safe = nextHistory
+      .filter((item) => isValidDayString(item))
+      .slice(-DAY_BACK_HISTORY_MAX);
+
+    dayBackHistoryRef.current = safe;
+    setCanGoBack(safe.length > 0);
+    setStoredDayBackHistory(safe);
+  }
+
+  function pushCurrentDayToBackHistory(currentDay: string, nextDay: string) {
+    if (!isValidDayString(currentDay) || !isValidDayString(nextDay)) return;
+    if (currentDay === nextDay) return;
+
+    const currentHistory = [...dayBackHistoryRef.current];
+    const lastItem = currentHistory[currentHistory.length - 1];
+
+    if (lastItem === currentDay) return;
+
+    syncDayBackHistory([...currentHistory, currentDay]);
+  }
+
+  async function goBackToLastViewed() {
+    const currentHistory = [...dayBackHistoryRef.current];
+    const previousDay = currentHistory[currentHistory.length - 1];
+
+    if (!previousDay) return;
+
+    syncDayBackHistory(currentHistory.slice(0, -1));
+
+    isGoingBackRef.current = true;
+
+    try {
+      await openDay(previousDay, { scrollToHighlight: false });
+    } finally {
+      isGoingBackRef.current = false;
+    }
   }
 
   async function refreshCurrentUser() {
@@ -869,6 +326,59 @@ export default function Page() {
 
     return false;
   }
+  const {
+    pendingDeleteAction,
+    openDeleteReviewModal,
+    openDeleteReplyModal,
+    closeDeleteModal,
+    handleConfirmDelete,
+  } = useHomeDeleteActions({
+    deletingReviewId,
+    deletingReplyId,
+    showToast,
+    deleteReview,
+    deleteReply,
+  });
+
+  const {
+    transitionIdRef,
+    dayBundleCacheRef,
+    prefetchingDaysRef,
+    beginDayTransition,
+    finishDayTransition,
+    cacheBundlePayload,
+    invalidateDayCache,
+    fetchDayBundle,
+    prefetchDayBundle,
+    prefetchRelatedDays,
+    applyBundlePayload,
+    openDay,
+  } = useHomeDayNavigation({
+    day,
+    hasPickedInitialDay,
+    highlight,
+    pendingScrollToHighlightRef,
+    highlightBlockRef,
+    minTransitionTimerRef,
+    dayBackHistoryRef,
+    isGoingBackRef,
+    pushCurrentDayToBackHistory,
+    showToast,
+    scrollToHighlightBlock,
+    setDay,
+    setData,
+    setHighlights,
+    setHighlight,
+    setActiveHighlightIndex,
+    setLoadingDay,
+    setLoadingHighlight,
+    setPreferImmediateHighlightImageSwap,
+    setHeroImageLoading,
+    setIsFavoriteDay,
+    setIsDayTransitioning,
+    setMinimumTransitionDone,
+    minTransitionMs: MIN_DAY_TRANSITION_MS,
+  });
 
   function showToast(message: string, duration = 2500) {
     setToast(message);
@@ -906,161 +416,6 @@ export default function Page() {
       top: elementTop - offset,
       behavior: "smooth",
     });
-  }
-
-  function beginDayTransition() {
-    transitionIdRef.current += 1;
-    const currentTransitionId = transitionIdRef.current;
-
-    setMinimumTransitionDone(false);
-    setIsDayTransitioning(true);
-    setLoadingDay(true);
-    setLoadingHighlight(true);
-    setIsFavoriteDay(false);
-
-    if (minTransitionTimerRef.current) {
-      clearTimeout(minTransitionTimerRef.current);
-    }
-
-    minTransitionTimerRef.current = setTimeout(() => {
-      if (transitionIdRef.current === currentTransitionId) {
-        setMinimumTransitionDone(true);
-      }
-    }, MIN_DAY_TRANSITION_MS);
-  }
-
-  function finishDayTransition(transitionId: number) {
-    if (transitionIdRef.current !== transitionId) return;
-    setIsDayTransitioning(false);
-  }
-
-  function cacheBundlePayload(payload: SurpriseResponse) {
-    dayBundleCacheRef.current.set(payload.day, payload);
-  }
-
-  function invalidateDayCache(targetDay?: string) {
-    if (!targetDay) return;
-    dayBundleCacheRef.current.delete(targetDay);
-  }
-
-  async function fetchDayBundle(targetDay: string) {
-    const res = await fetch(
-      `/api/day-bundle?day=${encodeURIComponent(targetDay)}`,
-      {
-        cache: "no-store",
-      }
-    );
-
-    const json = (await res.json().catch(() => null)) as
-      | SurpriseResponse
-      | null;
-
-    if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
-      throw new Error("Failed to load day bundle");
-    }
-
-    return json;
-  }
-
-  async function prefetchDayBundle(targetDay: string) {
-    if (!isValidDayString(targetDay)) return;
-    if (dayBundleCacheRef.current.has(targetDay)) return;
-    if (prefetchingDaysRef.current.has(targetDay)) return;
-
-    prefetchingDaysRef.current.add(targetDay);
-
-    try {
-      const payload = await fetchDayBundle(targetDay);
-      cacheBundlePayload(payload);
-    } catch {
-      //
-    } finally {
-      prefetchingDaysRef.current.delete(targetDay);
-    }
-  }
-
-  async function prefetchRelatedDays(baseDay: string) {
-    const candidates = [
-      getDayWithOffset(baseDay, -1),
-      getDayWithOffset(baseDay, 1),
-      getDayWithYearShift(baseDay, -1, minDay, today),
-      getDayWithYearShift(baseDay, 1, minDay, today),
-    ].filter((item): item is string => !!item && item !== baseDay);
-
-    for (const candidate of candidates) {
-      void prefetchDayBundle(candidate);
-    }
-  }
-
-  function applyBundlePayload(payload: SurpriseResponse) {
-    cacheBundlePayload(payload);
-
-    const items = payload.highlightData?.highlights?.length
-      ? payload.highlightData.highlights
-      : payload.highlightData?.highlight
-        ? [payload.highlightData.highlight]
-        : [];
-
-    const nextHighlight = items[0] ?? null;
-    const currentImage = highlight?.image?.trim() || "";
-    const nextImage = nextHighlight?.image?.trim() || "";
-
-    setHeroImageLoading(!!nextImage && nextImage !== currentImage);
-
-    setData(payload.dayData);
-    setHighlights(items);
-    setHighlight(nextHighlight);
-    setActiveHighlightIndex(0);
-    setLoadingDay(false);
-    setLoadingHighlight(false);
-    setPreferImmediateHighlightImageSwap(false);
-  }
-
-  async function openDay(
-    nextDay: string,
-    options?: { scrollToHighlight?: boolean }
-  ) {
-    const shouldScrollToHighlight = !!options?.scrollToHighlight;
-
-    if (nextDay === day) {
-      setIsDayTransitioning(false);
-
-      if (shouldScrollToHighlight && highlight && highlightBlockRef.current) {
-        pendingScrollToHighlightRef.current = false;
-        requestAnimationFrame(() => {
-          scrollToHighlightBlock();
-        });
-      }
-
-      return;
-    }
-
-    pendingScrollToHighlightRef.current = shouldScrollToHighlight;
-    beginDayTransition();
-    const transitionId = transitionIdRef.current;
-
-    const cached = dayBundleCacheRef.current.get(nextDay);
-
-    if (cached) {
-      skipNextAutoDayLoadRef.current = true;
-      applyBundlePayload(cached);
-      setDay(cached.day);
-      return;
-    }
-
-    try {
-      const payload = await fetchDayBundle(nextDay);
-
-      if (transitionIdRef.current !== transitionId) return;
-
-      skipNextAutoDayLoadRef.current = true;
-      applyBundlePayload(payload);
-      setDay(payload.day);
-    } catch {
-      if (transitionIdRef.current !== transitionId) return;
-      showToast("Could not load this day.");
-      finishDayTransition(transitionId);
-    }
   }
 
   function preloadImage(src?: string | null) {
@@ -1121,6 +476,12 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    const storedHistory = getStoredDayBackHistory();
+    dayBackHistoryRef.current = storedHistory;
+    setCanGoBack(storedHistory.length > 0);
+  }, []);
+
+  useEffect(() => {
     dayBundleCacheRef.current.clear();
     prefetchingDaysRef.current.clear();
     setRecentSurpriseHistory([]);
@@ -1156,6 +517,12 @@ export default function Page() {
   useEffect(() => {
     if (didInitDayRef.current) return;
     didInitDayRef.current = true;
+
+    if (initialBundle?.day && initialBundle?.dayData && initialBundle?.highlightData) {
+      cacheBundlePayload(initialBundle);
+      setHasPickedInitialDay(true);
+      return;
+    }
 
     let cancelled = false;
 
@@ -1243,7 +610,7 @@ export default function Page() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams]);
+  }, [initialBundle, searchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1499,6 +866,10 @@ export default function Page() {
       skipNextAutoDayLoadRef.current = true;
       pendingScrollToHighlightRef.current = scrollToResult;
 
+      if (hasPickedInitialDay && isValidDayString(day) && !isGoingBackRef.current) {
+        pushCurrentDayToBackHistory(day, json.day);
+      }
+
       applyBundlePayload(json);
       setDay(json.day);
     } catch {
@@ -1581,6 +952,10 @@ export default function Page() {
       skipNextAutoDayLoadRef.current = true;
       pendingScrollToHighlightRef.current = scrollToResult;
 
+      if (hasPickedInitialDay && isValidDayString(day) && !isGoingBackRef.current) {
+        pushCurrentDayToBackHistory(day, payload.day);
+      }
+
       applyBundlePayload(payload);
       setDay(payload.day);
     } catch {
@@ -1617,12 +992,23 @@ export default function Page() {
         return;
       }
 
-      await Promise.allSettled([loadDay(day), loadHighlight(day)]);
+      setLoadingDay(true);
+      setLoadingHighlight(true);
 
-      if (cancelled) return;
+      try {
+        const payload = await fetchDayBundle(day);
 
-      finishDayTransition(transitionId);
-      void prefetchRelatedDays(day);
+        if (cancelled) return;
+
+        applyBundlePayload(payload);
+      } catch {
+        if (cancelled) return;
+        showToast("Error cargando el día.");
+      } finally {
+        if (cancelled) return;
+        finishDayTransition(transitionId);
+        void prefetchRelatedDays(day);
+      }
     }
 
     void run();
@@ -1770,7 +1156,7 @@ export default function Page() {
     )
   )}`;
 
-  const isAtMinYear = selectedYearNum <= 1900 || prevYearCandidate < minDay;
+  const isAtMinYear = selectedYearNum <= 1800 || prevYearCandidate < minDay;
   const isAtMaxYear =
     selectedYearNum >= currentYear || nextYearCandidate > today;
 
@@ -1871,12 +1257,6 @@ export default function Page() {
   }
 
   async function deleteReview(ratingId: string) {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete your review?"
-    );
-
-    if (!confirmed) return;
-
     setDeletingReviewId(ratingId);
     setToast("");
 
@@ -2055,12 +1435,6 @@ export default function Page() {
       return;
     }
 
-    const confirmed = window.confirm(
-      "Are you sure you want to delete your reply?"
-    );
-
-    if (!confirmed) return;
-
     setDeletingReplyId(replyId);
     setToast("");
 
@@ -2151,73 +1525,6 @@ export default function Page() {
           <section className="overflow-hidden rounded-[36px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.02))] shadow-[0_30px_100px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
             <div className="relative">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.07),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.035),transparent_28%)]" />
-
-              <div className="absolute right-6 top-6 z-20">
-                {loadingCurrentUser ? (
-                  <div className="rounded-xl border border-white/8 bg-white/[0.06] px-4 py-2 text-sm text-zinc-400 backdrop-blur-xl">
-                    Loading...
-                  </div>
-                ) : currentUser ? (
-                  <div className="flex items-center gap-1">
-                    {currentUser.emailVerified === false ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          openAuthModal("verify-email", currentUser.email)
-                        }
-                        className="rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-200 transition hover:bg-amber-500/15"
-                      >
-                        Verify email
-                      </button>
-                    ) : null}
-
-                    <Link
-                      href={profileHref}
-                      className="rounded-xl border border-white/8 bg-white/[0.08] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.12] backdrop-blur-xl"
-                    >
-                      @{currentUser.username}
-                    </Link>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-5 sm:gap-6">
-                    <button
-                      type="button"
-                      onClick={() => openAuthModal("login")}
-                      className="text-[15px] font-semibold tracking-[-0.01em] text-zinc-300 transition hover:text-white"
-                    >
-                      Log in
-                    </button>
-
-                    <span aria-hidden="true" className="h-6 w-px bg-white/14" />
-
-                    <button
-                      type="button"
-                      onClick={() => openAuthModal("register")}
-                      className="group inline-flex h-[62px] items-center gap-3 rounded-[22px] border border-white/10 bg-white/[0.06] pl-3.5 pr-6 text-white shadow-[0_14px_40px_rgba(0,0,0,0.32)] backdrop-blur-xl transition hover:border-white/14 hover:bg-white/[0.1]"
-                    >
-                      <span className="flex h-10 w-10 items-center justify-center rounded-[14px] border border-white/10 bg-white/[0.06] text-white shadow-inner shadow-black/25">
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          className="h-[17px] w-[17px]"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.9"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M12 3.8l2.1 4.26 4.7.68-3.4 3.31.8 4.67L12 14.5l-4.2 2.22.8-4.67-3.4-3.31 4.7-.68L12 3.8z" />
-                        </svg>
-                      </span>
-
-                      <span className="text-[15px] font-semibold tracking-[-0.01em]">
-                        Register
-                      </span>
-                    </button>
-                  </div>
-                )}
-              </div>
-
               <div className="relative p-8 sm:p-10 lg:p-12">
                 <div className="max-w-4xl">
                   <div className="text-sm font-medium uppercase tracking-[0.18em] text-zinc-500">
@@ -2285,7 +1592,7 @@ export default function Page() {
                     Pick an exact date
                   </div>
                   <div className="mt-2 text-base text-zinc-400">
-                    Choose a specific day between 1900 and today.
+                    Choose a specific day between 1800 and today.
                   </div>
 
                   <div className="mt-4 flex flex-wrap items-center gap-3">
@@ -2394,17 +1701,75 @@ export default function Page() {
                       <button
                         type="button"
                         onClick={() => goToSurpriseDay(false)}
-                        className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
                       >
-                        Surprise me
+                        <span
+                          aria-hidden="true"
+                          className="inline-flex h-4 w-4 items-center justify-center text-zinc-200"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="currentColor"
+                          >
+                            <path d="M12 2.75a.75.75 0 0 1 .73.57l1.05 4.1a2 2 0 0 0 1.43 1.43l4.1 1.05a.75.75 0 0 1 0 1.46l-4.1 1.05a2 2 0 0 0-1.43 1.43l-1.05 4.1a.75.75 0 0 1-1.46 0l-1.05-4.1a2 2 0 0 0-1.43-1.43l-4.1-1.05a.75.75 0 0 1 0-1.46l4.1-1.05a2 2 0 0 0 1.43-1.43l1.05-4.1A.75.75 0 0 1 12 2.75Z" />
+                          </svg>
+                        </span>
+                        <span>Surprise me</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => goToTodayInHistory(false)}
-                        className="rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
                       >
-                        Today in history
+                        <span
+                          aria-hidden="true"
+                          className="inline-flex h-4 w-4 items-center justify-center text-zinc-200"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M8 2v3" />
+                            <path d="M16 2v3" />
+                            <rect x="3" y="5" width="18" height="16" rx="2" />
+                            <path d="M3 10h18" />
+                            <path d="M12 14h.01" />
+                          </svg>
+                        </span>
+                        <span>Today in history</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={goBackToLastViewed}
+                        disabled={!canGoBack}
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="inline-flex h-4 w-4 items-center justify-center text-zinc-200"
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-4 w-4"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.8"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M19 12H5" />
+                            <path d="m12 19-7-7 7-7" />
+                          </svg>
+                        </span>
+                        <span>Go back</span>
                       </button>
                     </div>
 
@@ -2415,7 +1780,7 @@ export default function Page() {
                     ) : null}
                   </div>
 
-                  <div className="flex flex-col gap-3 lg:items-start">
+                  <div className="mt-1 flex flex-col gap-3 lg:items-start">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
                         Step through time
@@ -2530,12 +1895,6 @@ export default function Page() {
           </div>
 
           <div className="mt-5 flex min-h-[32px] flex-wrap items-center gap-2">
-            {highlight.year ? (
-              <span className="rounded-md bg-white/12 px-2.5 py-1 text-xs font-medium text-white backdrop-blur-xl">
-                {highlight.year}
-              </span>
-            ) : null}
-
             {activeBadges.map((badge) => {
               const style = getBadgeStyle(badge);
 
@@ -2551,7 +1910,7 @@ export default function Page() {
           </div>
 
           {highlight.title ? (
-            <h2 className="mt-5 max-w-[13ch] text-[clamp(2.4rem,5vw,4.8rem)] font-semibold leading-[0.96] tracking-tight text-white">
+            <h2 className="mt-5 max-w-[13ch] text-[clamp(1.8rem,3.8vw,3.4rem)] font-semibold leading-[1] tracking-tight text-white">
               {highlight.title}
             </h2>
           ) : null}
@@ -2563,50 +1922,78 @@ export default function Page() {
       </div>
     </div>
 
-    <div className="rounded-2xl border border-white/8 bg-black/20 p-4 backdrop-blur-xl">
-      <div className="grid gap-4 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+    <div
+      className={`rounded-2xl border border-white/8 bg-black/20 p-4 backdrop-blur-xl ${
+        highlights.length > 1 ? "" : "inline-block"
+      }`}
+    >
+      <div
+        className={`grid gap-4 ${
+          highlights.length > 1 ? "sm:grid-cols-[1fr_auto_auto] sm:items-center" : ""
+        }`}
+      >
         <div className="flex flex-wrap items-center gap-3">
           {highlight.articleUrl ? (
             <a
               href={highlight.articleUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex h-11 items-center rounded-xl border border-white/15 bg-white/[0.08] px-4 text-sm font-medium text-white transition hover:bg-white/[0.12]"
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/[0.08] px-4 text-sm font-medium text-white transition hover:bg-white/[0.12]"
             >
-              Read on Wikipedia
+              <span
+                aria-hidden="true"
+                className="inline-flex items-center justify-center text-[13px] font-semibold leading-none text-white/90"
+              >
+                W
+              </span>
+              <span>Read on Wikipedia</span>
             </a>
-          ) : (
-            <div className="hidden h-11 sm:block" />
-          )}
+          ) : null}
 
           <button
             type="button"
             onClick={() => setShowSuggestModal(true)}
-            className="inline-flex h-11 items-center rounded-xl border border-white/15 bg-white/[0.08] px-4 text-sm font-medium text-white transition hover:bg-white/[0.12]"
+            className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/[0.08] px-4 text-sm font-medium text-white transition hover:bg-white/[0.12]"
           >
-            Suggest an event
+            <span
+              aria-hidden="true"
+              className="inline-flex items-center justify-center text-white/90"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M9 18h6" />
+                <path d="M10 22h4" />
+                <path d="M12 2a7 7 0 0 0-4 12.75c.52.36 1 1.04 1 1.75V17h6v-.5c0-.71.48-1.39 1-1.75A7 7 0 0 0 12 2Z" />
+              </svg>
+            </span>
+            <span>Suggest an event</span>
           </button>
         </div>
 
-{highlights.length > 1 ? (
-  <div className="flex min-w-[56px] items-center justify-center gap-2">
-    {highlights.map((_, index) => (
-      <button
-        key={index}
-        type="button"
-        onClick={() => void transitionToHighlight(index)}
-        className={`h-2.5 w-2.5 rounded-full transition ${
-          index === activeHighlightIndex ? "bg-white" : "bg-white/30"
-        }`}
-        aria-label={`Go to highlight ${index + 1}`}
-      />
-    ))}
-  </div>
-) : null}
+        {highlights.length > 1 ? (
+          <>
+            <div className="flex min-w-[56px] items-center justify-center gap-2">
+              {highlights.map((_, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => void transitionToHighlight(index)}
+                  className={`h-2.5 w-2.5 rounded-full transition ${
+                    index === activeHighlightIndex ? "bg-white" : "bg-white/30"
+                  }`}
+                  aria-label={`Go to highlight ${index + 1}`}
+                />
+              ))}
+            </div>
 
-        <div className="flex items-center justify-end gap-3">
-          {highlights.length > 1 ? (
-            <>
+            <div className="flex items-center justify-end gap-3">
               <button
                 type="button"
                 onClick={goToPrevHighlight}
@@ -2626,11 +2013,9 @@ export default function Page() {
               <div className="min-w-[36px] text-right text-xs text-zinc-300">
                 {activeHighlightIndex + 1}/{highlights.length}
               </div>
-            </>
-          ) : (
-            <div className="h-11 w-[106px]" />
-          )}
-        </div>
+            </div>
+          </>
+        ) : null}
       </div>
     </div>
   </div>
@@ -2672,39 +2057,7 @@ export default function Page() {
                     </div>
 
                     <div className="mt-6 rounded-[24px] border border-white/8 bg-white/[0.03] p-5 backdrop-blur-2xl">
-                      {!currentUser ? (
-                        <div className="mb-5 rounded-2xl border border-amber-400/18 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
-                          <div className="text-sm font-medium text-amber-200">
-                            Login required to interact
-                          </div>
-                          <div className="mt-1 text-xs text-amber-100/80">
-                            You can explore freely, but ratings, favorites, likes
-                            and replies only work with an account and are the
-                            only ones that count in stats.
-                          </div>
-                        </div>
-                      ) : currentUser.emailVerified === false ? (
-                        <div className="mb-5 rounded-2xl border border-amber-400/18 bg-amber-500/10 px-4 py-3 backdrop-blur-xl">
-                          <div className="text-sm font-medium text-amber-200">
-                            Verify your email to interact
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-amber-100/80">
-                            <span>
-                              Your account exists, but you should verify your
-                              email first.
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                openAuthModal("verify-email", currentUser.email)
-                              }
-                              className="rounded-lg border border-amber-300/18 bg-amber-400/10 px-3 py-1.5 text-amber-100 transition hover:bg-amber-400/18"
-                            >
-                              Verify now
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
+                      
 
                       {myReview ? (
                         <div className="mb-5 rounded-2xl border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 backdrop-blur-xl">
@@ -2857,33 +2210,24 @@ export default function Page() {
                         <div className="text-xs text-zinc-400">
                           {formatReviewDate(myReview.createdAt)}
                         </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStars(myReview.stars);
-                            setHoverStars(0);
-                            setReview(myReview.review);
-                            rateBoxRef.current?.scrollIntoView({
-                              behavior: "smooth",
-                              block: "start",
-                            });
-                          }}
-                          className="text-xs text-zinc-300 underline underline-offset-4 transition hover:text-white"
-                        >
-                          Edit
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => deleteReview(myReview.id)}
-                          disabled={deletingReviewId === myReview.id}
-                          className="text-xs text-red-300 underline underline-offset-4 transition hover:text-red-200 disabled:opacity-50"
-                        >
-                          {deletingReviewId === myReview.id
-                            ? "Deleting..."
-                            : "Delete"}
-                        </button>
+                        <ReviewActionsMenu
+  disabled={deletingReviewId === myReview.id}
+  onEdit={() => {
+    setStars(myReview.stars);
+    setHoverStars(0);
+    setReview(myReview.review);
+    rateBoxRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  }}
+  onCreatePost={() => {
+    setSocialPostOpen(true);
+  }}
+  onDelete={() => {
+    openDeleteReviewModal(myReview.id);
+  }}
+/>
                       </div>
 
                       {hasReviewText(myReview.review) ? (
@@ -2960,7 +2304,7 @@ export default function Page() {
                       <ReplyList
                         replies={myReview.replies}
                         deletingReplyId={deletingReplyId}
-                        onDeleteReply={deleteReply}
+                        onDeleteReply={openDeleteReplyModal}
                         onRequireInteraction={requireReplyInteraction}
                       />
 
@@ -3100,7 +2444,7 @@ export default function Page() {
                           <ReplyList
                             replies={r.replies}
                             deletingReplyId={deletingReplyId}
-                            onDeleteReply={deleteReply}
+                            onDeleteReply={openDeleteReplyModal}
                             onRequireInteraction={requireReplyInteraction}
                           />
 
@@ -3243,11 +2587,11 @@ export default function Page() {
         <section className="mt-14">
           <div className="mb-5">
             <div className="text-xl font-semibold text-zinc-100">
-              5 moments that defined the 20th century
+              5 moments that defined the modern era
             </div>
             <div className="mt-1 text-sm text-zinc-400">
-              A editorial selection of turning points that reshaped the modern
-              world
+              An editorial selection of turning points that reshaped the world
+              from the 19th century to today
             </div>
           </div>
 
@@ -3368,6 +2712,39 @@ export default function Page() {
           </div>
         </div>
       ) : null}
+
+      <ConfirmModal
+        open={!!pendingDeleteAction}
+        eyebrow="RAD Account"
+        title={
+          pendingDeleteAction?.kind === "review"
+            ? "Delete the day's rating?"
+            : "Delete response?"
+        }
+        description={
+          pendingDeleteAction?.kind === "review"
+            ? "This action cannot be undone. Your rating, review, and any responses associated with this day will be deleted."
+            : "This action cannot be undone. Your answer will be deleted, and any associated answers will also be deleted."
+        }
+        confirmLabel="Eliminate"
+        cancelLabel="Cancel"
+        loading={
+          pendingDeleteAction?.kind === "review"
+            ? deletingReviewId === pendingDeleteAction.id
+            : deletingReplyId === pendingDeleteAction?.id
+        }
+        onClose={closeDeleteModal}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <SocialPostModal
+        open={socialPostOpen}
+        day={day}
+        highlight={highlight}
+        review={myReview ?? null}
+        username={currentUser?.username ?? null}
+        onClose={() => setSocialPostOpen(false)}
+      />
 
       <CosmicLoading
         open={

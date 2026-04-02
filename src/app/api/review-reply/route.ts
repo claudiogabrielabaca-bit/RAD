@@ -58,12 +58,18 @@ export async function POST(req: Request) {
 
     const rating = await prisma.rating.findUnique({
       where: { id: ratingId },
-      select: { id: true },
+      select: {
+        id: true,
+        day: true,
+        userId: true,
+      },
     });
 
     if (!rating) {
       return NextResponse.json({ error: "Review not found" }, { status: 404 });
     }
+
+    let parentReplyOwnerId: string | null = null;
 
     if (parentReplyId) {
       const parentReply = await prisma.ratingReply.findUnique({
@@ -72,6 +78,7 @@ export async function POST(req: Request) {
           id: true,
           ratingId: true,
           parentReplyId: true,
+          userId: true,
         },
       });
 
@@ -95,6 +102,8 @@ export async function POST(req: Request) {
           { status: 400 }
         );
       }
+
+      parentReplyOwnerId = parentReply.userId ?? null;
     }
 
     const reply = await prisma.ratingReply.create({
@@ -113,6 +122,21 @@ export async function POST(req: Request) {
         },
       },
     });
+
+    const notificationRecipientId = parentReplyOwnerId ?? rating.userId ?? null;
+
+    if (notificationRecipientId && notificationRecipientId !== user.id) {
+      await prisma.notification.create({
+        data: {
+          userId: notificationRecipientId,
+          actorUserId: user.id,
+          type: "review_replied",
+          reviewId: ratingId,
+          replyId: reply.id,
+          day: rating.day,
+        },
+      });
+    }
 
     return NextResponse.json(
       {

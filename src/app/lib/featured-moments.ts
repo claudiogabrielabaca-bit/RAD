@@ -13,6 +13,15 @@ export type FeaturedMoment = {
 
 export const FEATURED_MOMENTS: FeaturedMoment[] = [
   {
+    day: "1815-06-18",
+    title: "Battle of Waterloo",
+    text: "Napoleon was defeated at Waterloo, ending his rule and reshaping the political order of Europe.",
+    type: "war",
+    secondaryType: "politics",
+    image: "/featured/waterloo.jpg",
+    articleUrl: "https://en.wikipedia.org/wiki/Battle_of_Waterloo",
+  },
+  {
     day: "1914-07-28",
     title: "World War I begins",
     text: "Austria-Hungary declared war on Serbia, triggering the conflict that became the First World War and reshaped the modern world.",
@@ -20,15 +29,6 @@ export const FEATURED_MOMENTS: FeaturedMoment[] = [
     secondaryType: "politics",
     image: "/featured/ww1.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/World_War_I",
-  },
-  {
-    day: "1929-10-24",
-    title: "Wall Street Crash",
-    text: "Black Thursday marked the beginning of the Wall Street Crash of 1929, accelerating the global economic collapse known as the Great Depression.",
-    type: "disaster",
-    secondaryType: "politics",
-    image: "/featured/wall-street-crash.jpg",
-    articleUrl: "https://en.wikipedia.org/wiki/Wall_Street_Crash_of_1929",
   },
   {
     day: "1939-09-01",
@@ -42,7 +42,7 @@ export const FEATURED_MOMENTS: FeaturedMoment[] = [
   {
     day: "1969-07-20",
     title: "Moon landing",
-    text: "Apollo 11 landed on the Moon, and humans walked on its surface for the first time in one of the century’s defining achievements.",
+    text: "Apollo 11 landed on the Moon, and humans walked on its surface for the first time in one of modern history’s defining achievements.",
     type: "science",
     secondaryType: "discovery",
     image: "/featured/moon-landing.jpg",

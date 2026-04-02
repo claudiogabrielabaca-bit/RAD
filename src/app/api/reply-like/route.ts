@@ -27,11 +27,24 @@ export async function POST(req: Request) {
       where: { id: replyId },
       select: {
         id: true,
+        userId: true,
+        rating: {
+          select: {
+            day: true,
+          },
+        },
       },
     });
 
     if (!reply) {
       return NextResponse.json({ error: "Reply not found" }, { status: 404 });
+    }
+
+    if (reply.userId === user.id) {
+      return NextResponse.json(
+        { error: "You cannot like your own reply." },
+        { status: 400 }
+      );
     }
 
     const existingLike = await prisma.replyLike.findFirst({
@@ -50,6 +63,15 @@ export async function POST(req: Request) {
           id: existingLike.id,
         },
       });
+
+      await prisma.notification.deleteMany({
+        where: {
+          type: "reply_liked",
+          userId: reply.userId ?? undefined,
+          actorUserId: user.id,
+          replyId,
+        },
+      });
     } else {
       await prisma.replyLike.create({
         data: {
@@ -58,6 +80,18 @@ export async function POST(req: Request) {
           anonId: null,
         },
       });
+
+      if (reply.userId && reply.userId !== user.id) {
+        await prisma.notification.create({
+          data: {
+            userId: reply.userId,
+            actorUserId: user.id,
+            type: "reply_liked",
+            replyId,
+            day: reply.rating.day,
+          },
+        });
+      }
     }
 
     const likesCount = await prisma.replyLike.count({

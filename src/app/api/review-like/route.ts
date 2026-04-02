@@ -29,6 +29,7 @@ export async function POST(req: Request) {
       select: {
         id: true,
         userId: true,
+        day: true,
       },
     });
 
@@ -48,12 +49,24 @@ export async function POST(req: Request) {
         ratingId,
         userId: user.id,
       },
+      select: {
+        id: true,
+      },
     });
 
     if (existing) {
       await prisma.ratingLike.delete({
         where: {
           id: existing.id,
+        },
+      });
+
+      await prisma.notification.deleteMany({
+        where: {
+          type: "review_liked",
+          userId: review.userId ?? undefined,
+          actorUserId: user.id,
+          reviewId: ratingId,
         },
       });
 
@@ -75,6 +88,18 @@ export async function POST(req: Request) {
         anonId: null,
       },
     });
+
+    if (review.userId && review.userId !== user.id) {
+      await prisma.notification.create({
+        data: {
+          userId: review.userId,
+          actorUserId: user.id,
+          type: "review_liked",
+          reviewId: ratingId,
+          day: review.day,
+        },
+      });
+    }
 
     const likesCount = await prisma.ratingLike.count({
       where: { ratingId },

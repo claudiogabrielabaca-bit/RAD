@@ -66,6 +66,102 @@ const PRIORITY: WikiType[] = ["selected", "events", "births", "deaths"];
 const WIKI_LANGS: WikiLang[] = ["en"];
 const MAX_HIGHLIGHTS = 5;
 
+const TOPIC_STOP_WORDS = new Set([
+  "the",
+  "a",
+  "an",
+  "of",
+  "and",
+  "in",
+  "on",
+  "at",
+  "for",
+  "to",
+  "from",
+  "with",
+  "by",
+  "into",
+  "after",
+  "before",
+  "during",
+  "over",
+  "under",
+  "as",
+  "is",
+  "was",
+  "were",
+  "be",
+  "been",
+  "this",
+  "that",
+  "these",
+  "those",
+  "their",
+  "its",
+  "his",
+  "her",
+  "it",
+  "they",
+  "them",
+  "he",
+  "she",
+  "who",
+  "which",
+  "where",
+  "when",
+  "while",
+  "also",
+  "later",
+  "former",
+  "between",
+  "within",
+  "into",
+]);
+
+const DERIVATIVE_TERMS = new Set([
+  "casualties",
+  "casualty",
+  "victims",
+  "victim",
+  "deaths",
+  "death",
+  "dead",
+  "injured",
+  "injury",
+  "aftermath",
+  "timeline",
+  "perpetrators",
+  "perpetrator",
+  "hijackers",
+  "hijacker",
+  "memorial",
+  "memorials",
+  "reaction",
+  "reactions",
+  "response",
+  "responses",
+  "investigation",
+  "investigations",
+  "background",
+  "legacy",
+  "commemoration",
+  "commemorations",
+  "list",
+  "lists",
+  "category",
+  "archive",
+  "archives",
+  "anniversary",
+  "anniversaries",
+  "survivors",
+  "survivor",
+  "impact",
+  "consequences",
+  "related",
+  "overview",
+  "bibliography",
+]);
+
 function decodeHtmlEntities(input: string) {
   return input
     .replace(/&nbsp;/gi, " ")
@@ -126,6 +222,19 @@ function normalizeLooseText(input: string | null | undefined) {
     .trim();
 }
 
+function topicTokens(input: string | null | undefined) {
+  return normalizeLooseText(input)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .filter((token) => token.length > 1)
+    .filter((token) => !TOPIC_STOP_WORDS.has(token));
+}
+
+function meaningfulTopicTokens(input: string | null | undefined) {
+  return topicTokens(input).filter((token) => !DERIVATIVE_TERMS.has(token));
+}
+
 function extractWikiSlug(url: string | null | undefined) {
   if (!url) return "";
   const match = url.match(/\/wiki\/([^?#]+)/i);
@@ -135,6 +244,12 @@ function extractWikiSlug(url: string | null | undefined) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+}
+
+function canonicalTopicSlug(url: string | null | undefined) {
+  const slug = extractWikiSlug(url);
+  if (!slug) return "";
+  return meaningfulTopicTokens(slug).join(" ");
 }
 
 function buildDedupKey(item: DayHighlight) {
@@ -156,20 +271,62 @@ function isEnglishHighlight(item: DayHighlight) {
   return (item.articleUrl ?? "").includes("en.wikipedia.org");
 }
 
+function getDerivativePenalty(item: DayHighlight) {
+  const combined = [
+    normalizeLooseText(item.title),
+    normalizeLooseText(item.text),
+    canonicalTopicSlug(item.articleUrl),
+    extractWikiSlug(item.articleUrl),
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  let penalty = 0;
+
+  for (const term of DERIVATIVE_TERMS) {
+    if (combined.includes(term)) {
+      penalty += 1;
+    }
+  }
+
+  return penalty;
+}
+
+function titleWordCount(item: DayHighlight) {
+  return meaningfulTopicTokens(item.title).length;
+}
+
+function getHighlightQualityScore(item: DayHighlight) {
+  const title = (item.title ?? "").trim();
+  const text = (item.text ?? "").trim();
+  const words = titleWordCount(item);
+
+  let score = 0;
+
+  if (isEnglishHighlight(item)) score += 4;
+  if (item.image) score += 20;
+  if (item.articleUrl) score += 10;
+  if (title) score += 10;
+  if (text.length >= 60) score += 5;
+  if (text.length >= 120) score += 3;
+
+  if (words >= 2 && words <= 6) score += 6;
+  if (words === 1) score -= 5;
+  if (words >= 10) score -= 2;
+
+  if (title.length > 0 && title.length <= 52) score += 3;
+  if (title.length >= 90) score -= 2;
+
+  score += getTypeWeight(item.type);
+  score += getSecondaryTypeWeight(item.secondaryType);
+
+  score -= getDerivativePenalty(item) * 7;
+
+  return score;
+}
+
 function preferHighlight(a: DayHighlight, b: DayHighlight) {
-  const aIsEnglish = isEnglishHighlight(a);
-  const bIsEnglish = isEnglishHighlight(b);
-
-  if (aIsEnglish && !bIsEnglish) return a;
-  if (bIsEnglish && !aIsEnglish) return b;
-
-  const score = (item: DayHighlight) =>
-    (item.image ? 25 : 0) +
-    (item.title ? 15 : 0) +
-    (item.articleUrl ? 10 : 0) +
-    (item.text.length > 80 ? 5 : 0);
-
-  return score(a) >= score(b) ? a : b;
+  return getHighlightQualityScore(a) >= getHighlightQualityScore(b) ? a : b;
 }
 
 function scoreItem(item: WikiItem) {
@@ -662,7 +819,7 @@ async function fetchFallbackFromDatePage(
   return collected;
 }
 
-function uniqueHighlights(items: DayHighlight[]) {
+function exactUniqueHighlights(items: DayHighlight[]) {
   const map = new Map<string, DayHighlight>();
 
   for (const item of items) {
@@ -738,25 +895,116 @@ function getSecondaryTypeWeight(type: HighlightType | null | undefined) {
 }
 
 function sortHighlights(items: DayHighlight[]) {
-  return [...items].sort((a, b) => {
-    const scoreA =
-      (a.image ? 25 : 0) +
-      (a.title ? 15 : 0) +
-      (a.articleUrl ? 10 : 0) +
-      (a.text.length > 80 ? 5 : 0) +
-      getTypeWeight(a.type) +
-      getSecondaryTypeWeight(a.secondaryType);
+  return [...items].sort(
+    (a, b) => getHighlightQualityScore(b) - getHighlightQualityScore(a)
+  );
+}
 
-    const scoreB =
-      (b.image ? 25 : 0) +
-      (b.title ? 15 : 0) +
-      (b.articleUrl ? 10 : 0) +
-      (b.text.length > 80 ? 5 : 0) +
-      getTypeWeight(b.type) +
-      getSecondaryTypeWeight(b.secondaryType);
+function buildTopicTokenSet(item: DayHighlight) {
+  const titleTokens = meaningfulTopicTokens(item.title);
+  const textTokens = meaningfulTopicTokens(item.text).slice(0, 28);
+  const slugTokens = meaningfulTopicTokens(canonicalTopicSlug(item.articleUrl));
 
-    return scoreB - scoreA;
-  });
+  return new Set([...titleTokens, ...textTokens, ...slugTokens]);
+}
+
+function intersectionSize(a: Set<string>, b: Set<string>) {
+  let count = 0;
+
+  for (const value of a) {
+    if (b.has(value)) count += 1;
+  }
+
+  return count;
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>) {
+  if (a.size === 0 || b.size === 0) return 0;
+
+  const intersection = intersectionSize(a, b);
+  const union = new Set([...a, ...b]).size;
+
+  if (union === 0) return 0;
+  return intersection / union;
+}
+
+function sameImage(a?: string | null, b?: string | null) {
+  if (!a || !b) return false;
+  return a.trim() === b.trim();
+}
+
+function sameNormalizedTitle(a?: string | null, b?: string | null) {
+  const left = normalizeLooseText(a);
+  const right = normalizeLooseText(b);
+  return !!left && !!right && left === right;
+}
+
+function sameCanonicalSlug(a?: string | null, b?: string | null) {
+  const left = canonicalTopicSlug(a);
+  const right = canonicalTopicSlug(b);
+  return !!left && !!right && left === right;
+}
+
+function titleAppearsInOtherText(a: DayHighlight, b: DayHighlight) {
+  const aTitle = normalizeLooseText(a.title);
+  const bTitle = normalizeLooseText(b.title);
+  const aText = normalizeLooseText(a.text);
+  const bText = normalizeLooseText(b.text);
+
+  if (aTitle && bText && bText.includes(aTitle)) return true;
+  if (bTitle && aText && aText.includes(bTitle)) return true;
+
+  return false;
+}
+
+function isSameTopicCluster(a: DayHighlight, b: DayHighlight) {
+  if ((a.year ?? null) !== (b.year ?? null)) {
+    return false;
+  }
+
+  if (sameNormalizedTitle(a.title, b.title)) return true;
+  if (sameCanonicalSlug(a.articleUrl, b.articleUrl)) return true;
+  if (titleAppearsInOtherText(a, b)) return true;
+
+  const tokensA = buildTopicTokenSet(a);
+  const tokensB = buildTopicTokenSet(b);
+
+  const overlap = intersectionSize(tokensA, tokensB);
+  const similarity = jaccardSimilarity(tokensA, tokensB);
+
+  if (sameImage(a.image, b.image) && overlap >= 3) {
+    return true;
+  }
+
+  if (similarity >= 0.62) {
+    return true;
+  }
+
+  if (overlap >= 6 && similarity >= 0.36) {
+    return true;
+  }
+
+  if (overlap >= 8) {
+    return true;
+  }
+
+  return false;
+}
+
+function collapseTopicVariants(items: DayHighlight[]) {
+  const sorted = sortHighlights(items);
+  const kept: DayHighlight[] = [];
+
+  for (const candidate of sorted) {
+    const duplicateTopic = kept.some((existing) =>
+      isSameTopicCluster(existing, candidate)
+    );
+
+    if (duplicateTopic) continue;
+    kept.push(candidate);
+  }
+
+  return kept;
 }
 
 function buildNoneHighlight(): DayHighlight {
@@ -885,7 +1133,9 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
   }
 
   all = all.filter((item) => !isTooGenericTitle(item.title));
-  all = sortHighlights(uniqueHighlights(all)).slice(0, MAX_HIGHLIGHTS);
+  all = exactUniqueHighlights(all);
+  all = collapseTopicVariants(all);
+  all = sortHighlights(all).slice(0, MAX_HIGHLIGHTS);
 
   if (all.length === 0) {
     return [buildNoneHighlight()];

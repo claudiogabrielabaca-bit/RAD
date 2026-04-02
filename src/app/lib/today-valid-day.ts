@@ -1,6 +1,11 @@
 import { prisma } from "@/app/lib/prisma";
 import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 
+const MIN_CACHE_POOL_FOR_MONTH_DAY = 12;
+const TARGET_CACHE_POOL_FOR_MONTH_DAY = 24;
+const GENERATION_BATCH_SIZE = 4;
+const MAX_GENERATION_PROBES = 72;
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -53,6 +58,83 @@ function getUniqueDays(days: string[]) {
   return Array.from(new Set(days.filter(Boolean)));
 }
 
+function getDecade(year: number) {
+  return Math.floor(year / 10) * 10;
+}
+
+async function getCachedDaysForMonthDay(monthStr: string, dayStr: string) {
+  const rows = await prisma.dayHighlightCache.findMany({
+    where: {
+      day: {
+        endsWith: `-${monthStr}-${dayStr}`,
+      },
+      type: {
+        not: "none",
+      },
+      title: {
+        not: null,
+      },
+      text: {
+        not: "",
+      },
+    },
+    select: {
+      day: true,
+    },
+  });
+
+  return getUniqueDays(rows.map((item) => item.day));
+}
+
+function orderCandidateDaysForExpansion(args: {
+  month: number;
+  day: number;
+  cachedDays: string[];
+  excludeDays: string[];
+}) {
+  const { month, day, cachedDays, excludeDays } = args;
+  const cachedSet = new Set(cachedDays);
+  const excludeSet = new Set(excludeDays);
+
+  const decadeUsage = new Map<number, number>();
+
+  for (const cachedDay of cachedDays) {
+    const year = Number(cachedDay.slice(0, 4));
+
+    if (!Number.isFinite(year)) {
+      continue;
+    }
+
+    const decade = getDecade(year);
+    decadeUsage.set(decade, (decadeUsage.get(decade) ?? 0) + 1);
+  }
+
+  return shuffleArray(getValidYearsForMonthDay(month, day))
+    .filter((year) => {
+      const candidate = `${year}-${pad2(month)}-${pad2(day)}`;
+      return !cachedSet.has(candidate) && !excludeSet.has(candidate);
+    })
+    .sort((a, b) => {
+      const decadeDelta =
+        (decadeUsage.get(getDecade(a)) ?? 0) -
+        (decadeUsage.get(getDecade(b)) ?? 0);
+
+      if (decadeDelta !== 0) {
+        return decadeDelta;
+      }
+
+      const modernPenaltyA = a >= 2000 ? 1 : 0;
+      const modernPenaltyB = b >= 2000 ? 1 : 0;
+
+      if (modernPenaltyA !== modernPenaltyB) {
+        return modernPenaltyA - modernPenaltyB;
+      }
+
+      return 0;
+    })
+    .map((year) => `${year}-${pad2(month)}-${pad2(day)}`);
+}
+
 async function findGeneratedCandidate(args: {
   candidates: string[];
   maxAttempts: number;
@@ -65,10 +147,9 @@ async function findGeneratedCandidate(args: {
   }
 
   const shuffled = shuffleArray(candidates).slice(0, Math.max(1, maxAttempts));
-  const batchSize = 3;
 
-  for (let i = 0; i < shuffled.length; i += batchSize) {
-    const batch = shuffled.slice(i, i + batchSize);
+  for (let i = 0; i < shuffled.length; i += GENERATION_BATCH_SIZE) {
+    const batch = shuffled.slice(i, i + GENERATION_BATCH_SIZE);
 
     const results = await Promise.allSettled(
       batch.map(async (candidate) => {
@@ -96,13 +177,66 @@ async function findGeneratedCandidate(args: {
   return null;
 }
 
+async function expandMonthDayCacheIfNeeded(args: {
+  month: number;
+  day: number;
+  monthStr: string;
+  dayStr: string;
+  cachedDays: string[];
+  excludeDays: string[];
+  maxAttempts: number;
+}) {
+  const {
+    month,
+    day,
+    monthStr,
+    dayStr,
+    cachedDays,
+    excludeDays,
+    maxAttempts,
+  } = args;
+
+  if (cachedDays.length >= MIN_CACHE_POOL_FOR_MONTH_DAY) {
+    return cachedDays;
+  }
+
+  const targetPoolSize = Math.max(
+    MIN_CACHE_POOL_FOR_MONTH_DAY,
+    Math.min(TARGET_CACHE_POOL_FOR_MONTH_DAY, cachedDays.length + maxAttempts)
+  );
+
+  const generationBudget = Math.min(
+    MAX_GENERATION_PROBES,
+    Math.max(maxAttempts * 2, targetPoolSize - cachedDays.length)
+  );
+
+  const candidateDays = orderCandidateDaysForExpansion({
+    month,
+    day,
+    cachedDays,
+    excludeDays,
+  }).slice(0, generationBudget);
+
+  if (candidateDays.length === 0) {
+    return cachedDays;
+  }
+
+  await findGeneratedCandidate({
+    candidates: candidateDays,
+    maxAttempts: generationBudget,
+    restartedRound: false,
+  });
+
+  return getCachedDaysForMonthDay(monthStr, dayStr);
+}
+
 export async function getTodayValidDay(options?: {
   fresh?: boolean;
   maxAttempts?: number;
   excludeDays?: string[];
 }) {
   const fresh = options?.fresh ?? false;
-  const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 6, 12));
+  const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 24, 48));
   const excludeDays = getUniqueDays(options?.excludeDays ?? []);
   const excludedSet = new Set(excludeDays);
 
@@ -113,27 +247,18 @@ export async function getTodayValidDay(options?: {
   const monthStr = pad2(month);
   const dayStr = pad2(day);
 
-  const allCachedRows = await prisma.dayHighlightCache.findMany({
-    where: {
-      day: {
-        endsWith: `-${monthStr}-${dayStr}`,
-      },
-      type: {
-        not: "none",
-      },
-      title: {
-        not: null,
-      },
-      text: {
-        not: "",
-      },
-    },
-    select: {
-      day: true,
-    },
+  let allCachedDays = await getCachedDaysForMonthDay(monthStr, dayStr);
+
+  allCachedDays = await expandMonthDayCacheIfNeeded({
+    month,
+    day,
+    monthStr,
+    dayStr,
+    cachedDays: allCachedDays,
+    excludeDays,
+    maxAttempts,
   });
 
-  const allCachedDays = getUniqueDays(allCachedRows.map((item) => item.day));
   const remainingCachedDays = allCachedDays.filter(
     (candidate) => !excludedSet.has(candidate)
   );
@@ -149,6 +274,26 @@ export async function getTodayValidDay(options?: {
   }
 
   if (!fresh && allCachedDays.length > 0) {
+    const candidateDays = orderCandidateDaysForExpansion({
+      month,
+      day,
+      cachedDays: allCachedDays,
+      excludeDays: [],
+    }).slice(0, maxAttempts);
+
+    const generatedFromRestartedRound = await findGeneratedCandidate({
+      candidates: candidateDays,
+      maxAttempts: candidateDays.length,
+      restartedRound: true,
+    });
+
+    if (
+      generatedFromRestartedRound &&
+      !excludedSet.has(generatedFromRestartedRound.day)
+    ) {
+      return generatedFromRestartedRound;
+    }
+
     const shuffled = shuffleArray(allCachedDays);
 
     return {
