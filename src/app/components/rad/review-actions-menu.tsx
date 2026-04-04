@@ -49,7 +49,7 @@ export default function ReviewActionsMenu({
   }
 
   return (
-    <div ref={rootRef} className="relative ml-auto">
+    <div ref={rootRef} className="relative ml-auto z-50">
       <button
         type="button"
         disabled={disabled}
@@ -71,8 +71,8 @@ export default function ReviewActionsMenu({
       </button>
 
       {open ? (
-        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-48 overflow-hidden rounded-2xl border border-white/10 bg-[#121212]/95 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.025),transparent_24%)]" />
+        <div className="absolute right-0 top-[calc(100%+8px)] z-[60] w-48 rounded-2xl border border-white/10 bg-[#121212]/95 shadow-[0_20px_60px_rgba(0,0,0,0.45)] backdrop-blur-2xl">
+          <div className="absolute inset-0 rounded-2xl bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_38%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.025),transparent_24%)]" />
 
           <div className="relative p-2">
             <button
