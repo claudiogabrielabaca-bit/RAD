@@ -1989,19 +1989,19 @@ export default function Page({
 ) : null}
               <div
                 ref={rateBoxRef}
-                className="relative z-20 mt-6 scroll-mt-24 overflow-visible rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl"
+                className="relative z-20 mt-6 scroll-mt-24 overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl"
               >
                 <div className="relative">
                   <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.03),transparent_28%)]" />
 
                   <div className="relative p-5 sm:p-6">
-                    <div className="max-w-2xl">
+                    <div>
                       <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
                         Your reaction
                       </div>
 
                       <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-                        <div>
+                        <div className="max-w-2xl">
                           <h3 className="text-xl font-semibold text-white">
                             Rate this day
                           </h3>
