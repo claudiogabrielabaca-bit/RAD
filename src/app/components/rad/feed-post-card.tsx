@@ -153,7 +153,7 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.06),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.04),transparent_24%)]" />
 
-      <div className="relative flex flex-col gap-4">
+      <div className="relative flex min-w-0 flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -185,13 +185,13 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
           </div>
         </div>
 
-        <div className="rounded-[22px] border border-white/8 bg-white/[0.035] p-4">
-          <p className="text-[15px] leading-7 text-zinc-100 sm:text-base">
+        <div className="min-w-0 overflow-hidden rounded-[22px] border border-white/8 bg-white/[0.035] p-4">
+          <p className="break-all text-[15px] leading-7 text-zinc-100 [overflow-wrap:anywhere] sm:text-base">
             {item.review}
           </p>
         </div>
 
-        <div className="flex items-stretch gap-3 rounded-[22px] border border-white/8 bg-black/25 p-3">
+        <div className="flex min-w-0 items-stretch gap-3 overflow-hidden rounded-[22px] border border-white/8 bg-black/25 p-3">
           <div className="h-[88px] w-[88px] shrink-0 overflow-hidden rounded-[18px] border border-white/8 bg-black/40">
             {item.highlightImage ? (
               <img
@@ -207,31 +207,27 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
             )}
           </div>
 
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 overflow-hidden">
             <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
               On this day
             </div>
 
-            <div className="mt-1 line-clamp-2 text-base font-semibold leading-tight text-white">
+            <div className="mt-1 line-clamp-2 break-words text-base font-semibold leading-tight text-white [overflow-wrap:anywhere]">
               {item.highlightTitle ?? item.displayDate}
             </div>
 
             {item.highlightText ? (
-              <p className="mt-2 line-clamp-3 text-sm leading-6 text-zinc-400">
+              <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-zinc-400 [overflow-wrap:anywhere]">
                 {item.highlightText}
               </p>
-            ) : (
-              <p className="mt-2 text-sm leading-6 text-zinc-500">
-                Open the day to read the full historical context.
-              </p>
-            )}
+            ) : null}
 
             {badges.length > 0 ? (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="mt-3 flex flex-wrap gap-2">
                 {badges.map((badge) => (
                   <span
                     key={badge}
-                    className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${BADGE_CLASSES[badge]}`}
+                    className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${BADGE_CLASSES[badge]}`}
                   >
                     {BADGE_LABELS[badge]}
                   </span>

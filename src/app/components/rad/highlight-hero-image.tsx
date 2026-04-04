@@ -104,7 +104,7 @@ export default function HighlightHeroImage({
           src={displaySrc}
           alt={alt}
           draggable={false}
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-cover object-[center_18%]"
         />
       ) : (
         <div className="absolute inset-0 animate-pulse bg-black/20" />

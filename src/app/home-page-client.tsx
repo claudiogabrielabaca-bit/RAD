@@ -34,14 +34,12 @@ import {
 } from "@/app/lib/home-page-utils";
 import type {
   DayResponse,
-  DiscoverCard,
   FavoriteDayResponse,
   HighlightBadgeKey,
   HighlightItem,
   HighlightResponse,
   LegacyHighlightType,
   SurpriseResponse,
-  TopItem,
 } from "@/app/lib/rad-types";
 import {
   DAY_BACK_HISTORY_MAX,
@@ -57,8 +55,8 @@ import {
   getDayWithOffset,
   getDayWithYearShift,
 } from "@/app/lib/home-page-history";
-import DiscoverDayCard, { Star } from "@/app/components/rad/discover-day-card";
-import { loadDiscoverRandomDays, YEARS, MONTHS } from "@/app/lib/home-page-discover";
+import { Star } from "@/app/components/rad/discover-day-card";
+import { YEARS, MONTHS } from "@/app/lib/home-page-discover";
 import {
   type CurrentUser,
   type CurrentUserResponse,
@@ -70,7 +68,7 @@ import {
 
 const REVIEW_MAX_LENGTH = 280;
 const REPLY_MAX_LENGTH = 220;
-const HIGHLIGHT_SCROLL_OFFSET = 290;
+const HIGHLIGHT_SCROLL_OFFSET = 365;
 const FORCE_FRESH_MODE = false;
 
 
@@ -190,10 +188,6 @@ export default function Page({
     "helpful"
   );
 
-  const [top, setTop] = useState<TopItem[]>([]);
-  const [low, setLow] = useState<TopItem[]>([]);
-  const [loadingTop, setLoadingTop] = useState(false);
-
   const [showSuggestModal, setShowSuggestModal] = useState(false);
   const [suggestEvent, setSuggestEvent] = useState("");
   const [suggestDescription, setSuggestDescription] = useState("");
@@ -203,9 +197,6 @@ export default function Page({
   const [suggestToast, setSuggestToast] = useState("");
 
   const [socialPostOpen, setSocialPostOpen] = useState(false);
-
-  const [discoverDays, setDiscoverDays] = useState<DiscoverCard[]>([]);
-  const [loadingDiscover, setLoadingDiscover] = useState(false);
 
   const [isDayTransitioning, setIsDayTransitioning] = useState(false);
   const [minimumTransitionDone, setMinimumTransitionDone] = useState(true);
@@ -613,25 +604,6 @@ export default function Page({
   }, [initialBundle, searchParams]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      setLoadingDiscover(true);
-      const items = await loadDiscoverRandomDays(5, FORCE_FRESH_MODE);
-      if (!cancelled) {
-        setDiscoverDays(items);
-        setLoadingDiscover(false);
-      }
-    }
-
-    void run();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
     const [y, m, d] = day.split("-");
     if (y && m && d) {
       setSelectedYear(y);
@@ -650,32 +622,53 @@ export default function Page({
     const queryDay = searchParams.get("day");
     const focus = searchParams.get("focus");
 
-    const hasProfileJumpParams =
+    const hasSupportedJumpParams =
       !!queryDay &&
       isValidDayString(queryDay) &&
-      focus === "my-review";
+      (focus === "my-review" || focus === "highlight");
 
-    if (!hasProfileJumpParams) {
+    if (!hasSupportedJumpParams) {
       consumedProfileJumpRef.current = false;
       return;
     }
 
     if (consumedProfileJumpRef.current) return;
     if (day !== queryDay) return;
-    if (!myReviewBlockRef.current) return;
 
-    consumedProfileJumpRef.current = true;
+    if (focus === "my-review") {
+      if (!myReviewBlockRef.current) return;
 
-    const timeout = setTimeout(() => {
-      myReviewBlockRef.current?.scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
+      consumedProfileJumpRef.current = true;
 
-      router.replace(pathname, { scroll: false });
-    }, 500);
+      const timeout = setTimeout(() => {
+        myReviewBlockRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
 
-    return () => clearTimeout(timeout);
+        router.replace(`${pathname}?day=${encodeURIComponent(queryDay)}`, {
+          scroll: false,
+        });
+      }, 500);
+
+      return () => clearTimeout(timeout);
+    }
+
+    if (focus === "highlight") {
+      if (!highlightBlockRef.current) return;
+
+      consumedProfileJumpRef.current = true;
+
+      const timeout = setTimeout(() => {
+        scrollToHighlightBlock();
+
+        router.replace(`${pathname}?day=${encodeURIComponent(queryDay)}`, {
+          scroll: false,
+        });
+      }, 500);
+
+      return () => clearTimeout(timeout);
+    }
   }, [searchParams, day, pathname, router]);
 
   async function loadDay(d: string) {
@@ -796,27 +789,6 @@ export default function Page({
       //
     } finally {
       setLoadingFavoriteDay(false);
-    }
-  }
-
-  async function loadTop() {
-    setLoadingTop(true);
-
-    try {
-      const res = await fetch(`/api/top`, {
-        cache: "no-store",
-      });
-
-      if (!res.ok) throw new Error("Failed to load top");
-
-      const json = await res.json();
-      setTop((json?.top ?? []) as TopItem[]);
-      setLow((json?.low ?? []) as TopItem[]);
-    } catch {
-      setTop([]);
-      setLow([]);
-    } finally {
-      setLoadingTop(false);
     }
   }
 
@@ -1017,11 +989,6 @@ export default function Page({
       cancelled = true;
     };
   }, [day, hasPickedInitialDay]);
-
-  useEffect(() => {
-    if (!hasPickedInitialDay) return;
-    void loadTop();
-  }, [hasPickedInitialDay]);
 
   useEffect(() => {
     if (!hasPickedInitialDay) return;
@@ -1247,7 +1214,7 @@ export default function Page({
       }
 
       invalidateDayCache(day);
-      await Promise.all([loadDay(day), loadHighlight(day), loadTop()]);
+      await Promise.all([loadDay(day), loadHighlight(day)]);
       showToast("Review saved.");
     } catch {
       showToast("Error guardando.");
@@ -1283,7 +1250,7 @@ export default function Page({
       }
 
       invalidateDayCache(day);
-      await Promise.all([loadDay(day), loadTop()]);
+      await Promise.all([loadDay(day)]);
       showToast("Review deleted.");
     } catch {
       showToast("Could not delete review.");
@@ -1658,7 +1625,7 @@ export default function Page({
           </section>
         </div>
 
-        <div className="mt-12 grid grid-cols-1 gap-7 lg:grid-cols-[minmax(0,1fr)_390px]">
+        <div className="mt-12">
           <section className="rounded-[30px] border border-white/8 bg-white/[0.04] p-7 shadow-[0_20px_70px_rgba(0,0,0,0.36)] backdrop-blur-2xl">
             <div className="flex flex-col gap-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1845,7 +1812,7 @@ export default function Page({
     onMouseEnter={() => setIsHighlightPaused(true)}
     onMouseLeave={() => setIsHighlightPaused(false)}
   >
-    <div className="relative h-[400px] overflow-hidden rounded-2xl border border-white/8 bg-black/20 sm:h-[460px] lg:h-[500px]">
+    <div className="relative h-[460px] overflow-hidden rounded-2xl border border-white/8 bg-black/20 sm:h-[540px] lg:h-[640px]">
       <button
         type="button"
         onClick={toggleFavoriteDay}
@@ -2477,147 +2444,8 @@ export default function Page({
             </div>
           </section>
 
-          <aside className="space-y-6">
-            <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-6 backdrop-blur-2xl">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-sm font-semibold">Most Loved Days</div>
-                  <div className="text-xs text-zinc-400">
-                    Best scored by the community
-                  </div>
-                </div>
-
-                {loadingTop ? (
-                  <div className="text-xs text-zinc-400">Loading…</div>
-                ) : null}
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {top.slice(0, 6).map((item, index) => (
-                  <button
-                    key={item.day}
-                    onClick={() =>
-                      openDay(item.day, { scrollToHighlight: false })
-                    }
-                    className="w-full rounded-xl border border-white/8 bg-black/20 p-4 text-left transition hover:bg-black/30 backdrop-blur-xl"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-yellow-500/20 text-xs font-semibold text-yellow-400">
-                          #{index + 1}
-                        </div>
-
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold">{item.day}</div>
-                          <div className="mt-1 line-clamp-2 text-xs text-zinc-400">
-                            {item.title?.trim() || "Historical day"}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="shrink-0 text-sm font-semibold text-yellow-400">
-                        ★ {formatAvg(item.avg)}
-                      </div>
-                    </div>
-
-                    <div className="mt-2 text-xs text-zinc-500">
-                      {item.count} votes
-                    </div>
-                  </button>
-                ))}
-
-                {top.length === 0 ? (
-                  <div className="text-sm text-zinc-400"></div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-white/8 bg-white/[0.04] p-6 backdrop-blur-2xl">
-              <div>
-                <div className="text-sm font-semibold">
-                  Most Controversial Days
-                </div>
-                <div className="text-xs text-zinc-400">
-                  Days people rated the lowest
-                </div>
-              </div>
-
-              <div className="mt-4 space-y-3">
-                {low.slice(0, 6).map((item, index) => (
-                  <button
-                    key={item.day}
-                    onClick={() =>
-                      openDay(item.day, { scrollToHighlight: false })
-                    }
-                    className="w-full rounded-xl border border-white/8 bg-black/20 p-4 text-left transition hover:bg-black/30 backdrop-blur-xl"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-red-500/20 text-xs font-semibold text-red-400">
-                          #{index + 1}
-                        </div>
-
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold">{item.day}</div>
-                          <div className="mt-1 line-clamp-2 text-xs text-zinc-400">
-                            {item.title?.trim() || "Historical day"}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="shrink-0 text-sm font-semibold text-red-400">
-                        ★ {formatAvg(item.avg)}
-                      </div>
-                    </div>
-
-                    <div className="mt-2 text-xs text-zinc-500">
-                      {item.count} votes
-                    </div>
-                  </button>
-                ))}
-
-                {low.length === 0 ? (
-                  <div className="text-sm text-zinc-400"></div>
-                ) : null}
-              </div>
-            </div>
-          </aside>
         </div>
 
-        <section className="mt-14">
-          <div className="mb-5">
-            <div className="text-xl font-semibold text-zinc-100">
-              5 moments that defined the modern era
-            </div>
-            <div className="mt-1 text-sm text-zinc-400">
-              An editorial selection of turning points that reshaped the world
-              from the 19th century to today
-            </div>
-          </div>
-
-          {loadingDiscover ? (
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <div
-                  key={index}
-                  className="h-[360px] animate-pulse rounded-[30px] border border-white/8 bg-white/[0.04]"
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-5">
-              {discoverDays.map((card, index) => (
-                <DiscoverDayCard
-                  key={`${card.day}-${index}`}
-                  card={card}
-                  onSelect={(selectedDay) =>
-                    openDay(selectedDay, { scrollToHighlight: true })
-                  }
-                />
-              ))}
-            </div>
-          )}
-        </section>
       </div>
 
       {showSuggestModal ? (

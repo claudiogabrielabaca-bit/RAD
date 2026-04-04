@@ -632,10 +632,10 @@ export default function ProfilePageClient() {
                         router.push(`/?day=${encodeURIComponent(rating.day)}`);
                       }
                     }}
-                    className="cursor-pointer rounded-2xl border border-white/10 bg-black/20 p-4"
+                    className="min-w-0 overflow-hidden cursor-pointer rounded-2xl border border-white/10 bg-black/20 p-4"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <div className="text-base font-semibold text-white">
                           {rating.day}
                         </div>
@@ -646,7 +646,7 @@ export default function ProfilePageClient() {
                       </div>
                     </div>
 
-                    <p className="mt-4 text-sm leading-6 text-zinc-300">
+                    <p className="mt-4 break-all text-sm leading-6 text-zinc-300 [overflow-wrap:anywhere]">
                       {rating.review?.trim()
                         ? rating.review
                         : "No written review for this rating."}

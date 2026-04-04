@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import AuthModal, { type AuthView } from "@/app/components/rad/auth-modal";
 
@@ -44,6 +44,119 @@ function formatNotificationTime(value: string) {
   } catch {
     return value;
   }
+}
+
+function SearchIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-[18px] w-[18px]"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function FeedIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-[18px] w-[18px]"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="4" y="4" width="16" height="16" rx="2.5" />
+      <path d="M8 9h8" />
+      <path d="M8 12h8" />
+      <path d="M8 15h8" />
+    </svg>
+  );
+}
+
+function ImportantDaysIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-[18px] w-[18px]"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3 13.9 8.1 19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3Z" />
+    </svg>
+  );
+}
+
+function RankedDaysIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-[18px] w-[18px]"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 21h8" />
+      <path d="M12 17v4" />
+      <path d="M7 4h10v3a5 5 0 0 1-10 0V4Z" />
+      <path d="M7 5H5a2 2 0 0 0 0 4h2" />
+      <path d="M17 5h2a2 2 0 1 1 0 4h-2" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-[18px] w-[18px]"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+      <path d="M12 15v2" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-[18px] w-[18px]"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+    </svg>
+  );
 }
 
 function BellIcon() {
@@ -89,6 +202,57 @@ function NotificationSoundIcon({ muted }: { muted: boolean }) {
   );
 }
 
+function HeaderNavLink({
+  href,
+  active,
+  icon,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`inline-flex h-11 items-center gap-3 rounded-2xl px-2 text-[15px] font-semibold tracking-[-0.01em] transition ${
+        active ? "text-white" : "text-white/78 hover:text-white"
+      }`}
+    >
+      <span className="shrink-0">{icon}</span>
+      <span>{children}</span>
+    </Link>
+  );
+}
+
+function HeaderNavButton({
+  onClick,
+  icon,
+  children,
+  strong = false,
+}: {
+  onClick: () => void;
+  icon: ReactNode;
+  children: ReactNode;
+  strong?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex h-11 items-center gap-3 rounded-2xl px-2 text-[15px] tracking-[-0.01em] transition ${
+        strong
+          ? "font-semibold text-white hover:text-white/82"
+          : "font-medium text-white/78 hover:text-white"
+      }`}
+    >
+      <span className="shrink-0">{icon}</span>
+      <span>{children}</span>
+    </button>
+  );
+}
+
 export default function SiteHeader() {
   const pathname = usePathname();
   const router = useRouter();
@@ -115,6 +279,8 @@ export default function SiteHeader() {
 
   const isDiscoverActive = pathname === "/";
   const isFeedActive = pathname === "/feed";
+  const isImportantDaysActive = pathname === "/important-days";
+  const isRankedActive = pathname === "/ranked-days";
 
   async function loadNotifications() {
     if (!currentUser) return;
@@ -273,7 +439,9 @@ export default function SiteHeader() {
       const clickedInsideNotifications =
         notificationsRef.current?.contains(target);
 
-      if (clickedInsideMenu || clickedInsideNotifications) return;
+      if (clickedInsideMenu || clickedInsideNotifications) {
+        return;
+      }
 
       setMenuOpen(false);
       setNotificationsOpen(false);
@@ -399,206 +567,211 @@ export default function SiteHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-50 w-full border-b border-white/[0.07] bg-black/72 backdrop-blur-xl">
-        <div className="flex h-16 w-full items-center justify-end px-5 sm:px-6 lg:px-8">
-          <nav className="flex items-center gap-8">
-            <Link
+      <header className="sticky top-0 z-50 w-full border-b border-white/[0.07] bg-black/78 backdrop-blur-xl">
+        <div className="relative flex h-20 w-full items-center justify-center px-5 sm:px-6 lg:px-8">
+          <nav className="flex flex-wrap items-center justify-center gap-x-10 gap-y-3">
+            <HeaderNavLink
               href="/"
-              className={`inline-flex h-10 items-center text-[14px] font-semibold tracking-[-0.01em] transition ${
-                isDiscoverActive
-                  ? "text-white"
-                  : "text-white/72 hover:text-white"
-              }`}
+              active={isDiscoverActive}
+              icon={<SearchIcon />}
             >
               Discover
-            </Link>
+            </HeaderNavLink>
 
-            <Link
+            <HeaderNavLink
               href="/feed"
-              className={`inline-flex h-10 items-center text-[14px] font-semibold tracking-[-0.01em] transition ${
-                isFeedActive ? "text-white" : "text-white/72 hover:text-white"
-              }`}
+              active={isFeedActive}
+              icon={<FeedIcon />}
             >
               Feed
-            </Link>
+            </HeaderNavLink>
 
-            {isLoadingUser ? (
-              <div className="flex items-center gap-8">
-                <span className="inline-flex h-6 w-[90px] animate-pulse rounded bg-white/[0.06]" />
-                <span className="inline-flex h-6 w-[24px] animate-pulse rounded bg-white/[0.06]" />
-              </div>
-            ) : currentUser ? (
-              <div className="flex items-center gap-6">
-                <div ref={notificationsRef} className="relative">
-                  <button
-                    type="button"
-                    onClick={handleOpenNotifications}
-                    aria-label="Open notifications"
-                    aria-expanded={notificationsOpen}
-                    className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-white/88 transition hover:bg-white/[0.04] hover:text-white"
-                  >
-                    <BellIcon />
+            <HeaderNavLink
+              href="/important-days"
+              active={isImportantDaysActive}
+              icon={<ImportantDaysIcon />}
+            >
+              Important Days
+            </HeaderNavLink>
 
-                    {unreadNotifications > 0 ? (
-                      <span className="absolute -right-1 -top-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold text-black">
-                        {unreadNotifications > 9 ? "9+" : unreadNotifications}
-                      </span>
-                    ) : null}
-                  </button>
+            <HeaderNavLink
+              href="/ranked-days"
+              active={isRankedActive}
+              icon={<RankedDaysIcon />}
+            >
+              Ranked Days
+            </HeaderNavLink>
 
-                  {notificationsOpen ? (
-                    <div className="absolute right-0 top-[calc(100%+10px)] w-[360px] overflow-hidden rounded-[20px] border border-white/10 bg-[#111111]/95 p-2 shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-                      <div className="border-b border-white/6 px-3 pb-3 pt-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
-                              Notifications
-                            </div>
-                            <div className="mt-1 text-xs text-zinc-400">
-                              {unreadNotifications} unread
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={toggleNotificationsMuted}
-                              title={
-                                notificationsMuted
-                                  ? "Activar sonido"
-                                  : "Silenciar sonido"
-                              }
-                              aria-label={
-                                notificationsMuted
-                                  ? "Activar sonido"
-                                  : "Silenciar sonido"
-                              }
-                              className={`inline-flex h-9 w-9 items-center justify-center rounded-[10px] border transition ${
-                                notificationsMuted
-                                  ? "border-rose-400/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15"
-                                  : "border-white/8 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.08]"
-                              }`}
-                            >
-                              <NotificationSoundIcon muted={notificationsMuted} />
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={handleClearNotifications}
-                              disabled={
-                                clearingNotifications ||
-                                notifications.length === 0
-                              }
-                              className="inline-flex rounded-[10px] border border-white/8 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              {clearingNotifications ? "Clearing..." : "Clear"}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {loadingNotifications ? (
-                        <div className="space-y-2 p-2">
-                          {Array.from({ length: 3 }).map((_, index) => (
-                            <div
-                              key={index}
-                              className="h-16 animate-pulse rounded-[14px] bg-white/[0.05]"
-                            />
-                          ))}
-                        </div>
-                      ) : notifications.length === 0 ? (
-                        <div className="rounded-[14px] px-4 py-5 text-sm text-zinc-400">
-                          No notifications yet.
-                        </div>
-                      ) : (
-                        <div className="max-h-[380px] space-y-2 overflow-y-auto p-2">
-                          {notifications.map((item) => (
-                            <Link
-                              key={item.id}
-                              href={
-                                item.day
-                                  ? `/?day=${encodeURIComponent(item.day)}`
-                                  : "/"
-                              }
-                              onClick={() => setNotificationsOpen(false)}
-                              className={`block rounded-[14px] border px-3 py-3 transition ${
-                                item.isRead
-                                  ? "border-white/6 bg-white/[0.03] hover:bg-white/[0.05]"
-                                  : "border-white/10 bg-white/[0.06] hover:bg-white/[0.08]"
-                              }`}
-                            >
-                              <div className="text-sm font-medium text-white">
-                                {item.message}
-                              </div>
-
-                              <div className="mt-1 text-xs text-zinc-400">
-                                {item.day ? item.day : "Unknown day"} •{" "}
-                                {formatNotificationTime(item.createdAt)}
-                              </div>
-                            </Link>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
-
-                <Link
-                  href="/profile"
-                  className="inline-flex h-10 items-center text-[14px] font-semibold text-white transition hover:text-white/80"
-                >
-                  @{currentUser.username}
-                </Link>
-
-                <div ref={menuRef} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpen((prev) => !prev);
-                      setNotificationsOpen(false);
-                    }}
-                    aria-label="Open account menu"
-                    aria-expanded={menuOpen}
-                    className="inline-flex h-10 items-center text-[20px] leading-none text-white/88 transition hover:text-white"
-                  >
-                    <span className="relative -top-[3px] tracking-[0.08em]">
-                      …
-                    </span>
-                  </button>
-
-                  {menuOpen ? (
-                    <div className="absolute right-0 top-[calc(100%+10px)] min-w-[180px] overflow-hidden rounded-[18px] border border-white/10 bg-[#111111]/95 p-2 shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl">
-                      <button
-                        type="button"
-                        onClick={handleLogout}
-                        className="flex w-full items-center rounded-[12px] px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/10 hover:text-red-100"
-                      >
-                        Log out
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-8">
-                <button
-                  type="button"
-                  onClick={openLogin}
-                  className="inline-flex h-10 items-center text-[14px] font-medium text-white/82 transition hover:text-white"
-                >
+            {!isLoadingUser && !currentUser ? (
+              <>
+                <HeaderNavButton onClick={openLogin} icon={<LockIcon />}>
                   Log in
-                </button>
+                </HeaderNavButton>
 
-                <button
-                  type="button"
+                <HeaderNavButton
                   onClick={openRegister}
-                  className="inline-flex h-10 items-center text-[14px] font-semibold text-white transition hover:text-white/80"
+                  icon={<PencilIcon />}
+                  strong
                 >
                   Register
-                </button>
-              </div>
-            )}
+                </HeaderNavButton>
+              </>
+            ) : null}
           </nav>
+
+          {isLoadingUser ? null : currentUser ? (
+            <div className="absolute right-5 top-1/2 flex -translate-y-1/2 items-center gap-5 sm:right-6 lg:right-8">
+              <div ref={notificationsRef} className="relative">
+                <button
+                  type="button"
+                  onClick={handleOpenNotifications}
+                  aria-label="Open notifications"
+                  aria-expanded={notificationsOpen}
+                  className="relative inline-flex h-10 w-10 items-center justify-center rounded-full text-white/88 transition hover:bg-white/[0.04] hover:text-white"
+                >
+                  <BellIcon />
+
+                  {unreadNotifications > 0 ? (
+                    <span className="absolute -right-1 -top-1 inline-flex min-h-[18px] min-w-[18px] items-center justify-center rounded-full bg-white px-1 text-[10px] font-semibold text-black">
+                      {unreadNotifications > 9 ? "9+" : unreadNotifications}
+                    </span>
+                  ) : null}
+                </button>
+
+                {notificationsOpen ? (
+                  <div className="absolute right-0 top-[calc(100%+10px)] w-[360px] overflow-hidden rounded-[20px] border border-white/10 bg-[#111111]/95 p-2 shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                    <div className="border-b border-white/6 px-3 pb-3 pt-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-medium uppercase tracking-[0.16em] text-zinc-500">
+                            Notifications
+                          </div>
+                          <div className="mt-1 text-xs text-zinc-400">
+                            {unreadNotifications} unread
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={toggleNotificationsMuted}
+                            title={
+                              notificationsMuted
+                                ? "Activar sonido"
+                                : "Silenciar sonido"
+                            }
+                            aria-label={
+                              notificationsMuted
+                                ? "Activar sonido"
+                                : "Silenciar sonido"
+                            }
+                            className={`inline-flex h-9 w-9 items-center justify-center rounded-[10px] border transition ${
+                              notificationsMuted
+                                ? "border-rose-400/20 bg-rose-500/10 text-rose-200 hover:bg-rose-500/15"
+                                : "border-white/8 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.08]"
+                            }`}
+                          >
+                            <NotificationSoundIcon muted={notificationsMuted} />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleClearNotifications}
+                            disabled={
+                              clearingNotifications ||
+                              notifications.length === 0
+                            }
+                            className="inline-flex rounded-[10px] border border-white/8 bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-medium text-zinc-200 transition hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            {clearingNotifications ? "Clearing..." : "Clear"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {loadingNotifications ? (
+                      <div className="space-y-2 p-2">
+                        {Array.from({ length: 3 }).map((_, index) => (
+                          <div
+                            key={index}
+                            className="h-16 animate-pulse rounded-[14px] bg-white/[0.05]"
+                          />
+                        ))}
+                      </div>
+                    ) : notifications.length === 0 ? (
+                      <div className="rounded-[14px] px-4 py-5 text-sm text-zinc-400">
+                        No notifications yet.
+                      </div>
+                    ) : (
+                      <div className="max-h-[380px] space-y-2 overflow-y-auto p-2">
+                        {notifications.map((item) => (
+                          <Link
+                            key={item.id}
+                            href={
+                              item.day
+                                ? `/?day=${encodeURIComponent(item.day)}`
+                                : "/"
+                            }
+                            onClick={() => setNotificationsOpen(false)}
+                            className={`block rounded-[14px] border px-3 py-3 transition ${
+                              item.isRead
+                                ? "border-white/6 bg-white/[0.03] hover:bg-white/[0.05]"
+                                : "border-white/10 bg-white/[0.06] hover:bg-white/[0.08]"
+                            }`}
+                          >
+                            <div className="text-sm font-medium text-white">
+                              {item.message}
+                            </div>
+
+                            <div className="mt-1 text-xs text-zinc-400">
+                              {item.day ? item.day : "Unknown day"} •{" "}
+                              {formatNotificationTime(item.createdAt)}
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+
+              <Link
+                href="/profile"
+                className="inline-flex h-10 items-center text-[14px] font-semibold text-white transition hover:text-white/80"
+              >
+                @{currentUser.username}
+              </Link>
+
+              <div ref={menuRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen((prev) => !prev);
+                    setNotificationsOpen(false);
+                  }}
+                  aria-label="Open account menu"
+                  aria-expanded={menuOpen}
+                  className="inline-flex h-10 items-center text-[20px] leading-none text-white/88 transition hover:text-white"
+                >
+                  <span className="relative -top-[3px] tracking-[0.08em]">
+                    …
+                  </span>
+                </button>
+
+                {menuOpen ? (
+                  <div className="absolute right-0 top-[calc(100%+10px)] min-w-[180px] overflow-hidden rounded-[18px] border border-white/10 bg-[#111111]/95 p-2 shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="flex w-full items-center rounded-[12px] px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/10 hover:text-red-100"
+                    >
+                      Log out
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </header>
 
