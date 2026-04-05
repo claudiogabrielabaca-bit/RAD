@@ -43,7 +43,6 @@ export function useHomeDayNavigation(params: {
     pendingScrollToHighlightRef,
     highlightBlockRef,
     minTransitionTimerRef,
-    dayBackHistoryRef,
     isGoingBackRef,
     pushCurrentDayToBackHistory,
     showToast,

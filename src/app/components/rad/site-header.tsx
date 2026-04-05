@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import AuthModal, { type AuthView } from "@/app/components/rad/auth-modal";
 
@@ -282,8 +282,8 @@ export default function SiteHeader() {
   const isImportantDaysActive = pathname === "/important-days";
   const isRankedActive = pathname === "/ranked-days";
 
-  async function loadNotifications() {
-    if (!currentUser) return;
+  const loadNotifications = useCallback(async () => {
+    if (!currentUser?.id) return;
 
     try {
       setLoadingNotifications(true);
@@ -308,7 +308,7 @@ export default function SiteHeader() {
     } finally {
       setLoadingNotifications(false);
     }
-  }
+  }, [currentUser?.id]);
 
   useEffect(() => {
     try {
@@ -416,7 +416,7 @@ export default function SiteHeader() {
   }, [pathname]);
 
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser?.id) return;
 
     loadNotifications();
 
@@ -427,7 +427,7 @@ export default function SiteHeader() {
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, loadNotifications]);
 
   useEffect(() => {
     if (!menuOpen && !notificationsOpen) return;

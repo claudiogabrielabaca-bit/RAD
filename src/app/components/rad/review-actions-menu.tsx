@@ -27,15 +27,11 @@ export default function ReviewActionsMenu({
   disabled = false,
 }: ReviewActionsMenuProps) {
   const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [position, setPosition] = useState<MenuPosition>({ top: 0, left: 0 });
 
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
+  const canUsePortal = typeof document !== "undefined";
 
   function updatePosition() {
     if (!buttonRef.current) return;
@@ -129,7 +125,7 @@ export default function ReviewActionsMenu({
         </svg>
       </button>
 
-      {mounted && open
+      {canUsePortal && open
         ? createPortal(
             <div
               ref={menuRef}

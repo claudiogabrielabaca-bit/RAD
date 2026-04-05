@@ -121,18 +121,19 @@ export default function TurnstileWidget({
     }
 
     let cancelled = false;
+    const container = containerRef.current;
 
     async function mount() {
       try {
         await ensureTurnstileScript();
 
-        if (cancelled || !containerRef.current || !window.turnstile) {
+        if (cancelled || !container || !window.turnstile) {
           return;
         }
 
-        containerRef.current.innerHTML = "";
+        container.innerHTML = "";
 
-        widgetIdRef.current = window.turnstile.render(containerRef.current, {
+        widgetIdRef.current = window.turnstile.render(container, {
           sitekey: publicSiteKey,
           theme,
           callback: (token: string) => {
@@ -165,8 +166,8 @@ export default function TurnstileWidget({
         widgetIdRef.current = null;
       }
 
-      if (containerRef.current) {
-        containerRef.current.innerHTML = "";
+      if (container) {
+        container.innerHTML = "";
       }
     };
   }, [isLocalDev, onTokenChange, publicSiteKey, resetKey, theme]);

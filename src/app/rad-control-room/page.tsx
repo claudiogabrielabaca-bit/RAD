@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type AdminReport = {
@@ -72,7 +72,7 @@ export default function RadControlRoomPage() {
   const [reviewSearch, setReviewSearch] = useState("");
   const [actionKey, setActionKey] = useState<string | null>(null);
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     setLoading(true);
     setToast("");
 
@@ -121,7 +121,7 @@ export default function RadControlRoomPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [router]);
 
   async function updateReportStatus(
     reportId: string,
@@ -200,7 +200,7 @@ export default function RadControlRoomPage() {
 
   useEffect(() => {
     loadAll();
-  }, []);
+  }, [loadAll]);
 
   const filteredReports = useMemo(() => {
     const q = search.trim().toLowerCase();

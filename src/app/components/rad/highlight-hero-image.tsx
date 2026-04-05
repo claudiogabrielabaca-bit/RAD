@@ -22,7 +22,6 @@ export default function HighlightHeroImage({
   const normalizedSrc = src?.trim() || null;
 
   const [displaySrc, setDisplaySrc] = useState<string | null>(normalizedSrc);
-  const lastLoadedSrcRef = useRef<string | null>(normalizedSrc);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadAttemptRef = useRef(0);
 
@@ -36,21 +35,16 @@ export default function HighlightHeroImage({
     }
 
     if (!normalizedSrc) {
-      setDisplaySrc(null);
-      lastLoadedSrcRef.current = null;
-      onLoadingChange?.(false);
-      return;
-    }
-
-    if (normalizedSrc === lastLoadedSrcRef.current) {
-      setDisplaySrc(normalizedSrc);
       onLoadingChange?.(false);
       return;
     }
 
     if (preferImmediateSwap) {
-      setDisplaySrc(normalizedSrc);
-      lastLoadedSrcRef.current = normalizedSrc;
+      onLoadingChange?.(false);
+      return;
+    }
+
+    if (normalizedSrc === displaySrc) {
       onLoadingChange?.(false);
       return;
     }
@@ -68,7 +62,6 @@ export default function HighlightHeroImage({
         if (loadAttemptRef.current !== currentAttempt) return;
 
         setDisplaySrc(normalizedSrc);
-        lastLoadedSrcRef.current = normalizedSrc;
         onLoadingChange?.(false);
         revealTimerRef.current = null;
       }, revealDelayMs);
@@ -77,7 +70,6 @@ export default function HighlightHeroImage({
     const handleError = () => {
       if (loadAttemptRef.current !== currentAttempt) return;
 
-      // Si falla la nueva, mantenemos visible la anterior para evitar vacío/flicker.
       onLoadingChange?.(false);
     };
 
@@ -93,15 +85,21 @@ export default function HighlightHeroImage({
         revealTimerRef.current = null;
       }
     };
-  }, [normalizedSrc, onLoadingChange, revealDelayMs, preferImmediateSwap]);
+  }, [normalizedSrc, displaySrc, onLoadingChange, revealDelayMs, preferImmediateSwap]);
+
+  const resolvedDisplaySrc = !normalizedSrc
+    ? null
+    : preferImmediateSwap
+      ? normalizedSrc
+      : displaySrc;
 
   return (
     <div className={`absolute inset-0 overflow-hidden ${className}`}>
       <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] via-[#111] to-black" />
 
-      {displaySrc ? (
+      {resolvedDisplaySrc ? (
         <img
-          src={displaySrc}
+          src={resolvedDisplaySrc}
           alt={alt}
           draggable={false}
           className="absolute inset-0 h-full w-full object-cover object-[center_18%]"

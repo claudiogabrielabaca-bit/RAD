@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import RatingDistribution from "@/app/components/rad/rating-distribution";
 
@@ -187,7 +186,7 @@ export default function ProfilePageClient() {
   const [bioError, setBioError] = useState("");
   const [expandedFavoriteCards, setExpandedFavoriteCards] = useState<Record<string, boolean>>({});
 
-  async function loadProfile() {
+  const loadProfile = useCallback(async () => {
     setLoading(true);
     setError("");
 
@@ -214,11 +213,11 @@ export default function ProfilePageClient() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [router, returnTo]);
 
   useEffect(() => {
     loadProfile();
-  }, [returnTo]);
+  }, [loadProfile]);
 
   function getDisplayedBio() {
     const raw = data?.user?.bio?.trim();

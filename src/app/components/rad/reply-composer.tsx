@@ -1,7 +1,6 @@
 "use client";
 
 const REPLY_MAX_LENGTH = 220;
-const REVIEW_MAX_LENGTH = 280;
 
 export default function ReplyComposer({
   value,
@@ -28,7 +27,6 @@ export default function ReplyComposer({
         maxLength={REPLY_MAX_LENGTH}
         placeholder="Write a reply..."
         className="w-full rounded-2xl border border-white/10 bg-[#111111] px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
-
       />
 
       <div className="mt-2 flex items-center justify-between gap-3">

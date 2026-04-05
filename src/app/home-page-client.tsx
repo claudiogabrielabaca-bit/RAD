@@ -2,7 +2,7 @@
 import { useHomeDeleteActions } from "@/app/hooks/use-home-delete-actions";
 import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ReplyList from "@/app/components/rad/reply-list";
 import ReplyComposer from "@/app/components/rad/reply-composer";
@@ -26,19 +26,14 @@ import {
   formatReviewDate,
   hasReviewText,
   isLongReview,
-  getDiscoverTypeLabel,
-  getDiscoverTypeClasses,
-  truncateText,
   isValidDayString,
   formatMonthDayLabel,
 } from "@/app/lib/home-page-utils";
 import type {
   DayResponse,
   FavoriteDayResponse,
-  HighlightBadgeKey,
   HighlightItem,
   HighlightResponse,
-  LegacyHighlightType,
   SurpriseResponse,
 } from "@/app/lib/rad-types";
 import {
@@ -60,10 +55,6 @@ import { YEARS, MONTHS } from "@/app/lib/home-page-discover";
 import {
   type CurrentUser,
   type CurrentUserResponse,
-  closeHomeAuthModal,
-  openHomeAuthModal,
-  refreshHomeCurrentUser,
-  requireVerifiedHomeInteraction,
 } from "@/app/lib/home-page-auth";
 
 const REVIEW_MAX_LENGTH = 280;
@@ -78,17 +69,6 @@ const HERO_IMAGE_REVEAL_DELAY_MS = 150;
 type TodayInHistoryResponse = SurpriseResponse & {
   restartedRound?: boolean;
 };
-
-type PendingDeleteAction =
-  | {
-      kind: "review";
-      id: string;
-    }
-  | {
-      kind: "reply";
-      id: string;
-    }
-  | null;
 
 export default function Page({
   initialBundle = null,
@@ -137,7 +117,7 @@ export default function Page({
   const [selectedDay, setSelectedDay] = useState("01");
 
   const [currentUser, setCurrentUser] = useState<CurrentUser>(null);
-  const [loadingCurrentUser, setLoadingCurrentUser] = useState(true);
+  const [, setLoadingCurrentUser] = useState(true);
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authView, setAuthView] = useState<AuthView>("login");
@@ -213,10 +193,6 @@ export default function Page({
     (_, i) => pad2(i + 1)
   );
 
-  const profileHref =
-    hasPickedInitialDay && isValidDayString(day)
-      ? `/profile?returnTo=${encodeURIComponent(`/?day=${day}`)}`
-      : "/profile";
 
   function openAuthModal(view: AuthView = "login", nextEmail = "") {
     setAuthView(view);
@@ -340,7 +316,6 @@ export default function Page({
     cacheBundlePayload,
     invalidateDayCache,
     fetchDayBundle,
-    prefetchDayBundle,
     prefetchRelatedDays,
     applyBundlePayload,
     openDay,
@@ -370,6 +345,33 @@ export default function Page({
     setMinimumTransitionDone,
     minTransitionMs: MIN_DAY_TRANSITION_MS,
   });
+
+  const navigationActionsRef = useRef({
+    transitionIdRef,
+    cacheBundlePayload,
+    fetchDayBundle,
+    applyBundlePayload,
+    finishDayTransition,
+    prefetchRelatedDays,
+  });
+
+  useEffect(() => {
+    navigationActionsRef.current = {
+      transitionIdRef,
+      cacheBundlePayload,
+      fetchDayBundle,
+      applyBundlePayload,
+      finishDayTransition,
+      prefetchRelatedDays,
+    };
+  }, [
+    transitionIdRef,
+    cacheBundlePayload,
+    fetchDayBundle,
+    applyBundlePayload,
+    finishDayTransition,
+    prefetchRelatedDays,
+  ]);
 
   function showToast(message: string, duration = 2500) {
     setToast(message);
@@ -409,7 +411,7 @@ export default function Page({
     });
   }
 
-  function preloadImage(src?: string | null) {
+  const preloadImage = useCallback((src?: string | null) => {
     const normalizedSrc = src?.trim();
 
     if (!normalizedSrc) {
@@ -430,9 +432,9 @@ export default function Page({
         resolve();
       }
     });
-  }
+  }, []);
 
-  async function transitionToHighlight(nextIndex: number) {
+  const transitionToHighlight = useCallback(async (nextIndex: number) => {
     if (highlights.length <= 1) return;
     if (nextIndex < 0 || nextIndex >= highlights.length) return;
     if (nextIndex === activeHighlightIndex) return;
@@ -444,6 +446,13 @@ export default function Page({
 
     setPreferImmediateHighlightImageSwap(true);
     setActiveHighlightIndex(nextIndex);
+  }, [activeHighlightIndex, highlights, preloadImage]);
+
+  function clearMinTransitionTimer() {
+    if (minTransitionTimerRef.current) {
+      clearTimeout(minTransitionTimerRef.current);
+      minTransitionTimerRef.current = null;
+    }
   }
 
   useEffect(() => {
@@ -456,9 +465,7 @@ export default function Page({
         clearTimeout(todayHistoryNoticeTimeoutRef.current);
       }
 
-      if (minTransitionTimerRef.current) {
-        clearTimeout(minTransitionTimerRef.current);
-      }
+      clearMinTransitionTimer();
     };
   }, []);
 
@@ -472,13 +479,17 @@ export default function Page({
     setCanGoBack(storedHistory.length > 0);
   }, []);
 
-  useEffect(() => {
+  const resetUserScopedNavigationState = useCallback(() => {
     dayBundleCacheRef.current.clear();
     prefetchingDaysRef.current.clear();
     setRecentSurpriseHistory([]);
     clearTodayHistory();
     setTodayHistoryNotice("");
-  }, [currentUser?.id]);
+  }, [dayBundleCacheRef, prefetchingDaysRef]);
+
+  useEffect(() => {
+    resetUserScopedNavigationState();
+  }, [currentUser?.id, resetUserScopedNavigationState]);
 
   useEffect(() => {
     if (!hasPickedInitialDay) return;
@@ -510,7 +521,7 @@ export default function Page({
     didInitDayRef.current = true;
 
     if (initialBundle?.day && initialBundle?.dayData && initialBundle?.highlightData) {
-      cacheBundlePayload(initialBundle);
+      navigationActionsRef.current.cacheBundlePayload(initialBundle);
       setHasPickedInitialDay(true);
       return;
     }
@@ -526,11 +537,11 @@ export default function Page({
 
       if (queryDay && isValidDayString(queryDay)) {
         try {
-          const payload = await fetchDayBundle(queryDay);
+          const payload = await navigationActionsRef.current.fetchDayBundle(queryDay);
 
           if (!cancelled) {
             skipNextAutoDayLoadRef.current = true;
-            applyBundlePayload(payload);
+            navigationActionsRef.current.applyBundlePayload(payload);
             setDay(payload.day);
           }
         } catch {
@@ -568,7 +579,7 @@ export default function Page({
           json?.highlightData
         ) {
           skipNextAutoDayLoadRef.current = true;
-          applyBundlePayload(json);
+          navigationActionsRef.current.applyBundlePayload(json);
           setDay(json.day);
           rememberSurpriseDay(json.day);
           return;
@@ -734,7 +745,7 @@ export default function Page({
     }
   }
 
-  async function loadFavoriteDayStatus(d: string) {
+  const loadFavoriteDayStatus = useCallback(async (d: string) => {
     if (!currentUser) {
       setIsFavoriteDay(false);
       return;
@@ -756,7 +767,7 @@ export default function Page({
     } finally {
       setLoadingFavoriteDay(false);
     }
-  }
+  }, [currentUser]);
 
   async function toggleFavoriteDay() {
     if (!currentUser) {
@@ -957,8 +968,8 @@ export default function Page({
         if (!cancelled) {
           setLoadingDay(false);
           setLoadingHighlight(false);
-          finishDayTransition(transitionId);
-          void prefetchRelatedDays(day);
+          navigationActionsRef.current.finishDayTransition(transitionId);
+          void navigationActionsRef.current.prefetchRelatedDays(day);
         }
 
         return;
@@ -968,18 +979,18 @@ export default function Page({
       setLoadingHighlight(true);
 
       try {
-        const payload = await fetchDayBundle(day);
+        const payload = await navigationActionsRef.current.fetchDayBundle(day);
 
         if (cancelled) return;
 
-        applyBundlePayload(payload);
+        navigationActionsRef.current.applyBundlePayload(payload);
       } catch {
         if (cancelled) return;
         showToast("Error cargando el día.");
       } finally {
         if (cancelled) return;
-        finishDayTransition(transitionId);
-        void prefetchRelatedDays(day);
+        navigationActionsRef.current.finishDayTransition(transitionId);
+        void navigationActionsRef.current.prefetchRelatedDays(day);
       }
     }
 
@@ -988,12 +999,12 @@ export default function Page({
     return () => {
       cancelled = true;
     };
-  }, [day, hasPickedInitialDay]);
+  }, [day, hasPickedInitialDay, transitionIdRef]);
 
   useEffect(() => {
     if (!hasPickedInitialDay) return;
     void loadFavoriteDayStatus(day);
-  }, [day, hasPickedInitialDay, currentUser]);
+  }, [day, hasPickedInitialDay, loadFavoriteDayStatus]);
 
   useEffect(() => {
     if (
@@ -1022,7 +1033,7 @@ export default function Page({
     }, 6000);
 
     return () => clearInterval(interval);
-  }, [highlights, isHighlightPaused, activeHighlightIndex]);
+  }, [highlights, isHighlightPaused, activeHighlightIndex, transitionToHighlight]);
 
   useEffect(() => {
     setHighlight(highlights[activeHighlightIndex] ?? null);
@@ -1145,7 +1156,7 @@ export default function Page({
     setStars(myReview.stars);
     setHoverStars(0);
     setReview(myReview.review);
-  }, [myReview?.id, day]);
+  }, [myReview]);
 
   const otherReviews = useMemo(
     () => allReviews.filter((r) => !r.isMine),
