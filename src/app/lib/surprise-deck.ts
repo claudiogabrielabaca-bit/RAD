@@ -1,11 +1,12 @@
 import { prisma } from "@/app/lib/prisma";
 import { getOrCreateVisitorId, getVisitorId } from "@/app/lib/visitor-id";
 
-const SURPRISE_DECK_VERSION = "v10-month-cycle-year-balanced";
+const SURPRISE_DECK_VERSION = "v11-era-rotation-century-balanced";
 const MONTH_COOLDOWN = 4;
 const YEAR_COOLDOWN = 6;
 const DECADE_COOLDOWN = 4;
 const MONTH_DAY_COOLDOWN = 12;
+const ERA_COOLDOWN = 2;
 
 type DeckRowLike = {
   deck: unknown;
@@ -25,6 +26,7 @@ type HistoryState = {
   recentYears: number[];
   recentDecades: number[];
   recentMonthDays: string[];
+  recentEras: EraBucket[];
 };
 
 function isValidDayString(value?: string | null): value is string {
@@ -135,6 +137,7 @@ function buildHistoryState(historyDays: string[]): HistoryState {
       .map((day) => getDecade(parseYear(day)))
       .slice(-DECADE_COOLDOWN),
     recentMonthDays: validHistory.map(parseMonthDay).slice(-MONTH_DAY_COOLDOWN),
+    recentEras: validHistory.map(getEraBucket).slice(-ERA_COOLDOWN),
   };
 }
 
@@ -166,14 +169,24 @@ function updateHistoryState(state: HistoryState, day: string) {
   if (state.recentMonthDays.length > MONTH_DAY_COOLDOWN) {
     state.recentMonthDays.shift();
   }
+
+  state.recentEras.push(era);
+  if (state.recentEras.length > ERA_COOLDOWN) {
+    state.recentEras.shift();
+  }
 }
 
 function getMonthPriorityOrder(
   buckets: Map<number, string[]>,
-  state: HistoryState
+  state: HistoryState,
+  targetEra?: EraBucket
 ) {
   const availableMonths = [...buckets.entries()]
-    .filter(([, days]) => days.length > 0)
+    .filter(([, days]) => {
+      if (days.length === 0) return false;
+      if (!targetEra) return true;
+      return days.some((day) => getEraBucket(day) === targetEra);
+    })
     .map(([month]) => month);
 
   if (availableMonths.length === 0) return [];
@@ -185,7 +198,11 @@ function getMonthPriorityOrder(
     nonRecentMonths.length > 0 ? nonRecentMonths : availableMonths;
 
   const ranked = candidateMonths.map((month) => {
-    const days = buckets.get(month) ?? [];
+    const rawDays = buckets.get(month) ?? [];
+    const days = targetEra
+      ? rawDays.filter((day) => getEraBucket(day) === targetEra)
+      : rawDays;
+
     const usage = state.monthUsage.get(month) ?? 0;
     const yearSpread = new Set(days.map((day) => parseYear(day))).size;
     const decadeSpread = new Set(
@@ -213,6 +230,51 @@ function getMonthPriorityOrder(
   const best = ranked.filter((item) => item.usage === bestUsage);
 
   return shuffleArray(best.map((item) => item.month));
+}
+
+function getEraPriorityOrder(
+  buckets: Map<number, string[]>,
+  state: HistoryState
+) {
+  const availableEras = Array.from(
+    new Set(
+      [...buckets.values()]
+        .flat()
+        .filter(isValidDayString)
+        .map((day) => getEraBucket(day))
+    )
+  ) as EraBucket[];
+
+  if (availableEras.length === 0) return [];
+
+  const nonRecentEras = availableEras.filter(
+    (era) => !state.recentEras.includes(era)
+  );
+  const candidateEras =
+    nonRecentEras.length > 0 ? nonRecentEras : availableEras;
+
+  const ranked = candidateEras.map((era) => {
+    const count = [...buckets.values()]
+      .flat()
+      .filter((day) => getEraBucket(day) === era).length;
+
+    return {
+      era,
+      usage: state.eraUsage.get(era) ?? 0,
+      count,
+    };
+  });
+
+  ranked.sort((a, b) => {
+    if (a.usage !== b.usage) return a.usage - b.usage;
+    if (a.count !== b.count) return b.count - a.count;
+    return a.era.localeCompare(b.era);
+  });
+
+  const bestUsage = ranked[0]?.usage ?? 0;
+  const best = ranked.filter((item) => item.usage === bestUsage);
+
+  return shuffleArray(best.map((item) => item.era));
 }
 
 function scoreCandidate(day: string, state: HistoryState) {
@@ -269,27 +331,58 @@ function buildBalancedDeck(days: string[], historyDays: string[] = []) {
   const state = buildHistoryState(historyDays);
   const result: string[] = [];
 
-  while (true) {
-    const monthOrder = getMonthPriorityOrder(buckets, state);
+  while (result.length < uniqueDays.length) {
+    let selectedDay: string | null = null;
+    let selectedMonth: number | null = null;
 
-    if (monthOrder.length === 0) {
+    const eraOrder = getEraPriorityOrder(buckets, state);
+
+    for (const era of eraOrder) {
+      const monthOrder = getMonthPriorityOrder(buckets, state, era);
+
+      for (const month of monthOrder) {
+        const bucket = buckets.get(month) ?? [];
+        const eraDays = bucket.filter((day) => getEraBucket(day) === era);
+        const candidate = pickBestCandidate(eraDays, state);
+
+        if (candidate) {
+          selectedDay = candidate;
+          selectedMonth = month;
+          break;
+        }
+      }
+
+      if (selectedDay) {
+        break;
+      }
+    }
+
+    if (!selectedDay || selectedMonth === null) {
+      const monthOrder = getMonthPriorityOrder(buckets, state);
+
+      for (const month of monthOrder) {
+        const bucket = buckets.get(month) ?? [];
+        const candidate = pickBestCandidate(bucket, state);
+
+        if (candidate) {
+          selectedDay = candidate;
+          selectedMonth = month;
+          break;
+        }
+      }
+    }
+
+    if (!selectedDay || selectedMonth === null) {
       break;
     }
 
-    for (const month of monthOrder) {
-      const bucket = buckets.get(month) ?? [];
-      const selected = pickBestCandidate(bucket, state);
+    const nextBucket = (buckets.get(selectedMonth) ?? []).filter(
+      (day) => day !== selectedDay
+    );
+    buckets.set(selectedMonth, nextBucket);
 
-      if (!selected) {
-        continue;
-      }
-
-      const nextBucket = bucket.filter((day) => day !== selected);
-      buckets.set(month, nextBucket);
-
-      result.push(selected);
-      updateHistoryState(state, selected);
-    }
+    result.push(selectedDay);
+    updateHistoryState(state, selectedDay);
   }
 
   return result;
