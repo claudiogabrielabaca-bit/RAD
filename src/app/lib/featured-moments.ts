@@ -37,7 +37,7 @@ export const FEATURED_MOMENTS: FeaturedMoment[] = [
     type: "war",
     secondaryType: "politics",
     image:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Bundesarchiv_Bild_183-H27337%2C_Polen%2C_Infanterie_mit_Panzer_II_und_III.jpg/330px-Bundesarchiv_Bild_183-H27337%2C_Polen%2C_Infanterie_mit_Panzer_II_und_III.jpg",
+      "/featured/ww2-begins.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/Invasion_of_Poland",
   },
   {
@@ -47,7 +47,7 @@ export const FEATURED_MOMENTS: FeaturedMoment[] = [
     type: "science",
     secondaryType: "discovery",
     image:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Aldrin_Apollo_11.jpg/330px-Aldrin_Apollo_11.jpg",
+      "/featured/moon-landing.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/Apollo_11",
   },
   {
