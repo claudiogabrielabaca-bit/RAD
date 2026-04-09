@@ -23,15 +23,13 @@ const patches: Record<string, CacheRow> = {
     year: 1939,
     title: "World War II begins",
     text: "World War II begins as Germany invades Poland.",
-    image:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Bundesarchiv_Bild_183-H27337%2C_Polen%2C_Infanterie_mit_Panzer_II_und_III.jpg/330px-Bundesarchiv_Bild_183-H27337%2C_Polen%2C_Infanterie_mit_Panzer_II_und_III.jpg",
+    image: "/featured/ww2-begins.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/Invasion_of_Poland",
     highlights: [
       {
         title: "World War II begins",
         text: "World War II begins as Germany invades Poland.",
-        image:
-          "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Bundesarchiv_Bild_183-H27337%2C_Polen%2C_Infanterie_mit_Panzer_II_und_III.jpg/330px-Bundesarchiv_Bild_183-H27337%2C_Polen%2C_Infanterie_mit_Panzer_II_und_III.jpg",
+        image: "/featured/ww2-begins.jpg",
         articleUrl: "https://en.wikipedia.org/wiki/Invasion_of_Poland",
         year: 1939,
         type: "selected",
@@ -47,15 +45,13 @@ const patches: Record<string, CacheRow> = {
     year: 1969,
     title: "Moon landing",
     text: "Apollo 11 lands on the Moon, and humans walk on its surface for the first time.",
-    image:
-      "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Aldrin_Apollo_11.jpg/330px-Aldrin_Apollo_11.jpg",
+    image: "/featured/moon-landing.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/Apollo_11",
     highlights: [
       {
         title: "Moon landing",
         text: "Apollo 11 lands on the Moon, and humans walk on its surface for the first time.",
-        image:
-          "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Aldrin_Apollo_11.jpg/330px-Aldrin_Apollo_11.jpg",
+        image: "/featured/moon-landing.jpg",
         articleUrl: "https://en.wikipedia.org/wiki/Apollo_11",
         year: 1969,
         type: "selected",
