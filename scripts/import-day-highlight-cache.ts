@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../src/app/lib/prisma";
 
 type CacheRow = {
@@ -54,7 +55,10 @@ async function main() {
         text: row.text,
         image: row.image ?? null,
         articleUrl: row.articleUrl ?? null,
-        highlights: row.highlights ?? null,
+        highlights:
+          row.highlights == null
+            ? Prisma.DbNull
+            : (row.highlights as Prisma.InputJsonValue),
       })),
     });
 
