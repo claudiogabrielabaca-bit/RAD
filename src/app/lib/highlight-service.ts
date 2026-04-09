@@ -1,6 +1,9 @@
 import { prisma } from "@/app/lib/prisma";
+import { getFeaturedMoment } from "@/app/lib/featured-moments";
 import { getDayHighlights } from "@/app/lib/wiki";
 import type { HighlightItem, HighlightResponse } from "@/app/lib/rad-types";
+
+const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date.";
 
 type CachedRow = {
   day: string;
@@ -211,7 +214,7 @@ function getEmptyResponse(): HighlightResponse {
   return {
     highlight: {
       title: null,
-      text: "No exact historical match was found for this date.",
+      text: EMPTY_FALLBACK_TEXT,
       image: null,
       articleUrl: null,
       year: null,
@@ -222,6 +225,40 @@ function getEmptyResponse(): HighlightResponse {
     },
     highlights: [],
   };
+}
+
+function buildFeaturedHighlightResponse(day: string): HighlightResponse | null {
+  const item = getFeaturedMoment(day);
+  if (!item) return null;
+
+  const highlight: HighlightItem = {
+    title: item.title,
+    text: item.text,
+    image: item.image,
+    articleUrl: item.articleUrl,
+    year: Number(item.day.slice(0, 4)) || null,
+    type: item.type,
+    secondaryType: item.secondaryType
+      ? mapTypeToLegacyType(item.secondaryType)
+      : null,
+    kind: "event",
+    category: inferCategoryFromType(item.type),
+  };
+
+  return {
+    highlight,
+    highlights: [highlight],
+  };
+}
+
+function shouldUseFeaturedOverride(row: CachedRow | null | undefined) {
+  if (!row) return true;
+  if (row.type === "none") return true;
+  if (!isNonEmptyText(row.text)) return true;
+  if (row.text.trim() === EMPTY_FALLBACK_TEXT) return true;
+  if (!row.title?.trim()) return true;
+  if (!row.image?.trim()) return true;
+  return false;
 }
 
 async function readCachedHighlights(
@@ -240,6 +277,13 @@ async function readCachedHighlights(
       highlights: true,
     },
   });
+
+  const featured = buildFeaturedHighlightResponse(day);
+
+  if (featured && shouldUseFeaturedOverride(row as CachedRow | null)) {
+    await writeHighlightsToCache(day, featured.highlights ?? []);
+    return featured;
+  }
 
   if (!row) {
     return null;
@@ -270,11 +314,42 @@ async function writeHighlightsToCache(day: string, highlights: HighlightItem[]) 
   const primary = pickPrimaryHighlight(highlights);
 
   if (!primary) {
+    const featured = buildFeaturedHighlightResponse(day);
+
+    if (featured?.highlight) {
+      const featuredPrimary = featured.highlight;
+
+      await prisma.dayHighlightCache.upsert({
+        where: { day },
+        update: {
+          title: featuredPrimary.title ?? null,
+          text: featuredPrimary.text,
+          image: featuredPrimary.image ?? null,
+          articleUrl: featuredPrimary.articleUrl ?? null,
+          year: featuredPrimary.year ?? null,
+          type: featuredPrimary.type ?? "selected",
+          highlights: featured.highlights ?? [],
+        },
+        create: {
+          day,
+          title: featuredPrimary.title ?? null,
+          text: featuredPrimary.text,
+          image: featuredPrimary.image ?? null,
+          articleUrl: featuredPrimary.articleUrl ?? null,
+          year: featuredPrimary.year ?? null,
+          type: featuredPrimary.type ?? "selected",
+          highlights: featured.highlights ?? [],
+        },
+      });
+
+      return;
+    }
+
     await prisma.dayHighlightCache.upsert({
       where: { day },
       update: {
         title: null,
-        text: "No exact historical match was found for this date.",
+        text: EMPTY_FALLBACK_TEXT,
         image: null,
         articleUrl: null,
         year: null,
@@ -284,7 +359,7 @@ async function writeHighlightsToCache(day: string, highlights: HighlightItem[]) 
       create: {
         day,
         title: null,
-        text: "No exact historical match was found for this date.",
+        text: EMPTY_FALLBACK_TEXT,
         image: null,
         articleUrl: null,
         year: null,
@@ -343,6 +418,12 @@ export async function ensureHighlightsForDay(
 
   if (cached) {
     return cached;
+  }
+
+  const featured = buildFeaturedHighlightResponse(day);
+  if (featured) {
+    await writeHighlightsToCache(day, featured.highlights ?? []);
+    return featured;
   }
 
   const rawHighlights = await getDayHighlights(day);
