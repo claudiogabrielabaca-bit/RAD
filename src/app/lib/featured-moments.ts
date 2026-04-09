@@ -33,19 +33,21 @@ export const FEATURED_MOMENTS: FeaturedMoment[] = [
   {
     day: "1939-09-01",
     title: "World War II begins",
-    text: "Germany invaded Poland, beginning the Second World War and setting off the deadliest conflict in human history.",
+    text: "World War II begins as Germany invades Poland.",
     type: "war",
     secondaryType: "politics",
-    image: "/featured/ww2.jpg",
+    image:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a6/Bundesarchiv_Bild_183-H27337%2C_Polen%2C_Infanterie_mit_Panzer_II_und_III.jpg/330px-Bundesarchiv_Bild_183-H27337%2C_Polen%2C_Infanterie_mit_Panzer_II_und_III.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/Invasion_of_Poland",
   },
   {
     day: "1969-07-20",
     title: "Moon landing",
-    text: "Apollo 11 landed on the Moon, and humans walked on its surface for the first time in one of modern history’s defining achievements.",
+    text: "Apollo 11 lands on the Moon, and humans walk on its surface for the first time.",
     type: "science",
     secondaryType: "discovery",
-    image: "/featured/moon-landing.jpg",
+    image:
+      "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a1/Aldrin_Apollo_11.jpg/330px-Aldrin_Apollo_11.jpg",
     articleUrl: "https://en.wikipedia.org/wiki/Apollo_11",
   },
   {
