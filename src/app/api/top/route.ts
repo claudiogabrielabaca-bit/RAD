@@ -1,14 +1,23 @@
 import { prisma } from "@/app/lib/prisma";
+import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const NO_MATCH_LABEL = "No exact historical match";
 
 type RankedDay = {
   day: string;
   avg: number;
   count: number;
   title: string | null;
+};
+
+type CacheTitleRow = {
+  day: string;
+  title: string | null;
+  type: string;
 };
 
 function groupRatings(
@@ -30,26 +39,80 @@ function groupRatings(
   }));
 }
 
-async function attachTitles(
-  items: Array<{ day: string; avg: number; count: number }>
-): Promise<RankedDay[]> {
-  const days = items.map((item) => item.day);
+async function buildTitleMap(days: string[]): Promise<Map<string, string>> {
+  const uniqueDays = [...new Set(days)];
 
-  const highlights = await prisma.dayHighlightCache.findMany({
+  const cached = await prisma.dayHighlightCache.findMany({
     where: {
-      day: { in: days },
+      day: { in: uniqueDays },
     },
     select: {
       day: true,
       title: true,
+      type: true,
     },
   });
 
-  const titleByDay = new Map(highlights.map((h) => [h.day, h.title]));
+  const cachedByDay = new Map<string, CacheTitleRow>(
+    cached.map((row) => [row.day, row])
+  );
 
+  const daysNeedingResolution = uniqueDays.filter((day) => {
+    const row = cachedByDay.get(day);
+
+    if (!row) return true;
+    if (row.title?.trim()) return false;
+    if (row.type === "none") return false;
+
+    return true;
+  });
+
+  const resolvedEntries = await Promise.all(
+    daysNeedingResolution.map(async (day) => {
+      try {
+        const result = await ensureHighlightsForDay(day);
+        const primary = result.highlight ?? result.highlights?.[0] ?? null;
+
+        const label =
+          primary?.title?.trim() ||
+          (primary?.type === "none" ? NO_MATCH_LABEL : NO_MATCH_LABEL);
+
+        return [day, label] as const;
+      } catch {
+        return [day, NO_MATCH_LABEL] as const;
+      }
+    })
+  );
+
+  const resolvedByDay = new Map<string, string>(resolvedEntries);
+  const finalMap = new Map<string, string>();
+
+  for (const day of uniqueDays) {
+    const cachedRow = cachedByDay.get(day);
+
+    if (cachedRow?.title?.trim()) {
+      finalMap.set(day, cachedRow.title.trim());
+      continue;
+    }
+
+    if (cachedRow?.type === "none") {
+      finalMap.set(day, NO_MATCH_LABEL);
+      continue;
+    }
+
+    finalMap.set(day, resolvedByDay.get(day) ?? NO_MATCH_LABEL);
+  }
+
+  return finalMap;
+}
+
+function attachTitles(
+  items: Array<{ day: string; avg: number; count: number }>,
+  titleMap: Map<string, string>
+): RankedDay[] {
   return items.map((item) => ({
     ...item,
-    title: titleByDay.get(item.day) ?? null,
+    title: titleMap.get(item.day) ?? NO_MATCH_LABEL,
   }));
 }
 
@@ -78,8 +141,13 @@ export async function GET() {
       })
       .slice(0, 10);
 
-    const top = await attachTitles(sortedTop);
-    const low = await attachTitles(sortedLow);
+    const titleMap = await buildTitleMap([
+      ...sortedTop.map((item) => item.day),
+      ...sortedLow.map((item) => item.day),
+    ]);
+
+    const top = attachTitles(sortedTop, titleMap);
+    const low = attachTitles(sortedLow, titleMap);
 
     return NextResponse.json(
       { top, low },

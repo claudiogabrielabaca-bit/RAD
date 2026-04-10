@@ -66,7 +66,7 @@ function PodiumCard({
         <div className="mt-5">
           <div className="text-sm font-semibold text-zinc-100">{item.day}</div>
           <div className="mt-2 line-clamp-2 text-[15px] font-medium text-zinc-300">
-            {item.title?.trim() || "Historical day"}
+            {item.title?.trim() || "No exact historical match"}
           </div>
         </div>
 
@@ -205,7 +205,7 @@ function RankedDayRow({
           </div>
 
           <div className="mt-2 line-clamp-1 text-sm text-zinc-400">
-            {item.title?.trim() || "Historical day"}
+            {item.title?.trim() || "No exact historical match"}
           </div>
 
           <div className="mt-3 text-xs text-zinc-500">
