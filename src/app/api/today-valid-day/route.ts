@@ -28,7 +28,7 @@ export async function GET(req: Request) {
 
     const result = await getTodayValidDay({
       fresh,
-      maxAttempts: 24,
+      maxAttempts: 48,
       excludeDays,
     });
 

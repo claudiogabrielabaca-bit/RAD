@@ -4,7 +4,7 @@ import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 const MIN_CACHE_POOL_FOR_MONTH_DAY = 12;
 const TARGET_CACHE_POOL_FOR_MONTH_DAY = 24;
 const GENERATION_BATCH_SIZE = 4;
-const MAX_GENERATION_PROBES = 72;
+const MAX_GENERATION_PROBES = 120;
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -28,13 +28,13 @@ function isLeapYear(year: number) {
 function isUsableHighlight(
   result: Awaited<ReturnType<typeof ensureHighlightsForDay>>
 ) {
-  const highlight = result.highlight;
+  const primary = result.highlight ?? result.highlights?.[0] ?? null;
 
   return !!(
-    highlight &&
-    highlight.type !== "none" &&
-    highlight.text &&
-    highlight.text.trim().length > 0
+    primary &&
+    primary.type !== "none" &&
+    primary.text &&
+    primary.text.trim().length > 0
   );
 }
 
@@ -135,21 +135,12 @@ function orderCandidateDaysForExpansion(args: {
     .map((year) => `${year}-${pad2(month)}-${pad2(day)}`);
 }
 
-async function findGeneratedCandidate(args: {
-  candidates: string[];
-  maxAttempts: number;
-  restartedRound: boolean;
-}) {
-  const { candidates, maxAttempts, restartedRound } = args;
-
-  if (candidates.length === 0) {
-    return null;
-  }
-
-  const shuffled = shuffleArray(candidates).slice(0, Math.max(1, maxAttempts));
-
-  for (let i = 0; i < shuffled.length; i += GENERATION_BATCH_SIZE) {
-    const batch = shuffled.slice(i, i + GENERATION_BATCH_SIZE);
+async function tryCandidateBatches(
+  candidates: string[],
+  restartedRound: boolean
+) {
+  for (let i = 0; i < candidates.length; i += GENERATION_BATCH_SIZE) {
+    const batch = candidates.slice(i, i + GENERATION_BATCH_SIZE);
 
     const results = await Promise.allSettled(
       batch.map(async (candidate) => {
@@ -175,6 +166,35 @@ async function findGeneratedCandidate(args: {
   }
 
   return null;
+}
+
+async function findGeneratedCandidate(args: {
+  candidates: string[];
+  maxAttempts: number;
+  restartedRound: boolean;
+}) {
+  const { candidates, maxAttempts, restartedRound } = args;
+
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  const shuffled = shuffleArray(candidates);
+  const fastPassSize = Math.max(1, Math.min(maxAttempts, shuffled.length));
+
+  const fastPass = shuffled.slice(0, fastPassSize);
+  const slowPass = shuffled.slice(fastPassSize);
+
+  const fastResult = await tryCandidateBatches(fastPass, restartedRound);
+  if (fastResult) {
+    return fastResult;
+  }
+
+  if (slowPass.length === 0) {
+    return null;
+  }
+
+  return tryCandidateBatches(slowPass, restartedRound);
 }
 
 async function expandMonthDayCacheIfNeeded(args: {
@@ -236,7 +256,7 @@ export async function getTodayValidDay(options?: {
   excludeDays?: string[];
 }) {
   const fresh = options?.fresh ?? false;
-  const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 24, 48));
+  const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 48, 96));
   const excludeDays = getUniqueDays(options?.excludeDays ?? []);
   const excludedSet = new Set(excludeDays);
 
@@ -279,7 +299,7 @@ export async function getTodayValidDay(options?: {
       day,
       cachedDays: allCachedDays,
       excludeDays: [],
-    }).slice(0, maxAttempts);
+    }).slice(0, Math.min(MAX_GENERATION_PROBES, maxAttempts * 2));
 
     const generatedFromRestartedRound = await findGeneratedCandidate({
       candidates: candidateDays,
@@ -292,6 +312,20 @@ export async function getTodayValidDay(options?: {
       !excludedSet.has(generatedFromRestartedRound.day)
     ) {
       return generatedFromRestartedRound;
+    }
+
+    const reusableCachedDays = allCachedDays.filter(
+      (candidate) => !excludedSet.has(candidate)
+    );
+
+    if (reusableCachedDays.length > 0) {
+      const shuffled = shuffleArray(reusableCachedDays);
+
+      return {
+        day: shuffled[0],
+        source: "cache" as const,
+        restartedRound: true,
+      };
     }
 
     const shuffled = shuffleArray(allCachedDays);
@@ -325,7 +359,7 @@ export async function getTodayValidDay(options?: {
   if (excludeDays.length > 0) {
     const generatedFromRestartedRound = await findGeneratedCandidate({
       candidates: candidateDays,
-      maxAttempts,
+      maxAttempts: Math.max(maxAttempts, 48),
       restartedRound: true,
     });
 
