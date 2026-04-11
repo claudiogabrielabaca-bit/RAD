@@ -289,6 +289,13 @@ async function readCachedHighlights(
     return null;
   }
 
+  if (
+    row.type === "none" ||
+    row.text?.trim() === EMPTY_FALLBACK_TEXT
+  ) {
+    return null;
+  }
+
   const cachedHighlights = normalizeWikiHighlights(row.highlights);
 
   if (cachedHighlights.length > 0) {
@@ -345,26 +352,10 @@ async function writeHighlightsToCache(day: string, highlights: HighlightItem[]) 
       return;
     }
 
-    await prisma.dayHighlightCache.upsert({
-      where: { day },
-      update: {
-        title: null,
-        text: EMPTY_FALLBACK_TEXT,
-        image: null,
-        articleUrl: null,
-        year: null,
-        type: "none",
-        highlights: [],
-      },
-      create: {
+    await prisma.dayHighlightCache.deleteMany({
+      where: {
         day,
-        title: null,
-        text: EMPTY_FALLBACK_TEXT,
-        image: null,
-        articleUrl: null,
-        year: null,
         type: "none",
-        highlights: [],
       },
     });
 

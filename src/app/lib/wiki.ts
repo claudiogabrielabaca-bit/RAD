@@ -1007,6 +1007,14 @@ function collapseTopicVariants(items: DayHighlight[]) {
   return kept;
 }
 
+function finalizeHighlights(items: DayHighlight[]) {
+  let result = items.filter((item) => !isTooGenericTitle(item.title));
+  result = exactUniqueHighlights(result);
+  result = collapseTopicVariants(result);
+  result = sortHighlights(result).slice(0, MAX_HIGHLIGHTS);
+  return result;
+}
+
 function buildNoneHighlight(): DayHighlight {
   return {
     type: "none",
@@ -1025,6 +1033,13 @@ async function getCachedHighlights(date: string): Promise<DayHighlight[] | null>
   });
 
   if (!cached) return null;
+
+  if (
+    cached.type === "none" ||
+    cleanDisplayText(cached.text) === "No exact historical match was found for this date."
+  ) {
+    return null;
+  }
 
   const rawItems = Array.isArray((cached as { highlights?: unknown[] }).highlights)
     ? ((cached as { highlights?: unknown[] }).highlights as Array<{
@@ -1049,7 +1064,7 @@ async function getCachedHighlights(date: string): Promise<DayHighlight[] | null>
         image: item.image ?? null,
         articleUrl: item.articleUrl ?? null,
       }))
-      .filter((item) => item.text);
+      .filter((item) => item.text && item.type !== "none");
 
     if (mapped.length > 0) {
       return mapped.slice(0, MAX_HIGHLIGHTS);
@@ -1065,6 +1080,13 @@ async function getCachedHighlights(date: string): Promise<DayHighlight[] | null>
     image: cached.image,
     articleUrl: cached.articleUrl,
   };
+
+  if (
+    legacySingle.type === "none" ||
+    legacySingle.text === "No exact historical match was found for this date."
+  ) {
+    return null;
+  }
 
   return [legacySingle];
 }
@@ -1107,20 +1129,24 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
   const [yearStr, month, day] = date.split("-");
   const selectedYear = Number(yearStr);
 
-  let all: DayHighlight[] = [];
+  let exactMatches = [];
 
   for (const type of PRIORITY) {
     const items = await fetchWikiType(type, month, day);
 
-    const exactMatches = items
+    const matchesForType = items
       .filter((item) => item.year === selectedYear)
       .sort((a, b) => scoreItem(b) - scoreItem(a))
       .map((item) => mapItem(type, item));
 
-    all.push(...exactMatches);
+    exactMatches.push(...matchesForType);
   }
 
-  if (all.length === 0) {
+  let finalHighlights = finalizeHighlights(exactMatches);
+
+  if (finalHighlights.length === 0) {
+    let fallbackMatches = [];
+
     for (const type of PRIORITY) {
       const fallbackItems = await fetchFallbackFromDatePage(
         type,
@@ -1128,26 +1154,44 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
         day,
         selectedYear
       );
-      all.push(...fallbackItems);
+
+      fallbackMatches.push(...fallbackItems);
     }
+
+    finalHighlights = finalizeHighlights(fallbackMatches);
   }
 
-  all = all.filter((item) => !isTooGenericTitle(item.title));
-  all = exactUniqueHighlights(all);
-  all = collapseTopicVariants(all);
-  all = sortHighlights(all).slice(0, MAX_HIGHLIGHTS);
+  if (finalHighlights.length === 0) {
+    let fallbackMatches = [];
 
-  if (all.length === 0) {
+    for (const type of PRIORITY) {
+      const fallbackItems = await fetchFallbackFromDatePage(
+        type,
+        month,
+        day,
+        selectedYear
+      );
+
+      fallbackMatches.push(...fallbackItems);
+    }
+
+    finalHighlights = finalizeHighlights([
+      ...exactMatches,
+      ...fallbackMatches,
+    ]);
+  }
+
+  if (finalHighlights.length === 0) {
     return [buildNoneHighlight()];
   }
 
   try {
-    await saveHighlightsToCache(date, all);
+    await saveHighlightsToCache(date, finalHighlights);
   } catch (error) {
     console.error("saveHighlightsToCache error:", error);
   }
 
-  return all;
+  return finalHighlights;
 }
 
 export async function getDayHighlight(date: string): Promise<DayHighlight> {

@@ -1,10 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 
-const MIN_CACHE_POOL_FOR_MONTH_DAY = 12;
-const TARGET_CACHE_POOL_FOR_MONTH_DAY = 24;
 const GENERATION_BATCH_SIZE = 4;
-const MAX_GENERATION_PROBES = 120;
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -38,6 +35,44 @@ function parseMonthDay(monthDay?: string | null) {
   };
 }
 
+function isValidDayString(value?: string | null): value is string {
+  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function normalizePoolDays(
+  raw: unknown,
+  monthStr: string,
+  dayStr: string
+) {
+  if (!Array.isArray(raw)) return [];
+
+  return Array.from(
+    new Set(
+      raw.filter(
+        (item): item is string =>
+          typeof item === "string" &&
+          isValidDayString(item) &&
+          item.endsWith(`-${monthStr}-${dayStr}`)
+      )
+    )
+  );
+}
+
+async function getPoolDaysForMonthDay(monthStr: string, dayStr: string) {
+  const monthDay = `${monthStr}-${dayStr}`;
+
+  const row = await prisma.todayHistoryPool.findUnique({
+    where: {
+      monthDay,
+    },
+    select: {
+      validDays: true,
+    },
+  });
+
+  return normalizePoolDays(row?.validDays, monthStr, dayStr);
+}
+
 function isUsableHighlight(
   result: Awaited<ReturnType<typeof ensureHighlightsForDay>>
 ) {
@@ -65,87 +100,6 @@ function getValidYearsForMonthDay(month: number, day: number) {
   }
 
   return years;
-}
-
-function getUniqueDays(days: string[]) {
-  return Array.from(new Set(days.filter(Boolean)));
-}
-
-function getDecade(year: number) {
-  return Math.floor(year / 10) * 10;
-}
-
-async function getCachedDaysForMonthDay(monthStr: string, dayStr: string) {
-  const rows = await prisma.dayHighlightCache.findMany({
-    where: {
-      day: {
-        endsWith: `-${monthStr}-${dayStr}`,
-      },
-      type: {
-        not: "none",
-      },
-      title: {
-        not: null,
-      },
-      text: {
-        not: "",
-      },
-    },
-    select: {
-      day: true,
-    },
-  });
-
-  return getUniqueDays(rows.map((item) => item.day));
-}
-
-function orderCandidateDaysForExpansion(args: {
-  month: number;
-  day: number;
-  cachedDays: string[];
-  excludeDays: string[];
-}) {
-  const { month, day, cachedDays, excludeDays } = args;
-  const cachedSet = new Set(cachedDays);
-  const excludeSet = new Set(excludeDays);
-
-  const decadeUsage = new Map<number, number>();
-
-  for (const cachedDay of cachedDays) {
-    const year = Number(cachedDay.slice(0, 4));
-
-    if (!Number.isFinite(year)) {
-      continue;
-    }
-
-    const decade = getDecade(year);
-    decadeUsage.set(decade, (decadeUsage.get(decade) ?? 0) + 1);
-  }
-
-  return shuffleArray(getValidYearsForMonthDay(month, day))
-    .filter((year) => {
-      const candidate = `${year}-${pad2(month)}-${pad2(day)}`;
-      return !cachedSet.has(candidate) && !excludeSet.has(candidate);
-    })
-    .sort((a, b) => {
-      const decadeDelta =
-        (decadeUsage.get(getDecade(a)) ?? 0) -
-        (decadeUsage.get(getDecade(b)) ?? 0);
-
-      if (decadeDelta !== 0) {
-        return decadeDelta;
-      }
-
-      const modernPenaltyA = a >= 2000 ? 1 : 0;
-      const modernPenaltyB = b >= 2000 ? 1 : 0;
-
-      if (modernPenaltyA !== modernPenaltyB) {
-        return modernPenaltyA - modernPenaltyB;
-      }
-
-      return 0;
-    })
-    .map((year) => `${year}-${pad2(month)}-${pad2(day)}`);
 }
 
 async function tryCandidateBatches(
@@ -181,166 +135,37 @@ async function tryCandidateBatches(
   return null;
 }
 
-async function findGeneratedCandidate(args: {
-  candidates: string[];
-  maxAttempts: number;
-  restartedRound: boolean;
-}) {
-  const { candidates, maxAttempts, restartedRound } = args;
-
-  if (candidates.length === 0) {
-    return null;
-  }
-
-  const shuffled = shuffleArray(candidates);
-  const fastPassSize = Math.max(1, Math.min(maxAttempts, shuffled.length));
-
-  const fastPass = shuffled.slice(0, fastPassSize);
-  const slowPass = shuffled.slice(fastPassSize);
-
-  const fastResult = await tryCandidateBatches(fastPass, restartedRound);
-  if (fastResult) {
-    return fastResult;
-  }
-
-  if (slowPass.length === 0) {
-    return null;
-  }
-
-  return tryCandidateBatches(slowPass, restartedRound);
-}
-
-async function expandMonthDayCacheIfNeeded(args: {
-  month: number;
-  day: number;
-  monthStr: string;
-  dayStr: string;
-  cachedDays: string[];
-  excludeDays: string[];
-  maxAttempts: number;
-}) {
-  const {
-    month,
-    day,
-    monthStr,
-    dayStr,
-    cachedDays,
-    excludeDays,
-    maxAttempts,
-  } = args;
-
-  if (cachedDays.length >= MIN_CACHE_POOL_FOR_MONTH_DAY) {
-    return cachedDays;
-  }
-
-  const targetPoolSize = Math.max(
-    MIN_CACHE_POOL_FOR_MONTH_DAY,
-    Math.min(TARGET_CACHE_POOL_FOR_MONTH_DAY, cachedDays.length + maxAttempts)
-  );
-
-  const generationBudget = Math.min(
-    MAX_GENERATION_PROBES,
-    Math.max(maxAttempts * 2, targetPoolSize - cachedDays.length)
-  );
-
-  const candidateDays = orderCandidateDaysForExpansion({
-    month,
-    day,
-    cachedDays,
-    excludeDays,
-  }).slice(0, generationBudget);
-
-  if (candidateDays.length === 0) {
-    return cachedDays;
-  }
-
-  await findGeneratedCandidate({
-    candidates: candidateDays,
-    maxAttempts: generationBudget,
-    restartedRound: false,
-  });
-
-  return getCachedDaysForMonthDay(monthStr, dayStr);
-}
-
 export async function getTodayValidDay(options?: {
   fresh?: boolean;
   maxAttempts?: number;
   excludeDays?: string[];
   monthDay?: string;
 }) {
-  const fresh = options?.fresh ?? false;
-  const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 72, 120));
-  const excludeDays = getUniqueDays(options?.excludeDays ?? []);
+  const excludeDays = Array.from(
+    new Set((options?.excludeDays ?? []).filter(isValidDayString))
+  );
   const excludedSet = new Set(excludeDays);
 
   const { month, day } = parseMonthDay(options?.monthDay);
-
   const monthStr = pad2(month);
   const dayStr = pad2(day);
 
-  let allCachedDays = await getCachedDaysForMonthDay(monthStr, dayStr);
+  const pooledDays = await getPoolDaysForMonthDay(monthStr, dayStr);
 
-  allCachedDays = await expandMonthDayCacheIfNeeded({
-    month,
-    day,
-    monthStr,
-    dayStr,
-    cachedDays: allCachedDays,
-    excludeDays,
-    maxAttempts,
-  });
+  if (pooledDays.length > 0) {
+    const remainingDays = pooledDays.filter((candidate) => !excludedSet.has(candidate));
 
-  const remainingCachedDays = allCachedDays.filter(
-    (candidate) => !excludedSet.has(candidate)
-  );
-
-  if (!fresh && remainingCachedDays.length > 0) {
-    const shuffled = shuffleArray(remainingCachedDays);
-
-    return {
-      day: shuffled[0],
-      source: "cache" as const,
-      restartedRound: false,
-    };
-  }
-
-  if (!fresh && allCachedDays.length > 0) {
-    const candidateDays = orderCandidateDaysForExpansion({
-      month,
-      day,
-      cachedDays: allCachedDays,
-      excludeDays: [],
-    }).slice(0, Math.min(MAX_GENERATION_PROBES, maxAttempts * 2));
-
-    const generatedFromRestartedRound = await findGeneratedCandidate({
-      candidates: candidateDays,
-      maxAttempts: candidateDays.length,
-      restartedRound: true,
-    });
-
-    if (
-      generatedFromRestartedRound &&
-      !excludedSet.has(generatedFromRestartedRound.day)
-    ) {
-      return generatedFromRestartedRound;
-    }
-
-    const reusableCachedDays = allCachedDays.filter(
-      (candidate) => !excludedSet.has(candidate)
-    );
-
-    if (reusableCachedDays.length > 0) {
-      const shuffled = shuffleArray(reusableCachedDays);
+    if (remainingDays.length > 0) {
+      const shuffled = shuffleArray(remainingDays);
 
       return {
         day: shuffled[0],
         source: "cache" as const,
-        restartedRound: true,
+        restartedRound: false,
       };
     }
 
-    const shuffled = shuffleArray(allCachedDays);
+    const shuffled = shuffleArray(pooledDays);
 
     return {
       day: shuffled[0],
@@ -349,34 +174,26 @@ export async function getTodayValidDay(options?: {
     };
   }
 
+  // Fallback seguro si todavía no construiste la pool.
+  const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 72, 120));
   const candidateYears = getValidYearsForMonthDay(month, day);
-  const candidateDays = candidateYears.map(
-    (year) => `${year}-${monthStr}-${dayStr}`
-  );
+  const candidateDays = candidateYears
+    .map((year) => `${year}-${monthStr}-${dayStr}`)
+    .filter((candidate) => !excludedSet.has(candidate));
 
-  const remainingCandidateDays = candidateDays.filter(
-    (candidate) => !excludedSet.has(candidate)
-  );
+  const shuffled = shuffleArray(candidateDays);
+  const fastPass = shuffled.slice(0, maxAttempts);
+  const slowPass = shuffled.slice(maxAttempts);
 
-  const generatedFromCurrentRound = await findGeneratedCandidate({
-    candidates: remainingCandidateDays,
-    maxAttempts,
-    restartedRound: false,
-  });
-
-  if (generatedFromCurrentRound) {
-    return generatedFromCurrentRound;
+  const fastResult = await tryCandidateBatches(fastPass, false);
+  if (fastResult) {
+    return fastResult;
   }
 
-  if (excludeDays.length > 0) {
-    const generatedFromRestartedRound = await findGeneratedCandidate({
-      candidates: candidateDays,
-      maxAttempts: Math.max(maxAttempts, 72),
-      restartedRound: true,
-    });
-
-    if (generatedFromRestartedRound) {
-      return generatedFromRestartedRound;
+  if (slowPass.length > 0) {
+    const slowResult = await tryCandidateBatches(slowPass, false);
+    if (slowResult) {
+      return slowResult;
     }
   }
 
