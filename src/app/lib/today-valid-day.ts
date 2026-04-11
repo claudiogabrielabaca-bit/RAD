@@ -25,6 +25,19 @@ function isLeapYear(year: number) {
   return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
 }
 
+function parseMonthDay(monthDay?: string | null) {
+  if (monthDay && /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(monthDay)) {
+    const [month, day] = monthDay.split("-").map(Number);
+    return { month, day };
+  }
+
+  const now = new Date();
+  return {
+    month: now.getMonth() + 1,
+    day: now.getDate(),
+  };
+}
+
 function isUsableHighlight(
   result: Awaited<ReturnType<typeof ensureHighlightsForDay>>
 ) {
@@ -39,7 +52,7 @@ function isUsableHighlight(
 }
 
 function getValidYearsForMonthDay(month: number, day: number) {
-  const minYear = 1900;
+  const minYear = 1800;
   const maxYear = new Date().getFullYear();
   const years: number[] = [];
 
@@ -254,15 +267,14 @@ export async function getTodayValidDay(options?: {
   fresh?: boolean;
   maxAttempts?: number;
   excludeDays?: string[];
+  monthDay?: string;
 }) {
   const fresh = options?.fresh ?? false;
-  const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 48, 96));
+  const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 72, 120));
   const excludeDays = getUniqueDays(options?.excludeDays ?? []);
   const excludedSet = new Set(excludeDays);
 
-  const now = new Date();
-  const month = now.getMonth() + 1;
-  const day = now.getDate();
+  const { month, day } = parseMonthDay(options?.monthDay);
 
   const monthStr = pad2(month);
   const dayStr = pad2(day);
@@ -359,7 +371,7 @@ export async function getTodayValidDay(options?: {
   if (excludeDays.length > 0) {
     const generatedFromRestartedRound = await findGeneratedCandidate({
       candidates: candidateDays,
-      maxAttempts: Math.max(maxAttempts, 48),
+      maxAttempts: Math.max(maxAttempts, 72),
       restartedRound: true,
     });
 

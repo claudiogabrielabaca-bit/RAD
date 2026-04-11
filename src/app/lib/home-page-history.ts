@@ -214,6 +214,8 @@ export function buildTodayInHistoryRequestUrl(options?: {
   }
 
   const monthDay = getTodayHistoryMonthDay();
+  params.set("monthDay", monthDay);
+
   const excludeDays = getRecentTodayHistory(monthDay);
 
   if (

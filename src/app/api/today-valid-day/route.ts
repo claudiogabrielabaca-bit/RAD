@@ -9,6 +9,10 @@ function isValidDayString(value?: string | null): value is string {
   return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function isValidMonthDay(value?: string | null): value is string {
+  return !!value && /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value);
+}
+
 function parseExcludeDays(searchParams: URLSearchParams) {
   const raw = searchParams.get("excludeDays") ?? "";
 
@@ -25,11 +29,16 @@ export async function GET(req: Request) {
     const fresh = searchParams.get("fresh") === "1";
     const bundle = searchParams.get("bundle") === "1";
     const excludeDays = parseExcludeDays(searchParams);
+    const requestedMonthDay = searchParams.get("monthDay");
+    const monthDay = isValidMonthDay(requestedMonthDay)
+      ? requestedMonthDay
+      : undefined;
 
     const result = await getTodayValidDay({
       fresh,
-      maxAttempts: 48,
+      maxAttempts: 72,
       excludeDays,
+      monthDay,
     });
 
     if (!result) {
