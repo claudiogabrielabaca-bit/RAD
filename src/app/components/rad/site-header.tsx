@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
 import AuthModal, { type AuthView } from "@/app/components/rad/auth-modal";
+import ReportBugModal from "@/app/components/rad/report-bug-modal";
 
 type HeaderUser = {
   id: string;
@@ -202,6 +209,49 @@ function NotificationSoundIcon({ muted }: { muted: boolean }) {
   );
 }
 
+function BugIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-[18px] w-[18px]"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M9 9.5V7a3 3 0 1 1 6 0v2.5" />
+      <path d="M7.5 10.5h9l1 2.5-1 5a2 2 0 0 1-2 1.5h-5a2 2 0 0 1-2-1.5l-1-5 1-2.5Z" />
+      <path d="M4 13h3" />
+      <path d="M17 13h3" />
+      <path d="M5 8.5 7.5 10" />
+      <path d="M19 8.5 16.5 10" />
+      <path d="M6 17.5 8.5 16" />
+      <path d="M18 17.5 15.5 16" />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className="h-[18px] w-[18px]"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M15 3h-5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5" />
+      <path d="M10 12h10" />
+      <path d="m16 8 4 4-4 4" />
+    </svg>
+  );
+}
+
 function HeaderNavLink({
   href,
   active,
@@ -253,6 +303,30 @@ function HeaderNavButton({
   );
 }
 
+function MenuIconBadge({
+  icon,
+  tone = "default",
+}: {
+  icon: ReactNode;
+  tone?: "default" | "danger" | "bug";
+}) {
+  const toneClass =
+    tone === "danger"
+      ? "bg-red-500/10 text-red-200 border-red-400/15"
+      : tone === "bug"
+        ? "bg-amber-500/10 text-amber-200 border-amber-400/15"
+        : "bg-white/[0.05] text-zinc-200 border-white/10";
+
+  return (
+    <span
+      className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${toneClass}`}
+      aria-hidden="true"
+    >
+      {icon}
+    </span>
+  );
+}
+
 export default function SiteHeader() {
   const pathname = usePathname();
   const router = useRouter();
@@ -270,6 +344,13 @@ export default function SiteHeader() {
   const [loadingNotifications, setLoadingNotifications] = useState(false);
   const [notificationsMuted, setNotificationsMuted] = useState(false);
   const [clearingNotifications, setClearingNotifications] = useState(false);
+
+  const [reportBugOpen, setReportBugOpen] = useState(false);
+  const [bugDescription, setBugDescription] = useState("");
+  const [bugScreenshot, setBugScreenshot] = useState<File | null>(null);
+  const [reportBugSubmitting, setReportBugSubmitting] = useState(false);
+  const [reportBugError, setReportBugError] = useState("");
+  const [reportBugSuccess, setReportBugSuccess] = useState("");
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
@@ -396,10 +477,10 @@ export default function SiteHeader() {
       }
     }
 
-    loadMe();
+    void loadMe();
 
     const handleAuthChanged = () => {
-      loadMe();
+      void loadMe();
     };
 
     window.addEventListener("rad-auth-changed", handleAuthChanged);
@@ -418,10 +499,10 @@ export default function SiteHeader() {
   useEffect(() => {
     if (!currentUser?.id) return;
 
-    loadNotifications();
+    void loadNotifications();
 
     const intervalId = window.setInterval(() => {
-      loadNotifications();
+      void loadNotifications();
     }, 30000);
 
     return () => {
@@ -562,6 +643,66 @@ export default function SiteHeader() {
       window.dispatchEvent(new Event("rad-auth-changed"));
       router.push("/");
       router.refresh();
+    }
+  }
+
+  function openBugReport() {
+    setMenuOpen(false);
+    setReportBugError("");
+    setReportBugSuccess("");
+    setBugDescription("");
+    setBugScreenshot(null);
+    setReportBugOpen(true);
+  }
+
+  async function submitBugReport() {
+    const trimmed = bugDescription.trim();
+
+    if (trimmed.length < 10) {
+      setReportBugError("Bug description must be at least 10 characters.");
+      return;
+    }
+
+    setReportBugSubmitting(true);
+    setReportBugError("");
+    setReportBugSuccess("");
+
+    try {
+      const formData = new FormData();
+      formData.append("description", trimmed);
+      formData.append("pagePath", pathname || "");
+      formData.append("pageUrl", window.location.href);
+      formData.append("userAgent", navigator.userAgent);
+
+      if (bugScreenshot) {
+        formData.append("screenshot", bugScreenshot);
+      }
+
+      const res = await fetch("/api/report-bug", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+
+      const json = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        setReportBugError(json?.error ?? "Could not send bug report.");
+        return;
+      }
+
+      setReportBugSuccess("Bug report sent.");
+      setBugDescription("");
+      setBugScreenshot(null);
+
+      window.setTimeout(() => {
+        setReportBugOpen(false);
+        setReportBugSuccess("");
+      }, 900);
+    } catch {
+      setReportBugError("Could not send bug report.");
+    } finally {
+      setReportBugSubmitting(false);
     }
   }
 
@@ -759,13 +900,23 @@ export default function SiteHeader() {
                 </button>
 
                 {menuOpen ? (
-                  <div className="absolute right-0 top-[calc(100%+10px)] min-w-[180px] overflow-hidden rounded-[18px] border border-white/10 bg-[#111111]/95 p-2 shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                  <div className="absolute right-0 top-[calc(100%+10px)] min-w-[220px] overflow-hidden rounded-[18px] border border-white/10 bg-[#111111]/95 p-2 shadow-[0_24px_60px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+                    <button
+                      type="button"
+                      onClick={openBugReport}
+                      className="flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-sm text-amber-100 transition hover:bg-amber-500/10 hover:text-amber-50"
+                    >
+                      <MenuIconBadge icon={<BugIcon />} tone="bug" />
+                      <span>Report bug</span>
+                    </button>
+
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="flex w-full items-center rounded-[12px] px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/10 hover:text-red-100"
+                      className="mt-1 flex w-full items-center gap-3 rounded-[12px] px-3 py-2.5 text-left text-sm text-red-200 transition hover:bg-red-500/10 hover:text-red-100"
                     >
-                      Log out
+                      <MenuIconBadge icon={<LogoutIcon />} tone="danger" />
+                      <span>Log out</span>
                     </button>
                   </div>
                 ) : null}
@@ -787,6 +938,24 @@ export default function SiteHeader() {
           closeAuthModal();
           window.dispatchEvent(new Event("rad-auth-changed"));
         }}
+      />
+
+      <ReportBugModal
+        open={reportBugOpen}
+        description={bugDescription}
+        onDescriptionChange={setBugDescription}
+        screenshot={bugScreenshot}
+        onScreenshotChange={setBugScreenshot}
+        onClose={() => {
+          if (reportBugSubmitting) return;
+          setReportBugOpen(false);
+          setReportBugError("");
+          setReportBugSuccess("");
+        }}
+        onSubmit={submitBugReport}
+        submitting={reportBugSubmitting}
+        error={reportBugError}
+        success={reportBugSuccess}
       />
     </>
   );
