@@ -1,43 +1,23 @@
 import { prisma } from "../src/app/lib/prisma";
-import { ensureHighlightsForDay } from "../src/app/lib/highlight-service";
 
-const BATCH_SIZE = 4;
+type FeedType = "selected" | "events" | "births" | "deaths";
+
+type FeedItem = {
+  year?: number;
+};
+
+type WikiSection = {
+  line?: string;
+  index?: string;
+};
+
+const MIN_YEAR = 1800;
+const CURRENT_YEAR = new Date().getFullYear();
+const FEED_TYPES: FeedType[] = ["selected", "events", "births", "deaths"];
+const TARGET_SECTIONS = ["Events", "Births", "Deaths"] as const;
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
-}
-
-function isLeapYear(year: number) {
-  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
-}
-
-function isUsableHighlight(
-  result: Awaited<ReturnType<typeof ensureHighlightsForDay>>
-) {
-  const primary = result.highlight ?? result.highlights?.[0] ?? null;
-
-  return !!(
-    primary &&
-    primary.type !== "none" &&
-    primary.text &&
-    primary.text.trim().length > 0
-  );
-}
-
-function getValidYearsForMonthDay(month: number, day: number) {
-  const minYear = 1800;
-  const maxYear = new Date().getFullYear();
-  const years: number[] = [];
-
-  for (let year = minYear; year <= maxYear; year++) {
-    if (month === 2 && day === 29 && !isLeapYear(year)) {
-      continue;
-    }
-
-    years.push(year);
-  }
-
-  return years;
 }
 
 function getAllMonthDays() {
@@ -67,38 +47,223 @@ function parseMonthDayArg(value: string) {
   return value;
 }
 
-async function buildPoolForMonthDay(monthDay: string) {
-  const [month, day] = monthDay.split("-").map(Number);
-  const years = getValidYearsForMonthDay(month, day);
-  const candidateDays = years.map((year) => `${year}-${monthDay}`);
+function getEnglishDatePageTitle(month: number, day: number) {
+  const englishMonths = [
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
 
-  const validDays: string[] = [];
+  return `${englishMonths[month]}_${day}`;
+}
 
-  for (let i = 0; i < candidateDays.length; i += BATCH_SIZE) {
-    const batch = candidateDays.slice(i, i + BATCH_SIZE);
+function decodeHtmlEntities(input: string) {
+  return input
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&#0*39;/gi, "'")
+    .replace(/&#0*34;/gi, '"')
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
 
-    const results = await Promise.allSettled(
-      batch.map(async (candidate) => {
-        const result = await ensureHighlightsForDay(candidate);
+function htmlToReadableText(input: string | null | undefined) {
+  if (!input) return "";
 
-        if (isUsableHighlight(result)) {
-          return candidate;
-        }
+  return decodeHtmlEntities(
+    input
+      .replace(/<li\b[^>]*>/gi, "\n")
+      .replace(/<\/li>/gi, "\n")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/<\/p>/gi, "\n")
+      .replace(/<\/div>/gi, "\n")
+      .replace(/<\/h[1-6]>/gi, "\n")
+      .replace(/<[^>]*>/g, " ")
+      .replace(/\r/g, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/\n{2,}/g, "\n")
+      .trim()
+  );
+}
 
-        return null;
-      })
-    );
+function stripReferenceMarkers(input: string) {
+  return input
+    .replace(/\s*\[\d+\]\s*/g, " ")
+    .replace(/\s+,/g, ",")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-    for (const result of results) {
-      if (result.status === "fulfilled" && result.value) {
-        validDays.push(result.value);
+function normalizeYear(year: number | null | undefined) {
+  if (!year || !Number.isFinite(year)) return null;
+  if (year < MIN_YEAR || year > CURRENT_YEAR) return null;
+  return year;
+}
+
+async function fetchJson(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "RateAnyDayInHumanHistory/1.0",
+        "Api-User-Agent": "RateAnyDayInHumanHistory/1.0",
+        Accept: "application/json",
+      },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Wikipedia API error: ${res.status}`);
+    }
+
+    return await res.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchFeedYears(type: FeedType, month: number, day: number) {
+  const url = `https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/${type}/${month}/${day}`;
+
+  try {
+    const data = await fetchJson(url);
+    const items = Array.isArray(data?.[type]) ? (data[type] as FeedItem[]) : [];
+
+    const years = new Set<number>();
+
+    for (const item of items) {
+      const year = normalizeYear(item.year);
+      if (year) {
+        years.add(year);
       }
     }
 
-    console.log(
-      `[${monthDay}] checked ${Math.min(i + BATCH_SIZE, candidateDays.length)}/${candidateDays.length} | valid ${validDays.length}`
-    );
+    return Array.from(years).sort((a, b) => a - b);
+  } catch {
+    return [];
   }
+}
+
+async function fetchDatePageSections(pageTitle: string) {
+  const url =
+    `https://en.wikipedia.org/w/api.php` +
+    `?action=parse&page=${encodeURIComponent(pageTitle)}` +
+    `&prop=sections&format=json&origin=*`;
+
+  try {
+    const data = await fetchJson(url);
+    return Array.isArray(data?.parse?.sections)
+      ? (data.parse.sections as WikiSection[])
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function fetchDatePageSectionHtml(pageTitle: string, sectionIndex: string) {
+  const url =
+    `https://en.wikipedia.org/w/api.php` +
+    `?action=parse&page=${encodeURIComponent(pageTitle)}` +
+    `&prop=text&section=${encodeURIComponent(sectionIndex)}` +
+    `&format=json&origin=*`;
+
+  try {
+    const data = await fetchJson(url);
+    return typeof data?.parse?.text?.["*"] === "string"
+      ? data.parse.text["*"]
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function parseYearsFromSectionHtml(html: string) {
+  const years = new Set<number>();
+  const text = htmlToReadableText(html);
+  const lines = text.split("\n").map((line) => stripReferenceMarkers(line));
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const match = trimmed.match(/^(\d{1,4})\s*[—–\-:]\s*(.+)$/);
+    if (!match) continue;
+
+    const year = normalizeYear(Number(match[1]));
+    const rest = (match[2] ?? "").trim();
+
+    if (!year || !rest) continue;
+    years.add(year);
+  }
+
+  return Array.from(years).sort((a, b) => a - b);
+}
+
+async function fetchPageYears(month: number, day: number) {
+  const pageTitle = getEnglishDatePageTitle(month, day);
+  const sections = await fetchDatePageSections(pageTitle);
+
+  const yearsBySection = new Map<string, number[]>();
+
+  for (const sectionName of TARGET_SECTIONS) {
+    const section = sections.find((item) => item.line === sectionName);
+
+    if (!section?.index) {
+      yearsBySection.set(sectionName, []);
+      continue;
+    }
+
+    const html = await fetchDatePageSectionHtml(pageTitle, section.index);
+    const years = parseYearsFromSectionHtml(html);
+    yearsBySection.set(sectionName, years);
+  }
+
+  return yearsBySection;
+}
+
+async function buildPoolForMonthDay(monthDay: string) {
+  const [month, day] = monthDay.split("-").map(Number);
+
+  const yearsBySource = new Map<string, number[]>();
+
+  for (const type of FEED_TYPES) {
+    const years = await fetchFeedYears(type, month, day);
+    yearsBySource.set(`feed:${type}`, years);
+  }
+
+  const pageYearsBySection = await fetchPageYears(month, day);
+
+  for (const sectionName of TARGET_SECTIONS) {
+    const years = pageYearsBySection.get(sectionName) ?? [];
+    yearsBySource.set(`page:${sectionName}`, years);
+  }
+
+  const allYears = new Set<number>();
+
+  for (const years of yearsBySource.values()) {
+    for (const year of years) {
+      allYears.add(year);
+    }
+  }
+
+  const validDays = Array.from(allYears)
+    .sort((a, b) => a - b)
+    .map((year) => `${year}-${monthDay}`);
 
   await prisma.todayHistoryPool.upsert({
     where: {
@@ -115,7 +280,17 @@ async function buildPoolForMonthDay(monthDay: string) {
     },
   });
 
-  console.log(`[${monthDay}] saved ${validDays.length} valid years`);
+  const feedSelected = yearsBySource.get("feed:selected")?.length ?? 0;
+  const feedEvents = yearsBySource.get("feed:events")?.length ?? 0;
+  const feedBirths = yearsBySource.get("feed:births")?.length ?? 0;
+  const feedDeaths = yearsBySource.get("feed:deaths")?.length ?? 0;
+  const pageEvents = yearsBySource.get("page:Events")?.length ?? 0;
+  const pageBirths = yearsBySource.get("page:Births")?.length ?? 0;
+  const pageDeaths = yearsBySource.get("page:Deaths")?.length ?? 0;
+
+  console.log(
+    `[${monthDay}] feed selected ${feedSelected} | feed events ${feedEvents} | feed births ${feedBirths} | feed deaths ${feedDeaths} | page events ${pageEvents} | page births ${pageBirths} | page deaths ${pageDeaths} | saved ${validDays.length} valid years`
+  );
 }
 
 async function main() {
@@ -128,7 +303,8 @@ async function main() {
     process.exit(1);
   }
 
-  const monthDays = arg === "--all" ? getAllMonthDays() : [parseMonthDayArg(arg)];
+  const monthDays =
+    arg === "--all" ? getAllMonthDays() : [parseMonthDayArg(arg)];
 
   for (const monthDay of monthDays) {
     await buildPoolForMonthDay(monthDay);
