@@ -52,31 +52,18 @@ export default function ConfirmModal({
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.06),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.03),transparent_26%)]" />
 
         <div className="relative p-7">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
-                {eyebrow}
-              </div>
-
-              <h2 className="mt-2 text-[2rem] font-semibold leading-none tracking-tight text-white">
-                {title}
-              </h2>
-
-              <p className="mt-4 max-w-md text-sm leading-6 text-zinc-400">
-                {description}
-              </p>
+          <div>
+            <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+              {eyebrow}
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (!loading) onClose();
-              }}
-              disabled={loading}
-              className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-zinc-300 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Close
-            </button>
+            <h2 className="mt-2 text-[2rem] font-semibold leading-none tracking-tight text-white">
+              {title}
+            </h2>
+
+            <p className="mt-4 max-w-md text-sm leading-6 text-zinc-400">
+              {description}
+            </p>
           </div>
 
           <div className="mt-8 flex flex-wrap items-center gap-3">
