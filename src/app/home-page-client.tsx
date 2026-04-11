@@ -1,17 +1,16 @@
 "use client";
 import { useHomeDeleteActions } from "@/app/hooks/use-home-delete-actions";
 import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
-
+import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import ReplyList from "@/app/components/rad/reply-list";
-import ReplyComposer from "@/app/components/rad/reply-composer";
 import AuthModal, { type AuthView } from "@/app/components/rad/auth-modal";
 import CosmicLoading from "@/app/components/rad/cosmic-loading";
 import HighlightHeroImage from "@/app/components/rad/highlight-hero-image";
 import { decodeHtml } from "@/app/lib/html";
 import SocialPostModal from "@/app/components/rad/social-post-modal";
-import ReviewActionsMenu from "@/app/components/rad/review-actions-menu";
+import HomeExplorePanel from "@/app/components/rad/home/home-explore-panel";
+import HomeReactionsPanel from "@/app/components/rad/home/home-reactions-panel";
 import ConfirmModal from "@/app/components/rad/confirm-modal";
 import {
   getBadgeStyle,
@@ -23,9 +22,7 @@ import {
   getDaysInMonth,
   formatDisplayDate,
   formatCompactViews,
-  formatReviewDate,
   hasReviewText,
-  isLongReview,
   isValidDayString,
   formatMonthDayLabel,
 } from "@/app/lib/home-page-utils";
@@ -50,7 +47,6 @@ import {
   getDayWithOffset,
   getDayWithYearShift,
 } from "@/app/lib/home-page-history";
-import { Star } from "@/app/components/rad/discover-day-card";
 import { YEARS, MONTHS } from "@/app/lib/home-page-discover";
 import {
   type CurrentUser,
@@ -158,6 +154,10 @@ export default function Page({
   const [reportingReviewId, setReportingReviewId] = useState<string | null>(
     null
   );
+  const [reportReviewModalOpen, setReportReviewModalOpen] = useState(false);
+  const [reportReviewTargetId, setReportReviewTargetId] = useState<string | null>(null);
+  const [reportReviewReason, setReportReviewReason] = useState("Spam or abusive content");
+  const [reportReviewError, setReportReviewError] = useState("");
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [replyTextByRating, setReplyTextByRating] = useState<
     Record<string, string>
@@ -1270,7 +1270,7 @@ export default function Page({
     }
   }
 
-  async function reportReview(ratingId: string) {
+  function reportReview(ratingId: string) {
     if (!currentUser) {
       openAuthModal("login");
       return;
@@ -1278,17 +1278,24 @@ export default function Page({
 
     if (requireVerifiedEmail()) return;
 
-    const reason = window.prompt(
-      "Why are you reporting this review?",
-      "Spam or abusive content"
-    );
+    setReportReviewTargetId(ratingId);
+    setReportReviewReason("Spam or abusive content");
+    setReportReviewError("");
+    setReportReviewModalOpen(true);
+  }
 
-    if (!reason || reason.trim().length < 3) {
-      showToast("Report reason must be at least 3 characters.");
+  async function submitReviewReport() {
+    if (!reportReviewTargetId) return;
+
+    const reason = reportReviewReason.trim();
+
+    if (reason.length < 3) {
+      setReportReviewError("Report reason must be at least 3 characters.");
       return;
     }
 
-    setReportingReviewId(ratingId);
+    setReportingReviewId(reportReviewTargetId);
+    setReportReviewError("");
     setToast("");
 
     try {
@@ -1298,21 +1305,24 @@ export default function Page({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          ratingId,
-          reason: reason.trim(),
+          ratingId: reportReviewTargetId,
+          reason,
         }),
       });
 
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        showToast(json?.error ?? "Could not report review.");
+        setReportReviewError(json?.error ?? "Could not report review.");
         return;
       }
 
+      setReportReviewModalOpen(false);
+      setReportReviewTargetId(null);
+      setReportReviewReason("Spam or abusive content");
       showToast("Review reported.");
     } catch {
-      showToast("Could not report review.");
+      setReportReviewError("Could not report review.");
     } finally {
       setReportingReviewId(null);
     }
@@ -1500,143 +1510,25 @@ export default function Page({
     <main className="min-h-screen bg-[#050505] text-[17px] text-zinc-100">
       <div className="mx-auto max-w-[1280px] px-8 py-12 xl:px-10">
         <div className="flex flex-col gap-6">
-          <section className="overflow-hidden rounded-[36px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.055),rgba(255,255,255,0.02))] shadow-[0_30px_100px_rgba(0,0,0,0.5)] backdrop-blur-2xl">
-            <div className="relative">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.07),transparent_35%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.035),transparent_28%)]" />
-              <div className="relative p-8 sm:p-10 lg:p-12">
-                <div className="max-w-4xl">
-                  <div className="text-sm font-medium uppercase tracking-[0.18em] text-zinc-500">
-                    Explore a day
-                  </div>
+         <HomeExplorePanel
+          selectedYear={selectedYear}
+          selectedMonth={selectedMonth}
+          selectedDay={selectedDay}
+          years={YEARS}
+          months={MONTHS}
+          days={DAYS}
+          toast={toast}
+          onYearChange={setSelectedYear}
+          onMonthChange={setSelectedMonth}
+          onDayChange={setSelectedDay}
+          onGoToManualDay={goToManualDay}
+          onGoToToday={goToToday}
+          onGoToSurpriseDay={() => goToSurpriseDay(true)}
+          onGoToTodayInHistory={() => goToTodayInHistory(true)}
+        />
+      </div>
 
-                  <h2 className="mt-4 max-w-4xl text-4xl font-semibold leading-[1.02] tracking-tight text-white sm:text-5xl lg:text-[4.25rem]">
-                    Discover what happened on any day in human history
-                  </h2>
-
-                  <p className="mt-5 max-w-3xl text-base leading-8 text-zinc-300 sm:text-[1.18rem]">
-                    Jump to a random moment, revisit this day in another year,
-                    or choose an exact date to explore births, deaths, and key
-                    historical events.
-                  </p>
-                </div>
-
-                <div className="mt-8 grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => goToSurpriseDay(true)}
-                    className="group rounded-[28px] border border-white/8 bg-white/[0.05] px-6 py-6 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-[20px] border border-white/8 bg-white/[0.07] text-xl text-white">
-                        ✦
-                      </div>
-
-                      <div>
-                        <div className="text-xl font-semibold text-white">
-                          Surprise me
-                        </div>
-                        <div className="mt-1.5 text-base leading-7 text-zinc-400">
-                          Jump into a random day and see what history gives you.
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => goToTodayInHistory(true)}
-                    className="group rounded-[28px] border border-white/8 bg-white/[0.05] px-6 py-6 text-left transition hover:border-white/12 hover:bg-white/[0.08] backdrop-blur-xl"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-[20px] border border-white/8 bg-white/[0.07] text-xl text-white">
-                        🗓
-                      </div>
-
-                      <div>
-                        <div className="text-xl font-semibold text-white">
-                          Today in history
-                        </div>
-                        <div className="mt-1.5 text-base leading-7 text-zinc-400">
-                          See what happened on this same month and day in a
-                          different year.
-                        </div>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-
-                <div className="mt-10 rounded-[30px] border border-white/8 bg-black/25 p-7 backdrop-blur-xl">
-                  <div className="text-xl font-semibold text-zinc-100">
-                    Pick an exact date
-                  </div>
-                  <div className="mt-2 text-base text-zinc-400">
-                    Choose a specific day between 1800 and today.
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap items-center gap-3">
-                    <select
-                      value={selectedYear}
-                      onChange={(e) => setSelectedYear(e.target.value)}
-                      className="rounded-2xl border border-white/8 bg-[#121212] px-5 py-3.5 text-base text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
-                    >
-                      {YEARS.map((year) => (
-                        <option key={year} value={year}>
-                          {year}
-                        </option>
-                      ))}
-                    </select>
-
-                    <select
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(e.target.value)}
-                      className="rounded-2xl border border-white/8 bg-[#121212] px-5 py-3.5 text-base text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
-                    >
-                      {MONTHS.map((month) => (
-                        <option key={month.value} value={month.value}>
-                          {month.label}
-                        </option>
-                      ))}
-                    </select>
-
-                    <select
-                      value={selectedDay}
-                      onChange={(e) => setSelectedDay(e.target.value)}
-                      className="rounded-2xl border border-white/8 bg-[#121212] px-5 py-3.5 text-base text-zinc-100 outline-none transition focus:border-white/14 focus:ring-2 focus:ring-white/10"
-                    >
-                      {DAYS.map((d) => (
-                        <option key={d} value={d}>
-                          {d}
-                        </option>
-                      ))}
-                    </select>
-
-                    <button
-                      type="button"
-                      onClick={goToManualDay}
-                      className="rounded-2xl bg-white px-6 py-3.5 text-base font-semibold text-black transition hover:bg-zinc-200"
-                    >
-                      Go
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={goToToday}
-                      className="rounded-2xl bg-white px-6 py-3.5 text-base font-semibold text-black transition hover:bg-zinc-200"
-                    >
-                      Today
-                    </button>
-                  </div>
-
-                  {toast ? (
-                    <div className="mt-4 text-sm text-zinc-300">{toast}</div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <div className="mt-12">
+      <div className="mt-12">
           <section className="rounded-[30px] border border-white/8 bg-white/[0.04] p-7 shadow-[0_20px_70px_rgba(0,0,0,0.36)] backdrop-blur-2xl">
             <div className="flex flex-col gap-4">
               <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1998,466 +1890,51 @@ export default function Page({
     </div>
   </div>
 ) : null}
-              <div
-                ref={rateBoxRef}
-                className="relative z-20 mt-6 scroll-mt-24 overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl"
-              >
-                <div className="relative">
-                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.03),transparent_28%)]" />
-
-                  <div className="relative p-5 sm:p-6">
-                    <div>
-                      <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
-                        Your reaction
-                      </div>
-
-                      <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-                        <div className="max-w-2xl">
-                          <h3 className="text-xl font-semibold text-white">
-                            Rate this day
-                          </h3>
-                          <p className="mt-1 text-sm leading-6 text-zinc-400">
-                            Share your take on this moment in history.
-                          </p>
-                        </div>
-
-                        {myReview ? (
-                          <div className="rounded-2xl border border-emerald-400/18 bg-emerald-500/10 px-4 py-2 text-right backdrop-blur-xl">
-                            <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-300/90">
-                              Your current rating
-                            </div>
-                            <div className="mt-1 text-lg font-semibold text-white">
-                              ★ {myReview.stars}.0
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="mt-6 rounded-[24px] border border-white/8 bg-white/[0.03] p-5 backdrop-blur-2xl">
-                      
-
-                      {myReview ? (
-                        <div className="mb-5 rounded-2xl border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 backdrop-blur-xl">
-                          <div className="text-sm font-medium text-emerald-300">
-                            You already rated this day.
-                          </div>
-                          <div className="mt-1 text-xs text-emerald-200/80">
-                            You can update your review below whenever you want.
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                        <div className="flex flex-wrap items-center gap-4">
-                          <div className="flex items-center gap-2">
-                            {Array.from({ length: 5 }).map((_, i) => {
-                              const v = i + 1;
-                              return (
-                                <Star
-                                  key={v}
-                                  filled={v <= shownStars}
-                                  title={`${v} star${v > 1 ? "s" : ""}`}
-                                  onMouseEnter={() => setHoverStars(v)}
-                                  onMouseLeave={() => setHoverStars(0)}
-                                  onClick={() => setStars(v)}
-                                />
-                              );
-                            })}
-                          </div>
-
-                          <div className="min-w-[56px] text-2xl font-semibold tracking-tight text-white">
-                            {shownStars ? `${shownStars}/5` : "—/5"}
-                          </div>
-                        </div>
-
-                        <div className="text-sm text-zinc-400 md:text-right">
-                          {shownStars
-                            ? "Choose how this day feels to you"
-                            : "Select a rating from 1 to 5 stars"}
-                        </div>
-                      </div>
-
-                      <div className="mt-6">
-                        <div className="mb-2 text-sm font-medium text-zinc-200">
-                          Review
-                        </div>
-                        <textarea
-                          value={review}
-                          onChange={(e) =>
-                            setReview(e.target.value.slice(0, REVIEW_MAX_LENGTH))
-                          }
-                          maxLength={REVIEW_MAX_LENGTH}
-                          placeholder="Add a short review, reaction, or opinion about this day..."
-                          className="h-28 w-full resize-none rounded-[20px] border border-white/8 bg-[#101010]/90 px-4 py-4 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-white/14 focus:ring-2 focus:ring-white/10"
-                        />
-                        <div className="mt-2 flex justify-end">
-                          <div
-                            className={`text-xs ${
-                              review.length >= REVIEW_MAX_LENGTH
-                                ? "text-red-400"
-                                : review.length >= REVIEW_MAX_LENGTH - 40
-                                  ? "text-amber-300"
-                                  : "text-zinc-500"
-                            }`}
-                          >
-                            {review.length} / {REVIEW_MAX_LENGTH}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-6 flex flex-wrap items-center gap-3">
-                        <button
-                          onClick={submit}
-                          disabled={saving}
-                          className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
-                        >
-                          {saving
-                            ? "Saving..."
-                            : myReview
-                              ? "Update your review"
-                              : "Rate this day"}
-                        </button>
-
-                        {toast ? (
-                          <div className="text-sm text-zinc-300">{toast}</div>
-                        ) : null}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 rounded-2xl border border-white/8 bg-black/18 p-5 backdrop-blur-2xl">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-lg font-semibold text-zinc-100">
-                      Community reactions
-                    </div>
-                    <div className="mt-1 text-sm text-zinc-400">
-                      See how people rated this day
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setReviewsSort("helpful")}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                        reviewsSort === "helpful"
-                          ? "border border-white/8 bg-white/[0.08] text-white"
-                          : "text-zinc-400 hover:text-zinc-200"
-                      }`}
-                    >
-                      Most helpful
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setReviewsSort("newest")}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                        reviewsSort === "newest"
-                          ? "border border-white/8 bg-white/[0.08] text-white"
-                          : "text-zinc-400 hover:text-zinc-200"
-                      }`}
-                    >
-                      Newest
-                    </button>
-                  </div>
-                </div>
-
-                {myReview ? (
-                  <div ref={myReviewBlockRef} className="mt-5">
-                    <div className="mb-2 text-sm font-medium text-zinc-200">
-                      Your rating
-                    </div>
-
-                    <div className="rounded-2xl border border-emerald-400/18 bg-emerald-500/5 p-4 backdrop-blur-xl">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-yellow-400">
-                          {"★".repeat(clamp(myReview.stars, 0, 5))}
-                          <span className="text-zinc-700">
-                            {"★".repeat(5 - clamp(myReview.stars, 0, 5))}
-                          </span>
-                        </div>
-
-                        <span className="rounded-md border border-emerald-400/20 bg-emerald-500/18 px-2 py-0.5 text-xs font-medium text-emerald-300">
-                          Your review
-                        </span>
-
-                        <div className="text-xs text-zinc-400">
-                          {formatReviewDate(myReview.createdAt)}
-                        </div>
-                        <ReviewActionsMenu
-  disabled={deletingReviewId === myReview.id}
-  onEdit={() => {
-    setStars(myReview.stars);
-    setHoverStars(0);
-    setReview(myReview.review);
-    rateBoxRef.current?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }}
-  onCreatePost={() => {
-    setSocialPostOpen(true);
-  }}
-  onDelete={() => {
-    openDeleteReviewModal(myReview.id);
-  }}
-/>
-                      </div>
-
-                      {hasReviewText(myReview.review) ? (
-                        <div className="mt-3">
-                          <div
-                            className={`text-sm leading-6 text-zinc-200 break-all [overflow-wrap:anywhere] ${
-                              expandedReviews[myReview.id] ? "" : "line-clamp-3"
-                            }`}
-                          >
-                            {myReview.review}
-                          </div>
-
-                          {isLongReview(myReview.review) ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedReviews((prev) => ({
-                                  ...prev,
-                                  [myReview.id]: !prev[myReview.id],
-                                }))
-                              }
-                              className="mt-2 inline-flex items-center rounded-lg border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
-                            >
-                              {expandedReviews[myReview.id]
-                                ? "Show less"
-                                : "Show more"}
-                            </button>
-                          ) : null}
-                        </div>
-                      ) : null}
-
-                      <div
-                        className={`${
-                          hasReviewText(myReview.review) ? "mt-3" : "mt-2"
-                        } flex flex-wrap items-center gap-4`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => toggleLike(myReview.id)}
-                          className="inline-flex items-center gap-2 text-sm text-zinc-400 transition hover:text-zinc-200"
-                        >
-                          <span
-                            className={`text-base ${
-                              myReview.likedByMe
-                                ? "text-pink-400"
-                                : "text-zinc-500"
-                            }`}
-                          >
-                            ♥
-                          </span>
-                          <span>{myReview.likesCount}</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (!currentUser) {
-                              openAuthModal("login");
-                              return;
-                            }
-
-                            if (requireVerifiedEmail()) return;
-
-                            setReplyingToId((prev) =>
-                              prev === myReview.id ? null : myReview.id
-                            );
-                          }}
-                          className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
-                        >
-                          Reply
-                        </button>
-                      </div>
-
-                      <ReplyList
-                        replies={myReview.replies}
-                        deletingReplyId={deletingReplyId}
-                        onDeleteReply={openDeleteReplyModal}
-                        onRequireInteraction={requireReplyInteraction}
-                      />
-
-                      {replyingToId === myReview.id ? (
-                        <ReplyComposer
-                          value={replyTextByRating[myReview.id] ?? ""}
-                          onChange={(value) =>
-                            setReplyTextByRating((prev) => ({
-                              ...prev,
-                              [myReview.id]: value,
-                            }))
-                          }
-                          onSubmit={() => submitReply(myReview.id)}
-                          onCancel={() => setReplyingToId(null)}
-                          sending={sendingReplyId === myReview.id}
-                        />
-                      ) : null}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="mt-5">
-                  <div className="mb-2 text-sm font-medium text-zinc-200">
-                    Latest reviews ({otherReviews.length})
-                  </div>
-
-                  {loadingDay ? (
-                    <div className="mb-3 text-xs text-zinc-400">Loading…</div>
-                  ) : null}
-
-                  <div className="space-y-3">
-                    {sortedOtherReviews.slice(0, 8).map((r) => {
-                      const compact = !hasReviewText(r.review);
-
-                      return (
-                        <div
-                          key={r.id}
-                          className="rounded-2xl border border-white/8 bg-black/20 p-4 backdrop-blur-xl"
-                        >
-                          <div className="flex flex-wrap items-center gap-2">
-                            <div className="text-yellow-400">
-                              {"★".repeat(clamp(r.stars, 0, 5))}
-                              <span className="text-zinc-700">
-                                {"★".repeat(5 - clamp(r.stars, 0, 5))}
-                              </span>
-                            </div>
-
-                            <span className="rounded-md border border-white/8 bg-white/[0.05] px-2 py-0.5 text-xs text-zinc-300">
-                              {r.authorLabel}
-                            </span>
-
-                            <div className="text-xs text-zinc-400">
-                              {formatReviewDate(r.createdAt)}
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => reportReview(r.id)}
-                              disabled={reportingReviewId === r.id}
-                              className="ml-auto text-xs text-amber-300 underline underline-offset-4 transition hover:text-amber-200 disabled:opacity-50"
-                            >
-                              {reportingReviewId === r.id
-                                ? "Reporting..."
-                                : "Report"}
-                            </button>
-                          </div>
-
-                          {!compact ? (
-                            <div className="mt-3">
-                              <div
-                                className={`text-sm leading-6 text-zinc-200 break-all [overflow-wrap:anywhere] ${
-                                  expandedReviews[r.id] ? "" : "line-clamp-3"
-                                }`}
-                              >
-                                {r.review}
-                              </div>
-
-                              {isLongReview(r.review) ? (
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setExpandedReviews((prev) => ({
-                                      ...prev,
-                                      [r.id]: !prev[r.id],
-                                    }))
-                                  }
-                                  className="mt-2 inline-flex items-center rounded-lg border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
-                                >
-                                  {expandedReviews[r.id]
-                                    ? "Show less"
-                                    : "Show more"}
-                                </button>
-                              ) : null}
-                            </div>
-                          ) : null}
-
-                          <div
-                            className={`${
-                              compact ? "mt-2" : "mt-3"
-                            } flex flex-wrap items-center gap-4`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => toggleLike(r.id)}
-                              className="inline-flex items-center gap-2 text-sm text-zinc-400 transition hover:text-zinc-200"
-                            >
-                              <span
-                                className={`text-base ${
-                                  r.likedByMe ? "text-pink-400" : "text-zinc-500"
-                                }`}
-                              >
-                                ♥
-                              </span>
-                              <span>{r.likesCount}</span>
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                if (!currentUser) {
-                                  openAuthModal("login");
-                                  return;
-                                }
-
-                                if (requireVerifiedEmail()) return;
-
-                                setReplyingToId((prev) =>
-                                  prev === r.id ? null : r.id
-                                );
-                              }}
-                              className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
-                            >
-                              Reply
-                            </button>
-                          </div>
-
-                          <ReplyList
-                            replies={r.replies}
-                            deletingReplyId={deletingReplyId}
-                            onDeleteReply={openDeleteReplyModal}
-                            onRequireInteraction={requireReplyInteraction}
-                          />
-
-                          {replyingToId === r.id ? (
-                            <ReplyComposer
-                              value={replyTextByRating[r.id] ?? ""}
-                              onChange={(value) =>
-                                setReplyTextByRating((prev) => ({
-                                  ...prev,
-                                  [r.id]: value,
-                                }))
-                              }
-                              onSubmit={() => submitReply(r.id)}
-                              onCancel={() => setReplyingToId(null)}
-                              sending={sendingReplyId === r.id}
-                            />
-                          ) : null}
-                        </div>
-                      );
-                    })}
-
-                    {otherReviews.length === 0 && !myReview ? (
-                      <div className="rounded-xl border border-white/8 bg-black/15 p-4 text-sm text-zinc-400">
-                        No reviews yet. Be the first.
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
+              <HomeReactionsPanel
+                rateBoxRef={rateBoxRef}
+                myReviewBlockRef={myReviewBlockRef}
+                myReview={myReview ?? null}
+                shownStars={shownStars}
+                review={review}
+                saving={saving}
+                toast={toast}
+                reviewsSort={reviewsSort}
+                expandedReviews={expandedReviews}
+                deletingReviewId={deletingReviewId}
+                deletingReplyId={deletingReplyId}
+                replyingToId={replyingToId}
+                replyTextByRating={replyTextByRating}
+                sendingReplyId={sendingReplyId}
+                reportingReviewId={reportingReviewId}
+                otherReviews={otherReviews}
+                sortedOtherReviews={sortedOtherReviews}
+                loadingDay={loadingDay}
+                currentUser={currentUser}
+                onSetHoverStars={setHoverStars}
+                onSetStars={setStars}
+                onSetReview={setReview}
+                onSubmit={submit}
+                onSetReviewsSort={setReviewsSort}
+                onSetSocialPostOpen={setSocialPostOpen}
+                onOpenDeleteReviewModal={openDeleteReviewModal}
+                onSetExpandedReviews={setExpandedReviews}
+                onToggleLike={toggleLike}
+                onOpenAuthModal={openAuthModal}
+                onRequireVerifiedEmail={requireVerifiedEmail}
+                onSetReplyingToId={setReplyingToId}
+                onOpenDeleteReplyModal={openDeleteReplyModal}
+                onRequireReplyInteraction={requireReplyInteraction}
+                onSetReplyTextByRating={setReplyTextByRating}
+                onSubmitReply={submitReply}
+                onReportReview={reportReview}
+                reviewMaxLength={REVIEW_MAX_LENGTH}
+              />
             </div>
           </section>
 
-        </div>
+          </div>
 
-      </div>
+        </div>
 
       {showSuggestModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
@@ -2551,6 +2028,24 @@ export default function Page({
           </div>
         </div>
       ) : null}
+
+      <ReportReasonModal
+        open={reportReviewModalOpen}
+        title="Report review"
+        subtitle="Tell us why you are reporting this review."
+        value={reportReviewReason}
+        onChange={setReportReviewReason}
+        onClose={() => {
+          if (reportingReviewId) return;
+          setReportReviewModalOpen(false);
+          setReportReviewTargetId(null);
+          setReportReviewError("");
+        }}
+        onSubmit={submitReviewReport}
+        submitting={!!reportingReviewId}
+        error={reportReviewError}
+        submitLabel="Send review report"
+      />
 
       <ConfirmModal
         open={!!pendingDeleteAction}

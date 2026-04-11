@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import ReplyComposer from "@/app/components/rad/reply-composer";
+import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { ReplyItem } from "@/app/lib/rad-types";
 
 function formatReviewDate(date?: string) {
@@ -208,7 +209,7 @@ function ReplyThreadItem({
       ) : null}
 
       {reply.replies?.length ? (
-        <div className="mt-4 border-l border-white/10 pl-4 space-y-3">
+        <div className="mt-4 space-y-3 border-l border-white/10 pl-4">
           {reply.replies.map((childReply) => (
             <ReplyThreadItem
               key={childReply.id}
@@ -252,6 +253,11 @@ export default function ReplyList({
   >({});
   const [sendingReplyId, setSendingReplyId] = useState<string | null>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string>("");
+
+  const [reportReplyModalOpen, setReportReplyModalOpen] = useState(false);
+  const [reportReplyTargetId, setReportReplyTargetId] = useState<string | null>(null);
+  const [reportReplyReason, setReportReplyReason] = useState("Spam or abusive content");
+  const [reportReplySubmitting, setReportReplySubmitting] = useState(false);
 
   useEffect(() => {
     setLocalReplies(replies ?? []);
@@ -360,20 +366,27 @@ export default function ReplyList({
     }
   }
 
-  async function reportReply(reply: ReplyItem) {
+  function reportReply(reply: ReplyItem) {
     if (reply.reportedByMe) return;
     if (onRequireInteraction()) return;
 
-    const reason = window.prompt(
-      "Why are you reporting this reply?",
-      "Spam or abusive content"
-    );
+    setReportReplyTargetId(reply.id);
+    setReportReplyReason("Spam or abusive content");
+    setFeedbackMessage("");
+    setReportReplyModalOpen(true);
+  }
 
-    if (!reason || reason.trim().length < 3) {
+  async function submitReplyReport() {
+    if (!reportReplyTargetId) return;
+
+    const reason = reportReplyReason.trim();
+
+    if (reason.length < 3) {
       setFeedbackMessage("Report reason must be at least 3 characters.");
       return;
     }
 
+    setReportReplySubmitting(true);
     setFeedbackMessage("");
 
     try {
@@ -383,8 +396,8 @@ export default function ReplyList({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          replyId: reply.id,
-          reason: reason.trim(),
+          replyId: reportReplyTargetId,
+          reason,
         }),
       });
 
@@ -401,57 +414,82 @@ export default function ReplyList({
       }
 
       setLocalReplies((prev) =>
-        updateReplyNode(prev, reply.id, (current) => ({
+        updateReplyNode(prev, reportReplyTargetId, (current) => ({
           ...current,
           reportedByMe: true,
         }))
       );
+
+      setReportReplyModalOpen(false);
+      setReportReplyTargetId(null);
+      setReportReplyReason("Spam or abusive content");
 
       if (!json?.alreadyReported) {
         setFeedbackMessage("Reply reported.");
       }
     } catch {
       setFeedbackMessage("Could not report reply.");
+    } finally {
+      setReportReplySubmitting(false);
     }
   }
 
   return (
-    <div className="mt-4 space-y-3">
-      {localReplies.map((reply) => (
-        <ReplyThreadItem
-          key={reply.id}
-          reply={reply}
-          depth={0}
-          maxReplyDepth={1}
-          deletingReplyId={deletingReplyId}
-          onDeleteReply={onDeleteReply}
-          replyingToReplyId={replyingToReplyId}
-          onRequestReply={(targetReply) => {
-            if (onRequireInteraction()) return;
+    <>
+      <div className="mt-4 space-y-3">
+        {localReplies.map((reply) => (
+          <ReplyThreadItem
+            key={reply.id}
+            reply={reply}
+            depth={0}
+            maxReplyDepth={1}
+            deletingReplyId={deletingReplyId}
+            onDeleteReply={onDeleteReply}
+            replyingToReplyId={replyingToReplyId}
+            onRequestReply={(targetReply) => {
+              if (onRequireInteraction()) return;
 
-            setFeedbackMessage("");
-            setReplyingToReplyId((prev) =>
-              prev === targetReply.id ? null : targetReply.id
-            );
-          }}
-          replyDraftByReplyId={replyDraftByReplyId}
-          onReplyDraftChange={(replyId, value) =>
-            setReplyDraftByReplyId((prev) => ({
-              ...prev,
-              [replyId]: value,
-            }))
-          }
-          onSubmitReplyToReply={submitReplyToReply}
-          onCancelReply={() => setReplyingToReplyId(null)}
-          sendingReplyId={sendingReplyId}
-          onToggleLike={toggleLike}
-          onReportReply={reportReply}
-        />
-      ))}
+              setFeedbackMessage("");
+              setReplyingToReplyId((prev) =>
+                prev === targetReply.id ? null : targetReply.id
+              );
+            }}
+            replyDraftByReplyId={replyDraftByReplyId}
+            onReplyDraftChange={(replyId, value) =>
+              setReplyDraftByReplyId((prev) => ({
+                ...prev,
+                [replyId]: value,
+              }))
+            }
+            onSubmitReplyToReply={submitReplyToReply}
+            onCancelReply={() => setReplyingToReplyId(null)}
+            sendingReplyId={sendingReplyId}
+            onToggleLike={toggleLike}
+            onReportReply={reportReply}
+          />
+        ))}
 
-      {feedbackMessage ? (
-        <div className="text-xs text-amber-300">{feedbackMessage}</div>
-      ) : null}
-    </div>
+        {feedbackMessage ? (
+          <div className="text-xs text-amber-300">{feedbackMessage}</div>
+        ) : null}
+      </div>
+
+      <ReportReasonModal
+        open={reportReplyModalOpen}
+        title="Report reply"
+        subtitle="Tell us why you are reporting this reply."
+        value={reportReplyReason}
+        onChange={setReportReplyReason}
+        onClose={() => {
+          if (reportReplySubmitting) return;
+          setReportReplyModalOpen(false);
+          setReportReplyTargetId(null);
+        }}
+        onSubmit={submitReplyReport}
+        submitting={reportReplySubmitting}
+        error={feedbackMessage}
+        submitLabel="Send reply report"
+      />
+    </>
   );
 }
