@@ -16,8 +16,17 @@ const CURRENT_YEAR = new Date().getFullYear();
 const FEED_TYPES: FeedType[] = ["selected", "events", "births", "deaths"];
 const TARGET_SECTIONS = ["Events", "Births", "Deaths"] as const;
 
+const REQUEST_TIMEOUT_MS = 8000;
+const MAX_RETRIES = 3;
+const BASE_BACKOFF_MS = 1500;
+const REQUEST_GAP_MS = 500;
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function getAllMonthDays() {
@@ -113,50 +122,69 @@ function normalizeYear(year: number | null | undefined) {
   return year;
 }
 
+function isTransientStatus(status: number) {
+  return status === 429 || status >= 500;
+}
+
 async function fetchJson(url: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 6000);
+  let lastError: unknown = null;
 
-  try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "RateAnyDayInHumanHistory/1.0",
-        "Api-User-Agent": "RateAnyDayInHumanHistory/1.0",
-        Accept: "application/json",
-      },
-      signal: controller.signal,
-    });
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-    if (!res.ok) {
-      throw new Error(`Wikipedia API error: ${res.status}`);
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "RateAnyDayInHumanHistory/1.0",
+          "Api-User-Agent": "RateAnyDayInHumanHistory/1.0",
+          Accept: "application/json",
+        },
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        if (isTransientStatus(res.status) && attempt < MAX_RETRIES) {
+          await sleep(BASE_BACKOFF_MS * attempt);
+          continue;
+        }
+
+        throw new Error(`Wikipedia API error: ${res.status}`);
+      }
+
+      const data = await res.json();
+      await sleep(REQUEST_GAP_MS);
+      return data;
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < MAX_RETRIES) {
+        await sleep(BASE_BACKOFF_MS * attempt);
+        continue;
+      }
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return await res.json();
-  } finally {
-    clearTimeout(timeout);
   }
+
+  throw lastError instanceof Error ? lastError : new Error("Fetch failed");
 }
 
 async function fetchFeedYears(type: FeedType, month: number, day: number) {
   const url = `https://api.wikimedia.org/feed/v1/wikipedia/en/onthisday/${type}/${month}/${day}`;
+  const data = await fetchJson(url);
+  const items = Array.isArray(data?.[type]) ? (data[type] as FeedItem[]) : [];
 
-  try {
-    const data = await fetchJson(url);
-    const items = Array.isArray(data?.[type]) ? (data[type] as FeedItem[]) : [];
+  const years = new Set<number>();
 
-    const years = new Set<number>();
-
-    for (const item of items) {
-      const year = normalizeYear(item.year);
-      if (year) {
-        years.add(year);
-      }
+  for (const item of items) {
+    const year = normalizeYear(item.year);
+    if (year) {
+      years.add(year);
     }
-
-    return Array.from(years).sort((a, b) => a - b);
-  } catch {
-    return [];
   }
+
+  return Array.from(years).sort((a, b) => a - b);
 }
 
 async function fetchDatePageSections(pageTitle: string) {
@@ -165,14 +193,10 @@ async function fetchDatePageSections(pageTitle: string) {
     `?action=parse&page=${encodeURIComponent(pageTitle)}` +
     `&prop=sections&format=json&origin=*`;
 
-  try {
-    const data = await fetchJson(url);
-    return Array.isArray(data?.parse?.sections)
-      ? (data.parse.sections as WikiSection[])
-      : [];
-  } catch {
-    return [];
-  }
+  const data = await fetchJson(url);
+  return Array.isArray(data?.parse?.sections)
+    ? (data.parse.sections as WikiSection[])
+    : [];
 }
 
 async function fetchDatePageSectionHtml(pageTitle: string, sectionIndex: string) {
@@ -182,14 +206,10 @@ async function fetchDatePageSectionHtml(pageTitle: string, sectionIndex: string)
     `&prop=text&section=${encodeURIComponent(sectionIndex)}` +
     `&format=json&origin=*`;
 
-  try {
-    const data = await fetchJson(url);
-    return typeof data?.parse?.text?.["*"] === "string"
-      ? data.parse.text["*"]
-      : "";
-  } catch {
-    return "";
-  }
+  const data = await fetchJson(url);
+  return typeof data?.parse?.text?.["*"] === "string"
+    ? data.parse.text["*"]
+    : "";
 }
 
 function parseYearsFromSectionHtml(html: string) {
@@ -236,21 +256,55 @@ async function fetchPageYears(month: number, day: number) {
   return yearsBySection;
 }
 
+function countTotalSources(yearsBySource: Map<string, number[]>) {
+  let total = 0;
+
+  for (const years of yearsBySource.values()) {
+    total += years.length;
+  }
+
+  return total;
+}
+
 async function buildPoolForMonthDay(monthDay: string) {
   const [month, day] = monthDay.split("-").map(Number);
 
   const yearsBySource = new Map<string, number[]>();
 
-  for (const type of FEED_TYPES) {
-    const years = await fetchFeedYears(type, month, day);
-    yearsBySource.set(`feed:${type}`, years);
+  try {
+    for (const type of FEED_TYPES) {
+      const years = await fetchFeedYears(type, month, day);
+      yearsBySource.set(`feed:${type}`, years);
+    }
+
+    const pageYearsBySection = await fetchPageYears(month, day);
+
+    for (const sectionName of TARGET_SECTIONS) {
+      const years = pageYearsBySection.get(sectionName) ?? [];
+      yearsBySource.set(`page:${sectionName}`, years);
+    }
+  } catch (error) {
+    console.log(
+      `[${monthDay}] SKIPPED fetch failure: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return;
   }
 
-  const pageYearsBySection = await fetchPageYears(month, day);
+  const feedSelected = yearsBySource.get("feed:selected")?.length ?? 0;
+  const feedEvents = yearsBySource.get("feed:events")?.length ?? 0;
+  const feedBirths = yearsBySource.get("feed:births")?.length ?? 0;
+  const feedDeaths = yearsBySource.get("feed:deaths")?.length ?? 0;
+  const pageEvents = yearsBySource.get("page:Events")?.length ?? 0;
+  const pageBirths = yearsBySource.get("page:Births")?.length ?? 0;
+  const pageDeaths = yearsBySource.get("page:Deaths")?.length ?? 0;
 
-  for (const sectionName of TARGET_SECTIONS) {
-    const years = pageYearsBySection.get(sectionName) ?? [];
-    yearsBySource.set(`page:${sectionName}`, years);
+  const totalSourceHits = countTotalSources(yearsBySource);
+
+  if (totalSourceHits === 0) {
+    console.log(
+      `[${monthDay}] SKIPPED suspicious all-zero day | feed selected ${feedSelected} | feed events ${feedEvents} | feed births ${feedBirths} | feed deaths ${feedDeaths} | page events ${pageEvents} | page births ${pageBirths} | page deaths ${pageDeaths}`
+    );
+    return;
   }
 
   const allYears = new Set<number>();
@@ -279,14 +333,6 @@ async function buildPoolForMonthDay(monthDay: string) {
       validCount: validDays.length,
     },
   });
-
-  const feedSelected = yearsBySource.get("feed:selected")?.length ?? 0;
-  const feedEvents = yearsBySource.get("feed:events")?.length ?? 0;
-  const feedBirths = yearsBySource.get("feed:births")?.length ?? 0;
-  const feedDeaths = yearsBySource.get("feed:deaths")?.length ?? 0;
-  const pageEvents = yearsBySource.get("page:Events")?.length ?? 0;
-  const pageBirths = yearsBySource.get("page:Births")?.length ?? 0;
-  const pageDeaths = yearsBySource.get("page:Deaths")?.length ?? 0;
 
   console.log(
     `[${monthDay}] feed selected ${feedSelected} | feed events ${feedEvents} | feed births ${feedBirths} | feed deaths ${feedDeaths} | page events ${pageEvents} | page births ${pageBirths} | page deaths ${pageDeaths} | saved ${validDays.length} valid years`
