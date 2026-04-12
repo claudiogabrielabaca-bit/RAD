@@ -480,14 +480,13 @@ export default function Page({
   }, []);
 
   const resetUserScopedNavigationState = useCallback(() => {
-    dayBundleCacheRef.current.clear();
-    prefetchingDaysRef.current.clear();
-    setRecentSurpriseHistory([]);
-    clearTodayHistory();
-    setTodayHistoryNotice("");
-  }, [dayBundleCacheRef, prefetchingDaysRef]);
+  dayBundleCacheRef.current.clear();
+  prefetchingDaysRef.current.clear();
+  setRecentSurpriseHistory([]);
+  setTodayHistoryNotice("");
+}, [dayBundleCacheRef, prefetchingDaysRef]);
 
-  useEffect(() => {
+useEffect(() => {
     resetUserScopedNavigationState();
   }, [currentUser?.id, resetUserScopedNavigationState]);
 
