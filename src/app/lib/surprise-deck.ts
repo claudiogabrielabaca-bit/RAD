@@ -72,6 +72,15 @@ function shuffleArray<T>(items: T[]) {
   return arr;
 }
 
+function rotateDeckRandomly<T>(items: T[]) {
+  if (items.length <= 1) return [...items];
+
+  const offset = Math.floor(Math.random() * items.length);
+  if (offset === 0) return [...items];
+
+  return [...items.slice(offset), ...items.slice(0, offset)];
+}
+
 function normalizeStoredDeck(value: unknown) {
   if (!Array.isArray(value)) return [];
 
@@ -389,8 +398,11 @@ function buildBalancedDeck(days: string[], historyDays: string[] = []) {
 }
 
 function buildFreshDeck(poolDays: string[]) {
+  const balancedDeck = buildBalancedDeck(poolDays);
+  const rotatedDeck = rotateDeckRandomly(balancedDeck);
+
   return {
-    deck: buildBalancedDeck(poolDays),
+    deck: rotatedDeck,
     cursor: 0,
   };
 }
