@@ -1,7 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { getOrCreateVisitorId, getVisitorId } from "@/app/lib/visitor-id";
 
-const SURPRISE_DECK_VERSION = "v11-era-rotation-century-balanced";
+const SURPRISE_DECK_VERSION = "v12-seeded-fresh-start-balanced";
 const MONTH_COOLDOWN = 4;
 const YEAR_COOLDOWN = 6;
 const DECADE_COOLDOWN = 4;
@@ -72,13 +72,9 @@ function shuffleArray<T>(items: T[]) {
   return arr;
 }
 
-function rotateDeckRandomly<T>(items: T[]) {
-  if (items.length <= 1) return [...items];
-
-  const offset = Math.floor(Math.random() * items.length);
-  if (offset === 0) return [...items];
-
-  return [...items.slice(offset), ...items.slice(0, offset)];
+function pickRandom<T>(items: T[]) {
+  if (items.length === 0) return null;
+  return items[Math.floor(Math.random() * items.length)] ?? null;
 }
 
 function normalizeStoredDeck(value: unknown) {
@@ -397,12 +393,74 @@ function buildBalancedDeck(days: string[], historyDays: string[] = []) {
   return result;
 }
 
+function pickFreshSeedDay(poolDays: string[]) {
+  const uniqueDays = Array.from(
+    new Set(poolDays.filter((day): day is string => isValidDayString(day)))
+  );
+
+  if (uniqueDays.length === 0) return null;
+
+  const grouped = new Map<EraBucket, Map<number, Map<string, string[]>>>();
+
+  for (const day of uniqueDays) {
+    const era = getEraBucket(day);
+    const month = parseMonth(day);
+    const monthDay = parseMonthDay(day);
+
+    if (!grouped.has(era)) {
+      grouped.set(era, new Map());
+    }
+
+    const months = grouped.get(era)!;
+
+    if (!months.has(month)) {
+      months.set(month, new Map());
+    }
+
+    const monthDays = months.get(month)!;
+    const current = monthDays.get(monthDay) ?? [];
+    current.push(day);
+    monthDays.set(monthDay, current);
+  }
+
+  const era = pickRandom([...grouped.keys()]);
+  if (!era) return null;
+
+  const monthMap = grouped.get(era);
+  if (!monthMap || monthMap.size === 0) return null;
+
+  const month = pickRandom([...monthMap.keys()]);
+  if (month === null) return null;
+
+  const monthDayMap = monthMap.get(month);
+  if (!monthDayMap || monthDayMap.size === 0) return null;
+
+  const monthDay = pickRandom([...monthDayMap.keys()]);
+  if (!monthDay) return null;
+
+  const candidates = monthDayMap.get(monthDay) ?? [];
+  return pickRandom(candidates);
+}
+
 function buildFreshDeck(poolDays: string[]) {
-  const balancedDeck = buildBalancedDeck(poolDays);
-  const rotatedDeck = rotateDeckRandomly(balancedDeck);
+  const uniqueDays = Array.from(
+    new Set(poolDays.filter((day): day is string => isValidDayString(day)))
+  );
+
+  const seedDay = pickFreshSeedDay(uniqueDays);
+
+  if (!seedDay) {
+    return {
+      deck: buildBalancedDeck(uniqueDays),
+      cursor: 0,
+    };
+  }
+
+  const remainingPool = uniqueDays.filter((day) => day !== seedDay);
+  const remainingDeck = buildBalancedDeck(remainingPool, [seedDay]);
 
   return {
-    deck: rotatedDeck,
+    deck: [seedDay, ...remainingDeck],
     cursor: 0,
   };
 }
