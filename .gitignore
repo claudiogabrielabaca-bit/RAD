@@ -41,14 +41,19 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# generated
 /src/generated/prisma
 
 # local archives / backups
 *.zip
-#/RAD
+*.bak
+*.backup
 /_app_root_backup
 
 # local sqlite files
 /dev.db
 /prisma/dev.db
 /prisma/dev-backup-before-reset.db
+
+# local audit / scratch outputs
+surprise-audit-*.json
