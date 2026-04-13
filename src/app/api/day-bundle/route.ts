@@ -1,19 +1,16 @@
 import { NextResponse } from "next/server";
 import { buildDayBundle } from "@/app/lib/day-bundle";
+import { isValidDayString } from "@/app/lib/day";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-function isValidDay(day: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(day);
-}
 
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const day = searchParams.get("day");
 
-    if (!day || !isValidDay(day)) {
+    if (!isValidDayString(day)) {
       return NextResponse.json({ error: "Invalid day" }, { status: 400 });
     }
 

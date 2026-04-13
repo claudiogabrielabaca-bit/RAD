@@ -318,7 +318,27 @@ export function truncateText(text: string, max = 78) {
 }
 
 export function isValidDayString(value?: string | null): value is string {
-  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const [year, month, day] = value.split("-").map(Number);
+
+  if (
+    !Number.isInteger(year) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(day)
+  ) {
+    return false;
+  }
+
+  if (month < 1 || month > 12) {
+    return false;
+  }
+
+  const maxDay = getDaysInMonth(year, month);
+
+  return day >= 1 && day <= maxDay;
 }
 
 export function formatMonthDayLabel(monthDay: string) {

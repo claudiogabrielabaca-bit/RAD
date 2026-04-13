@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
 import { getAnonLabel } from "@/app/lib/anon-label";
 import type { ReplyItem } from "@/app/lib/rad-types";
+import { isValidDayString } from "@/app/lib/day";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -70,7 +71,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const day = searchParams.get("day");
 
-    if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    if (!isValidDayString(day)) {
       return NextResponse.json({ error: "Invalid day" }, { status: 400 });
     }
 

@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
+import { isValidDayString } from "@/app/lib/day";
 
 function clampStars(n: number) {
   if (!Number.isFinite(n)) return 0;
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
       review?: string;
     };
 
-    if (!day || typeof day !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    if (!isValidDayString(day)) {
       return NextResponse.json({ error: "Invalid day" }, { status: 400 });
     }
 

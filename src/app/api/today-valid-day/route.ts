@@ -1,17 +1,13 @@
 import { NextResponse } from "next/server";
 import { getTodayValidDay } from "@/app/lib/today-valid-day";
 import { buildDayBundle } from "@/app/lib/day-bundle";
+import {
+  isValidDayString,
+  isValidMonthDayString,
+} from "@/app/lib/day";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-function isValidDayString(value?: string | null): value is string {
-  return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function isValidMonthDay(value?: string | null): value is string {
-  return !!value && /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(value);
-}
 
 function parseExcludeDays(searchParams: URLSearchParams) {
   const raw = searchParams.get("excludeDays") ?? "";
@@ -30,7 +26,7 @@ export async function GET(req: Request) {
     const bundle = searchParams.get("bundle") === "1";
     const excludeDays = parseExcludeDays(searchParams);
     const requestedMonthDay = searchParams.get("monthDay");
-    const monthDay = isValidMonthDay(requestedMonthDay)
+    const monthDay = isValidMonthDayString(requestedMonthDay)
       ? requestedMonthDay
       : undefined;
 

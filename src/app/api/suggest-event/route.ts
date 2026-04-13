@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { getCurrentUser } from "@/app/lib/current-user";
+import { isValidDayString } from "@/app/lib/day";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -123,7 +124,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    if (!day || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    if (!isValidDayString(day)) {
       return NextResponse.json({ error: "Invalid day" }, { status: 400 });
     }
 

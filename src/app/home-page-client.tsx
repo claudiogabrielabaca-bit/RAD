@@ -26,6 +26,7 @@ import {
   isValidDayString,
   formatMonthDayLabel,
 } from "@/app/lib/home-page-utils";
+import { getTodayDayString } from "@/app/lib/day";
 import type {
   DayResponse,
   FavoriteDayResponse,
@@ -76,7 +77,7 @@ export default function Page({
   const searchParams = useSearchParams();
 
   const minDay = "1800-01-01";
-  const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const today = useMemo(() => getTodayDayString(), []);
 
   const rateBoxRef = useRef<HTMLDivElement | null>(null);
   const myReviewBlockRef = useRef<HTMLDivElement | null>(null);
@@ -411,6 +412,21 @@ export default function Page({
     });
   }
 
+  function buildSurpriseRequestUrl({
+    fresh = false,
+  }: {
+    fresh?: boolean;
+  } = {}) {
+    const params = new URLSearchParams();
+
+    if (fresh) {
+      params.set("fresh", "1");
+    }
+
+    const query = params.toString();
+    return query ? `/api/surprise?${query}` : "/api/surprise";
+  }
+
   const preloadImage = useCallback((src?: string | null) => {
     const normalizedSrc = src?.trim();
 
@@ -557,14 +573,11 @@ useEffect(() => {
       }
 
       try {
-        const res = await fetch(
-          buildRandomRequestUrl("/api/surprise", {
-            fresh: FORCE_FRESH_MODE,
-          }),
-          {
-            cache: "no-store",
-          }
-        );
+        const res = await fetch(buildSurpriseRequestUrl({
+          fresh: FORCE_FRESH_MODE,
+        }), {
+          cache: "no-store",
+        });
 
         const json = (await res.json().catch(() => null)) as
           | SurpriseResponse
@@ -585,7 +598,7 @@ useEffect(() => {
         }
 
         const fallbackRes = await fetch(
-          buildRandomRequestUrl("/api/random-valid-day", {
+          buildRandomRequestUrl({
             fresh: FORCE_FRESH_MODE,
           }),
           {
@@ -807,15 +820,11 @@ useEffect(() => {
     const transitionId = transitionIdRef.current;
 
     try {
-      const res = await fetch(
-        buildRandomRequestUrl("/api/surprise", {
-          fresh: FORCE_FRESH_MODE,
-          currentDay: day,
-        }),
-        {
-          cache: "no-store",
-        }
-      );
+      const res = await fetch(buildSurpriseRequestUrl({
+        fresh: FORCE_FRESH_MODE,
+      }), {
+        cache: "no-store",
+      });
 
       const json = (await res.json().catch(() => null)) as
         | SurpriseResponse
@@ -870,7 +879,7 @@ useEffect(() => {
         buildTodayInHistoryRequestUrl({
           bundle: true,
           fresh: FORCE_FRESH_MODE,
-          currentDay: day,
+          excludeDays: isValidDayString(day) ? [day] : [],
         }),
         {
           cache: "no-store",

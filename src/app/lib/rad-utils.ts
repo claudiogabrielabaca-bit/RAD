@@ -1,3 +1,4 @@
+import { getTodayDayString } from "@/app/lib/day";
 import {
   HighlightBadgeKey,
   HighlightItem,
@@ -143,21 +144,50 @@ export function normalizeLegacyTypeToBadges(
 export function getHighlightBadges(item?: HighlightItem | null): HighlightBadgeKey[] {
   if (!item) return [];
 
-  const badges: HighlightBadgeKey[] = [];
+  const rawBadges: HighlightBadgeKey[] = [];
 
   if (item.kind && item.kind !== "none") {
-    badges.push(item.kind);
+    rawBadges.push(item.kind);
   }
 
   if (item.category && item.category !== "general") {
-    badges.push(item.category);
+    rawBadges.push(item.category);
   }
 
-  if (badges.length > 0) {
-    return badges;
+  const legacyBadges = normalizeLegacyTypeToBadges(
+    item.type,
+    item.secondaryType
+  );
+
+  for (const badge of legacyBadges) {
+    rawBadges.push(badge);
   }
 
-  return normalizeLegacyTypeToBadges(item.type, item.secondaryType);
+  const canonicalMap: Partial<Record<HighlightBadgeKey, HighlightBadgeKey>> = {
+    births: "birth",
+    deaths: "death",
+    events: "event",
+  };
+
+  const badges: HighlightBadgeKey[] = [];
+
+  for (const badge of rawBadges) {
+    const normalized = canonicalMap[badge] ?? badge;
+
+    if (!badges.includes(normalized)) {
+      badges.push(normalized);
+    }
+  }
+
+  const hasSpecificPrimaryBadge = badges.some((badge) =>
+    ["birth", "death", "event"].includes(badge)
+  );
+
+  if (hasSpecificPrimaryBadge) {
+    return badges.filter((badge) => badge !== "selected");
+  }
+
+  return badges;
 }
 
 export function clamp(n: number, a: number, b: number) {
@@ -180,7 +210,6 @@ export function getDaysInMonth(year: number, month: number) {
 export function getTodayInRandomYear(minYear = 1900) {
   const now = new Date();
   const currentYear = now.getFullYear();
-
   const randomYear =
     Math.floor(Math.random() * (currentYear - minYear + 1)) + minYear;
 
@@ -195,7 +224,7 @@ export function getTodayInRandomYear(minYear = 1900) {
 
 export function getRandomDay(
   min = "1900-01-01",
-  max = new Date().toISOString().slice(0, 10)
+  max = getTodayDayString()
 ) {
   const minDate = new Date(`${min}T00:00:00`);
   const maxDate = new Date(`${max}T00:00:00`);

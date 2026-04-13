@@ -1,4 +1,8 @@
-import { getDaysInMonth, isValidDayString, pad2 } from "@/app/lib/home-page-utils";
+  import { getDaysInMonth, isValidDayString, pad2 } from "@/app/lib/home-page-utils";
+import {
+  getDayWithOffset as shiftDayStringByOffset,
+  getTodayDayString,
+} from "@/app/lib/day";
 
 export const SURPRISE_HISTORY_STORAGE_KEY = "rad:surprise-history";
 export const SURPRISE_HISTORY_MAX = 120;
@@ -43,9 +47,7 @@ export function setRecentSurpriseHistory(days: string[]) {
       SURPRISE_HISTORY_STORAGE_KEY,
       JSON.stringify(safe)
     );
-  } catch {
-    //
-  }
+  } catch {}
 }
 
 export function rememberSurpriseDay(day: string) {
@@ -56,8 +58,7 @@ export function rememberSurpriseDay(day: string) {
 }
 
 export function getTodayHistoryMonthDay() {
-  const now = new Date();
-  return `${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+  return getTodayDayString().slice(5, 10);
 }
 
 export function getTodayHistoryStorageKey(monthDay = getTodayHistoryMonthDay()) {
@@ -68,9 +69,7 @@ export function getRecentTodayHistory(monthDay = getTodayHistoryMonthDay()) {
   if (typeof window === "undefined") return [];
 
   try {
-    const raw = window.localStorage.getItem(
-      getTodayHistoryStorageKey(monthDay)
-    );
+    const raw = window.localStorage.getItem(getTodayHistoryStorageKey(monthDay));
     if (!raw) return [];
 
     const parsed = JSON.parse(raw);
@@ -105,15 +104,15 @@ export function setRecentTodayHistory(
       getTodayHistoryStorageKey(monthDay),
       JSON.stringify(safe)
     );
-  } catch {
-    //
-  }
+  } catch {}
 }
 
-export function rememberTodayHistoryDay(day: string) {
+export function rememberTodayHistoryDay(
+  day: string,
+  monthDay = getTodayHistoryMonthDay()
+) {
   if (!isValidDayString(day)) return;
 
-  const monthDay = day.slice(5, 10);
   const current = getRecentTodayHistory(monthDay).filter((item) => item !== day);
   setRecentTodayHistory([day, ...current], monthDay);
 }
@@ -123,107 +122,89 @@ export function clearTodayHistory(monthDay = getTodayHistoryMonthDay()) {
 
   try {
     window.localStorage.removeItem(getTodayHistoryStorageKey(monthDay));
-  } catch {
-    //
-  }
+  } catch {}
 }
 
 export function getStoredDayBackHistory() {
   if (typeof window === "undefined") return [];
 
   try {
-    const raw = window.sessionStorage.getItem(DAY_BACK_HISTORY_STORAGE_KEY);
+    const raw = window.localStorage.getItem(DAY_BACK_HISTORY_STORAGE_KEY);
     if (!raw) return [];
 
     const parsed = JSON.parse(raw);
 
     if (!Array.isArray(parsed)) return [];
 
-    return parsed
-      .filter(
-        (item): item is string =>
-          typeof item === "string" && isValidDayString(item)
-      )
-      .slice(-DAY_BACK_HISTORY_MAX);
+    return parsed.filter((item): item is string => typeof item === "string");
   } catch {
     return [];
   }
 }
 
-export function setStoredDayBackHistory(history: string[]) {
+export function setStoredDayBackHistory(days: string[]) {
   if (typeof window === "undefined") return;
 
   try {
-    const safe = history
-      .filter((item) => isValidDayString(item))
+    const safe = days
+      .filter((item): item is string => typeof item === "string")
       .slice(-DAY_BACK_HISTORY_MAX);
 
-    window.sessionStorage.setItem(
+    window.localStorage.setItem(
       DAY_BACK_HISTORY_STORAGE_KEY,
       JSON.stringify(safe)
     );
-  } catch {
-    //
-  }
+  } catch {}
 }
 
-export function buildRandomRequestUrl(
-  basePath: string,
-  options?: {
-    fresh?: boolean;
-    currentDay?: string;
-  }
-) {
+export function buildRandomRequestUrl({
+  excludeDays = [],
+  fresh = false,
+}: {
+  excludeDays?: string[];
+  fresh?: boolean;
+} = {}) {
   const params = new URLSearchParams();
 
-  if (options?.fresh) {
+  if (fresh) {
     params.set("fresh", "1");
-  }
-
-  const excludeDays = getRecentSurpriseHistory();
-
-  if (options?.currentDay && isValidDayString(options.currentDay)) {
-    excludeDays.unshift(options.currentDay);
   }
 
   const uniqueExcludeDays = Array.from(
     new Set(excludeDays.filter((item) => isValidDayString(item)))
-  ).slice(0, SURPRISE_HISTORY_MAX);
+  ).slice(0, 30);
 
   if (uniqueExcludeDays.length > 0) {
     params.set("excludeDays", uniqueExcludeDays.join(","));
   }
 
   const query = params.toString();
-  return query ? `${basePath}?${query}` : basePath;
+  return query ? `/api/random-valid-day?${query}` : "/api/random-valid-day";
 }
 
-export function buildTodayInHistoryRequestUrl(options?: {
+export function buildTodayInHistoryRequestUrl({
+  excludeDays = [],
+  fresh = false,
+  bundle = false,
+  monthDay = getTodayHistoryMonthDay(),
+}: {
+  excludeDays?: string[];
   fresh?: boolean;
-  currentDay?: string;
   bundle?: boolean;
-}) {
+  monthDay?: string;
+} = {}) {
   const params = new URLSearchParams();
 
-  if (options?.bundle) {
-    params.set("bundle", "1");
-  }
-
-  if (options?.fresh) {
+  if (fresh) {
     params.set("fresh", "1");
   }
 
-  const monthDay = getTodayHistoryMonthDay();
-  params.set("monthDay", monthDay);
+  if (bundle) {
+    params.set("bundle", "1");
+  }
 
-  const excludeDays = getRecentTodayHistory(monthDay);
-
-  if (
-    options?.currentDay &&
-    isValidDayString(options.currentDay) &&
-    options.currentDay.slice(5, 10) === monthDay
-  ) {
-    excludeDays.unshift(options.currentDay);
+  if (monthDay) {
+    params.set("monthDay", monthDay);
   }
 
   const uniqueExcludeDays = Array.from(
@@ -239,32 +220,46 @@ export function buildTodayInHistoryRequestUrl(options?: {
 }
 
 export function getDayWithOffset(baseDay: string, offset: number) {
-  if (!isValidDayString(baseDay)) return null;
-
-  const d = new Date(`${baseDay}T00:00:00`);
-  d.setDate(d.getDate() + offset);
-  return d.toISOString().slice(0, 10);
+  return shiftDayStringByOffset(baseDay, offset);
 }
 
 export function getDayWithYearShift(
   baseDay: string,
-  delta: number,
-  minDay: string,
-  maxDay: string
+  yearOffset: number,
+  minDay = "1800-01-01",
+  maxDay?: string
 ) {
   if (!isValidDayString(baseDay)) return null;
 
-  const [y, m, d] = baseDay.split("-").map(Number);
-  const targetYear = y + delta;
-  const currentRealYear = new Date().getFullYear();
+  const [year, month, day] = baseDay.split("-").map(Number);
+  const targetYear = year + yearOffset;
 
-  if (targetYear < 1800 || targetYear > currentRealYear) return null;
+  if (targetYear < 1800) {
+    return null;
+  }
 
-  const maxDayInMonth = getDaysInMonth(targetYear, m);
-  const safeDay = Math.min(d, maxDayInMonth);
-  const candidate = `${targetYear}-${pad2(m)}-${pad2(safeDay)}`;
+  const maxAllowedDay = maxDay && isValidDayString(maxDay) ? maxDay : undefined;
 
-  if (candidate < minDay || candidate > maxDay) return null;
+  if (maxAllowedDay) {
+    const [maxYear] = maxAllowedDay.split("-").map(Number);
 
-  return candidate;
+    if (targetYear > maxYear) {
+      return null;
+    }
+  }
+
+  const maxDayInTargetMonth = getDaysInMonth(targetYear, month);
+  const safeDay = Math.min(day, maxDayInTargetMonth);
+
+  const nextDay = `${targetYear}-${pad2(month)}-${pad2(safeDay)}`;
+
+  if (nextDay < minDay) {
+    return null;
+  }
+
+  if (maxAllowedDay && nextDay > maxAllowedDay) {
+    return null;
+  }
+
+  return nextDay;
 }

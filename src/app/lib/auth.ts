@@ -17,11 +17,13 @@ const BCRYPT_ROUNDS = 12;
 type AuthCodePurpose = "verify" | "login" | "reset";
 
 function getAuthCodeSecret() {
-  return (
-    process.env.AUTH_CODE_SECRET ||
-    process.env.ADMIN_SECRET ||
-    "dev-only-auth-code-secret-change-me"
-  );
+  const secret = process.env.AUTH_CODE_SECRET?.trim();
+
+  if (!secret) {
+    throw new Error("Missing AUTH_CODE_SECRET");
+  }
+
+  return secret;
 }
 
 function normalizeEmail(email: string) {

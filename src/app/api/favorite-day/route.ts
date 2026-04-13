@@ -1,13 +1,10 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
+import { isValidDayString } from "@/app/lib/day";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-function isValidDay(day: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(day);
-}
 
 export async function GET(req: Request) {
   try {
@@ -23,7 +20,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const dayParam = searchParams.get("day");
 
-    if (!dayParam || !isValidDay(dayParam)) {
+    if (!isValidDayString(dayParam)) {
       return NextResponse.json({ error: "Invalid day" }, { status: 400 });
     }
 
@@ -69,7 +66,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => null);
     const day = body?.day;
 
-    if (!day || typeof day !== "string" || !isValidDay(day)) {
+    if (!isValidDayString(day)) {
       return NextResponse.json({ error: "Invalid day" }, { status: 400 });
     }
 

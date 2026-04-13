@@ -1129,7 +1129,7 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
   const [yearStr, month, day] = date.split("-");
   const selectedYear = Number(yearStr);
 
-  let exactMatches = [];
+  const exactMatches = [];
 
   for (const type of PRIORITY) {
     const items = await fetchWikiType(type, month, day);
@@ -1145,7 +1145,7 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
   let finalHighlights = finalizeHighlights(exactMatches);
 
   if (finalHighlights.length === 0) {
-    let fallbackMatches = [];
+    const fallbackMatches = [];
 
     for (const type of PRIORITY) {
       const fallbackItems = await fetchFallbackFromDatePage(
@@ -1162,7 +1162,7 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
   }
 
   if (finalHighlights.length === 0) {
-    let fallbackMatches = [];
+    const fallbackMatches = [];
 
     for (const type of PRIORITY) {
       const fallbackItems = await fetchFallbackFromDatePage(

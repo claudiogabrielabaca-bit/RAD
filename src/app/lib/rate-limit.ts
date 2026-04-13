@@ -1,5 +1,8 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
+
+const MAX_RATE_LIMIT_RETRIES = 3;
 
 export function getClientIp(req: Request) {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -20,21 +23,31 @@ export function buildRateLimitKey(req: Request, email?: string) {
   return email ? `${ip}:${email.trim().toLowerCase()}` : ip;
 }
 
-export async function consumeRateLimit({
-  action,
-  key,
-  limit,
-  windowMs,
-}: {
-  action: string;
-  key: string;
-  limit: number;
-  windowMs: number;
-}) {
-  const now = new Date();
-  const expiresAt = new Date(Date.now() + windowMs);
+function isRetryableRateLimitError(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    (error.code === "P2002" || error.code === "P2025")
+  );
+}
 
-  const existing = await prisma.rateLimit.findUnique({
+async function consumeRateLimitInTransaction(
+  tx: Prisma.TransactionClient,
+  {
+    action,
+    key,
+    limit,
+    windowMs,
+  }: {
+    action: string;
+    key: string;
+    limit: number;
+    windowMs: number;
+  }
+) {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + windowMs);
+
+  const existing = await tx.rateLimit.findUnique({
     where: {
       action_key: {
         action,
@@ -44,7 +57,7 @@ export async function consumeRateLimit({
   });
 
   if (!existing) {
-    await prisma.rateLimit.create({
+    await tx.rateLimit.create({
       data: {
         action,
         key,
@@ -61,7 +74,7 @@ export async function consumeRateLimit({
   }
 
   if (existing.expiresAt <= now) {
-    await prisma.rateLimit.update({
+    await tx.rateLimit.update({
       where: {
         action_key: {
           action,
@@ -92,7 +105,7 @@ export async function consumeRateLimit({
     };
   }
 
-  const updated = await prisma.rateLimit.update({
+  const updated = await tx.rateLimit.update({
     where: {
       action_key: {
         action,
@@ -111,6 +124,43 @@ export async function consumeRateLimit({
     remaining: Math.max(0, limit - updated.count),
     retryAfterSec: 0,
   };
+}
+
+export async function consumeRateLimit({
+  action,
+  key,
+  limit,
+  windowMs,
+}: {
+  action: string;
+  key: string;
+  limit: number;
+  windowMs: number;
+}) {
+  for (let attempt = 0; attempt < MAX_RATE_LIMIT_RETRIES; attempt++) {
+    try {
+      return await prisma.$transaction((tx) =>
+        consumeRateLimitInTransaction(tx, {
+          action,
+          key,
+          limit,
+          windowMs,
+        })
+      );
+    } catch (error) {
+      const shouldRetry =
+        attempt < MAX_RATE_LIMIT_RETRIES - 1 &&
+        isRetryableRateLimitError(error);
+
+      if (shouldRetry) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  throw new Error("Failed to consume rate limit after retries.");
 }
 
 export function createRateLimitResponse(
