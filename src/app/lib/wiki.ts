@@ -1,5 +1,3 @@
-import { prisma } from "@/app/lib/prisma";
-
 type WikiPage = {
   titles?: {
     display?: string;
@@ -44,6 +42,11 @@ export type DayHighlight = {
   title: string | null;
   image: string | null;
   articleUrl: string | null;
+};
+
+export type DayHighlightsLookupResult = {
+  highlights: DayHighlight[];
+  hadSuccessfulFetch: boolean;
 };
 
 type WikiType = "selected" | "events" | "births" | "deaths";
@@ -490,9 +493,9 @@ function mapItem(type: WikiType, item: WikiItem): DayHighlight {
   );
 }
 
-async function fetchJson(url: string) {
+async function fetchJson<T = unknown>(url: string) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4500);
+  const timeout = setTimeout(() => controller.abort(), 6500);
 
   try {
     const res = await fetch(url, {
@@ -501,15 +504,26 @@ async function fetchJson(url: string) {
         "Api-User-Agent": "RateAnyDayInHumanHistory/1.0",
         Accept: "application/json",
       },
-      next: { revalidate: 86400 },
+      cache: "no-store",
       signal: controller.signal,
     });
 
     if (!res.ok) {
-      throw new Error(`Wikipedia API error: ${res.status}`);
+      return {
+        ok: false as const,
+        data: null as T | null,
+      };
     }
 
-    return await res.json();
+    return {
+      ok: true as const,
+      data: (await res.json()) as T,
+    };
+  } catch {
+    return {
+      ok: false as const,
+      data: null as T | null,
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -517,20 +531,25 @@ async function fetchJson(url: string) {
 
 async function fetchWikiType(type: WikiType, month: string, day: string) {
   const results: WikiItem[] = [];
+  let hadSuccess = false;
 
   for (const lang of WIKI_LANGS) {
     const url = `https://api.wikimedia.org/feed/v1/wikipedia/${lang}/onthisday/${type}/${month}/${day}`;
+    const result = await fetchJson<Record<string, unknown>>(url);
 
-    try {
-      const data = await fetchJson(url);
-      const items = (data?.[type] ?? []) as WikiItem[];
-      results.push(...items);
-    } catch {
-      //
+    if (!result.ok || !result.data) {
+      continue;
     }
+
+    hadSuccess = true;
+    const items = (result.data[type] ?? []) as WikiItem[];
+    results.push(...items);
   }
 
-  return results;
+  return {
+    items: results,
+    hadSuccess,
+  };
 }
 
 function getDatePageTitle(lang: WikiLang, month: string, day: string) {
@@ -601,15 +620,27 @@ async function fetchDatePageSections(lang: WikiLang, pageTitle: string) {
     `?action=parse&page=${encodeURIComponent(pageTitle)}` +
     `&prop=sections&format=json&origin=*`;
 
-  try {
-    const data = await fetchJson(url);
-    return Array.isArray(data?.parse?.sections) ? data.parse.sections : [];
-  } catch {
-    return [];
+  const result = await fetchJson<Record<string, unknown>>(url);
+
+  if (!result.ok || !result.data) {
+    return {
+      sections: [] as Array<{ line?: string; index?: string }>,
+      hadSuccess: false,
+    };
   }
+
+  const parse = result.data.parse as
+    | { sections?: Array<{ line?: string; index?: string }> }
+    | undefined;
+
+  return {
+    sections: Array.isArray(parse?.sections) ? parse.sections : [],
+    hadSuccess: true,
+  };
 }
 
 function isTooGenericTitle(title: string | null | undefined) {
+
   if (!title) return false;
 
   const t = title
@@ -641,15 +672,27 @@ async function fetchDatePageSectionHtml(
     `&prop=text&section=${encodeURIComponent(sectionIndex)}` +
     `&format=json&origin=*`;
 
-  try {
-    const data = await fetchJson(url);
-    return data?.parse?.text?.["*"] ?? "";
-  } catch {
-    return "";
+  const result = await fetchJson<Record<string, unknown>>(url);
+
+  if (!result.ok || !result.data) {
+    return {
+      html: "",
+      hadSuccess: false,
+    };
   }
+
+  const parse = result.data.parse as
+    | { text?: Record<string, string> }
+    | undefined;
+
+  return {
+    html: parse?.text?.["*"] ?? "",
+    hadSuccess: true,
+  };
 }
 
 function extractListItemsFromHtml(html: string) {
+
   return html.match(/<li\b[^>]*>[\s\S]*?<\/li>/gi) ?? [];
 }
 
@@ -777,27 +820,43 @@ async function fetchFallbackFromDatePage(
   month: string,
   day: string,
   selectedYear: number
-): Promise<DayHighlight[]> {
+) {
   const collected: DayHighlight[] = [];
+  let hadSuccess = false;
 
   for (const lang of WIKI_LANGS) {
     const pageTitle = getDatePageTitle(lang, month, day);
-    const sections = await fetchDatePageSections(lang, pageTitle);
-    if (!sections.length) continue;
+    const sectionsResult = await fetchDatePageSections(lang, pageTitle);
+
+    if (sectionsResult.hadSuccess) {
+      hadSuccess = true;
+    }
+
+    if (!sectionsResult.sections.length) continue;
 
     const candidateNames = getSectionCandidates(type, lang);
 
-    const section = sections.find((sec: { line?: string; index?: string }) =>
-      candidateNames.includes(sec.line ?? "")
+    const section = sectionsResult.sections.find(
+      (sec: { line?: string; index?: string }) =>
+        candidateNames.includes(sec.line ?? "")
     );
 
     if (!section?.index) continue;
 
-    const html = await fetchDatePageSectionHtml(lang, pageTitle, section.index);
-    if (!html) continue;
+    const htmlResult = await fetchDatePageSectionHtml(
+      lang,
+      pageTitle,
+      section.index
+    );
+
+    if (htmlResult.hadSuccess) {
+      hadSuccess = true;
+    }
+
+    if (!htmlResult.html) continue;
 
     const parsedItems = parseFallbackItemsFromSectionHtml(
-      html,
+      htmlResult.html,
       selectedYear,
       lang
     );
@@ -816,10 +875,14 @@ async function fetchFallbackFromDatePage(
     }
   }
 
-  return collected;
+  return {
+    items: collected,
+    hadSuccess,
+  };
 }
 
 function exactUniqueHighlights(items: DayHighlight[]) {
+
   const map = new Map<string, DayHighlight>();
 
   for (const item of items) {
@@ -1027,114 +1090,23 @@ function buildNoneHighlight(): DayHighlight {
   };
 }
 
-async function getCachedHighlights(date: string): Promise<DayHighlight[] | null> {
-  const cached = await prisma.dayHighlightCache.findUnique({
-    where: { day: date },
-  });
-
-  if (!cached) return null;
-
-  if (
-    cached.type === "none" ||
-    cleanDisplayText(cached.text) === "No exact historical match was found for this date."
-  ) {
-    return null;
-  }
-
-  const rawItems = Array.isArray((cached as { highlights?: unknown[] }).highlights)
-    ? ((cached as { highlights?: unknown[] }).highlights as Array<{
-        type?: HighlightType;
-        secondaryType?: HighlightType | null;
-        year?: number | null;
-        text?: string;
-        title?: string | null;
-        image?: string | null;
-        articleUrl?: string | null;
-      }>)
-    : null;
-
-  if (rawItems && rawItems.length > 0) {
-    const mapped = rawItems
-      .map((item) => ({
-        type: item.type ?? "none",
-        secondaryType: item.secondaryType ?? null,
-        year: item.year ?? null,
-        text: cleanDisplayText(item.text ?? "No description available."),
-        title: cleanNullableDisplayText(item.title),
-        image: item.image ?? null,
-        articleUrl: item.articleUrl ?? null,
-      }))
-      .filter((item) => item.text && item.type !== "none");
-
-    if (mapped.length > 0) {
-      return mapped.slice(0, MAX_HIGHLIGHTS);
-    }
-  }
-
-  const legacySingle: DayHighlight = {
-    type: cached.type as HighlightType,
-    secondaryType: null,
-    year: cached.year,
-    text: cleanDisplayText(cached.text),
-    title: cleanNullableDisplayText(cached.title),
-    image: cached.image,
-    articleUrl: cached.articleUrl,
-  };
-
-  if (
-    legacySingle.type === "none" ||
-    legacySingle.text === "No exact historical match was found for this date."
-  ) {
-    return null;
-  }
-
-  return [legacySingle];
-}
-
-async function saveHighlightsToCache(date: string, highlights: DayHighlight[]) {
-  const safeHighlights = highlights
-    .filter((item) => item.type !== "none")
-    .slice(0, MAX_HIGHLIGHTS);
-
-  if (safeHighlights.length === 0) return;
-
-  await prisma.dayHighlightCache.upsert({
-    where: { day: date },
-    update: {
-      type: safeHighlights[0].type,
-      year: safeHighlights[0].year,
-      title: safeHighlights[0].title,
-      text: safeHighlights[0].text,
-      image: safeHighlights[0].image,
-      articleUrl: safeHighlights[0].articleUrl,
-      highlights: safeHighlights,
-    },
-    create: {
-      day: date,
-      type: safeHighlights[0].type,
-      year: safeHighlights[0].year,
-      title: safeHighlights[0].title,
-      text: safeHighlights[0].text,
-      image: safeHighlights[0].image,
-      articleUrl: safeHighlights[0].articleUrl,
-      highlights: safeHighlights,
-    },
-  });
-}
-
-export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
-  const cached = await getCachedHighlights(date);
-  if (cached) return cached;
-
+export async function getDayHighlightsLookup(
+  date: string
+): Promise<DayHighlightsLookupResult> {
   const [yearStr, month, day] = date.split("-");
   const selectedYear = Number(yearStr);
 
-  const exactMatches = [];
+  const exactMatches: DayHighlight[] = [];
+  let hadSuccessfulFetch = false;
 
   for (const type of PRIORITY) {
-    const items = await fetchWikiType(type, month, day);
+    const result = await fetchWikiType(type, month, day);
 
-    const matchesForType = items
+    if (result.hadSuccess) {
+      hadSuccessfulFetch = true;
+    }
+
+    const matchesForType = result.items
       .filter((item) => item.year === selectedYear)
       .sort((a, b) => scoreItem(b) - scoreItem(a))
       .map((item) => mapItem(type, item));
@@ -1142,56 +1114,62 @@ export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
     exactMatches.push(...matchesForType);
   }
 
-  let finalHighlights = finalizeHighlights(exactMatches);
+  const exactFinalHighlights = finalizeHighlights(exactMatches);
 
-  if (finalHighlights.length === 0) {
-    const fallbackMatches = [];
+  if (exactFinalHighlights.length > 0) {
+    return {
+      highlights: exactFinalHighlights,
+      hadSuccessfulFetch,
+    };
+  }
 
-    for (const type of PRIORITY) {
-      const fallbackItems = await fetchFallbackFromDatePage(
-        type,
-        month,
-        day,
-        selectedYear
-      );
+  const fallbackMatches: DayHighlight[] = [];
 
-      fallbackMatches.push(...fallbackItems);
+  for (const type of PRIORITY) {
+    const result = await fetchFallbackFromDatePage(
+      type,
+      month,
+      day,
+      selectedYear
+    );
+
+    if (result.hadSuccess) {
+      hadSuccessfulFetch = true;
     }
 
-    finalHighlights = finalizeHighlights(fallbackMatches);
+    fallbackMatches.push(...result.items);
   }
 
-  if (finalHighlights.length === 0) {
-    const fallbackMatches = [];
+  const fallbackOnlyHighlights = finalizeHighlights(fallbackMatches);
 
-    for (const type of PRIORITY) {
-      const fallbackItems = await fetchFallbackFromDatePage(
-        type,
-        month,
-        day,
-        selectedYear
-      );
-
-      fallbackMatches.push(...fallbackItems);
-    }
-
-    finalHighlights = finalizeHighlights([
-      ...exactMatches,
-      ...fallbackMatches,
-    ]);
+  if (fallbackOnlyHighlights.length > 0) {
+    return {
+      highlights: fallbackOnlyHighlights,
+      hadSuccessfulFetch,
+    };
   }
 
-  if (finalHighlights.length === 0) {
-    return [buildNoneHighlight()];
+  const mergedHighlights = finalizeHighlights([
+    ...exactMatches,
+    ...fallbackMatches,
+  ]);
+
+  if (mergedHighlights.length > 0) {
+    return {
+      highlights: mergedHighlights,
+      hadSuccessfulFetch,
+    };
   }
 
-  try {
-    await saveHighlightsToCache(date, finalHighlights);
-  } catch (error) {
-    console.error("saveHighlightsToCache error:", error);
-  }
+  return {
+    highlights: [buildNoneHighlight()],
+    hadSuccessfulFetch,
+  };
+}
 
-  return finalHighlights;
+export async function getDayHighlights(date: string): Promise<DayHighlight[]> {
+  const result = await getDayHighlightsLookup(date);
+  return result.highlights;
 }
 
 export async function getDayHighlight(date: string): Promise<DayHighlight> {

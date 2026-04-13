@@ -1,9 +1,10 @@
 import { prisma } from "@/app/lib/prisma";
 import { getFeaturedMoment } from "@/app/lib/featured-moments";
-import { getDayHighlights } from "@/app/lib/wiki";
+import { getDayHighlightsLookup } from "@/app/lib/wiki";
 import type { HighlightItem, HighlightResponse } from "@/app/lib/rad-types";
 
 const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date.";
+const NEGATIVE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 type CachedRow = {
   day: string;
@@ -14,6 +15,7 @@ type CachedRow = {
   year: number | null;
   type: string;
   highlights?: unknown;
+  updatedAt: Date;
 };
 
 function mapTypeToLegacyType(rawType?: string | null): HighlightItem["type"] {
@@ -261,6 +263,10 @@ function shouldUseFeaturedOverride(row: CachedRow | null | undefined) {
   return false;
 }
 
+function isFreshNegativeCache(row: CachedRow) {
+  return Date.now() - row.updatedAt.getTime() < NEGATIVE_CACHE_TTL_MS;
+}
+
 async function readCachedHighlights(
   day: string
 ): Promise<HighlightResponse | null> {
@@ -275,6 +281,7 @@ async function readCachedHighlights(
       year: true,
       type: true,
       highlights: true,
+      updatedAt: true,
     },
   });
 
@@ -293,7 +300,7 @@ async function readCachedHighlights(
     row.type === "none" ||
     row.text?.trim() === EMPTY_FALLBACK_TEXT
   ) {
-    return null;
+    return isFreshNegativeCache(row as CachedRow) ? getEmptyResponse() : null;
   }
 
   const cachedHighlights = normalizeWikiHighlights(row.highlights);
@@ -317,7 +324,13 @@ async function readCachedHighlights(
   };
 }
 
-async function writeHighlightsToCache(day: string, highlights: HighlightItem[]) {
+async function writeHighlightsToCache(
+  day: string,
+  highlights: HighlightItem[],
+  options?: {
+    allowEmptyCache?: boolean;
+  }
+) {
   const primary = pickPrimaryHighlight(highlights);
 
   if (!primary) {
@@ -352,10 +365,30 @@ async function writeHighlightsToCache(day: string, highlights: HighlightItem[]) 
       return;
     }
 
-    await prisma.dayHighlightCache.deleteMany({
-      where: {
-        day,
+    if (!options?.allowEmptyCache) {
+      return;
+    }
+
+    await prisma.dayHighlightCache.upsert({
+      where: { day },
+      update: {
+        title: null,
+        text: EMPTY_FALLBACK_TEXT,
+        image: null,
+        articleUrl: null,
+        year: null,
         type: "none",
+        highlights: [],
+      },
+      create: {
+        day,
+        title: null,
+        text: EMPTY_FALLBACK_TEXT,
+        image: null,
+        articleUrl: null,
+        year: null,
+        type: "none",
+        highlights: [],
       },
     });
 
@@ -379,7 +412,7 @@ async function writeHighlightsToCache(day: string, highlights: HighlightItem[]) 
             : primary.kind === "event"
               ? "events"
               : "none"),
-      highlights: highlights,
+      highlights,
     },
     create: {
       day,
@@ -397,7 +430,7 @@ async function writeHighlightsToCache(day: string, highlights: HighlightItem[]) 
             : primary.kind === "event"
               ? "events"
               : "none"),
-      highlights: highlights,
+      highlights,
     },
   });
 }
@@ -417,16 +450,20 @@ export async function ensureHighlightsForDay(
     return featured;
   }
 
-  const rawHighlights = await getDayHighlights(day);
-  const highlights = normalizeWikiHighlights(rawHighlights).filter((item) =>
-    isNonEmptyText(item.text)
+  const lookup = await getDayHighlightsLookup(day);
+  const highlights = normalizeWikiHighlights(lookup.highlights).filter(
+    (item) => isNonEmptyText(item.text) && item.type !== "none"
   );
 
-  await writeHighlightsToCache(day, highlights);
-
   if (highlights.length === 0) {
+    if (lookup.hadSuccessfulFetch) {
+      await writeHighlightsToCache(day, [], { allowEmptyCache: true });
+    }
+
     return getEmptyResponse();
   }
+
+  await writeHighlightsToCache(day, highlights);
 
   return {
     highlight: pickPrimaryHighlight(highlights),
