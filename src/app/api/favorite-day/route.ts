@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
@@ -6,6 +7,19 @@ import { isValidDayString } from "@/app/lib/day";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+function isPrismaError(
+  error: unknown,
+  code: "P2002" | "P2025"
+): error is Prisma.PrismaClientKnownRequestError {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError && error.code === code
+  );
+}
+
 export async function GET(req: Request) {
   try {
     const user = await getCurrentUser();
@@ -13,7 +27,7 @@ export async function GET(req: Request) {
     if (!user) {
       return NextResponse.json(
         { error: "You must be logged in to use favorite days." },
-        { status: 401 }
+        { status: 401, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -21,13 +35,18 @@ export async function GET(req: Request) {
     const dayParam = searchParams.get("day");
 
     if (!isValidDayString(dayParam)) {
-      return NextResponse.json({ error: "Invalid day" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid day" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
-    const favorite = await prisma.favoriteDay.findFirst({
+    const favorite = await prisma.favoriteDay.findUnique({
       where: {
-        userId: user.id,
-        day: dayParam,
+        favorite_day_user_unique: {
+          userId: user.id,
+          day: dayParam,
+        },
       },
       select: {
         day: true,
@@ -41,14 +60,15 @@ export async function GET(req: Request) {
         favoriteDay: favorite?.day ?? null,
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("favorite-day GET error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }
 
@@ -59,73 +79,94 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json(
         { error: "You must be logged in to save favorite days." },
-        { status: 401 }
+        { status: 401, headers: NO_STORE_HEADERS }
       );
     }
 
     const body = await req.json().catch(() => null);
     const day = body?.day;
+    const desiredFavorite =
+      typeof body?.isFavorite === "boolean" ? body.isFavorite : null;
 
     if (!isValidDayString(day)) {
-      return NextResponse.json({ error: "Invalid day" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid day" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
-    const existing = await prisma.favoriteDay.findFirst({
-      where: {
+    const favoriteWhere = {
+      favorite_day_user_unique: {
         userId: user.id,
         day,
       },
+    } as const;
+
+    const existing = await prisma.favoriteDay.findUnique({
+      where: favoriteWhere,
       select: {
         id: true,
       },
     });
 
-    if (existing) {
-      await prisma.favoriteDay.delete({
-        where: { id: existing.id },
-      });
+    const shouldFavorite =
+      desiredFavorite === null ? !existing : desiredFavorite;
 
-      return NextResponse.json(
-        {
-          ok: true,
-          isFavorite: false,
-          favoriteDay: null,
-          message: "Removed from favorites.",
-        },
-        {
-          headers: {
-            "Cache-Control": "no-store",
-          },
+    if (shouldFavorite) {
+      if (!existing) {
+        try {
+          await prisma.favoriteDay.create({
+            data: {
+              userId: user.id,
+              anonId: null,
+              day,
+            },
+          });
+        } catch (error) {
+          if (!isPrismaError(error, "P2002")) {
+            throw error;
+          }
         }
-      );
+      }
+    } else if (existing) {
+      try {
+        await prisma.favoriteDay.delete({
+          where: favoriteWhere,
+        });
+      } catch (error) {
+        if (!isPrismaError(error, "P2025")) {
+          throw error;
+        }
+      }
     }
 
-    const created = await prisma.favoriteDay.create({
-      data: {
-        userId: user.id,
-        anonId: null,
-        day,
-      },
+    const favorite = await prisma.favoriteDay.findUnique({
+      where: favoriteWhere,
       select: {
         day: true,
       },
     });
 
+    const isFavorite = !!favorite;
+
     return NextResponse.json(
       {
         ok: true,
-        isFavorite: true,
-        favoriteDay: created.day,
-        message: "Favorite day saved.",
+        isFavorite,
+        favoriteDay: favorite?.day ?? null,
+        message: isFavorite
+          ? "Favorite day saved."
+          : "Removed from favorites.",
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("favorite-day POST error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

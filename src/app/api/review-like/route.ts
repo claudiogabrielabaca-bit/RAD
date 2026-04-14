@@ -1,9 +1,23 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+function isPrismaError(
+  error: unknown,
+  code: "P2002" | "P2025"
+): error is Prisma.PrismaClientKnownRequestError {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError && error.code === code
+  );
+}
 
 export async function POST(req: Request) {
   try {
@@ -12,17 +26,21 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json(
         { error: "You must be logged in to like reviews." },
-        { status: 401 }
+        { status: 401, headers: NO_STORE_HEADERS }
       );
     }
 
     const body = await req.json().catch(() => null);
+    const ratingId = body?.ratingId;
+    const desiredLiked =
+      typeof body?.liked === "boolean" ? body.liked : null;
 
-    if (!body || typeof body.ratingId !== "string") {
-      return NextResponse.json({ error: "Missing ratingId" }, { status: 400 });
+    if (!ratingId || typeof ratingId !== "string") {
+      return NextResponse.json(
+        { error: "Missing ratingId" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
-
-    const { ratingId } = body as { ratingId: string };
 
     const review = await prisma.rating.findUnique({
       where: { id: ratingId },
@@ -34,89 +52,132 @@ export async function POST(req: Request) {
     });
 
     if (!review) {
-      return NextResponse.json({ error: "Review not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Review not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (review.userId === user.id) {
       return NextResponse.json(
         { error: "You cannot like your own review." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
-    const existing = await prisma.ratingLike.findFirst({
-      where: {
+    const likeWhere = {
+      rating_like_user_unique: {
         ratingId,
         userId: user.id,
       },
+    } as const;
+
+    const existingLike = await prisma.ratingLike.findUnique({
+      where: likeWhere,
       select: {
         id: true,
       },
     });
 
-    if (existing) {
-      await prisma.ratingLike.delete({
-        where: {
-          id: existing.id,
-        },
-      });
+    const shouldLike =
+      desiredLiked === null ? !existingLike : desiredLiked;
 
-      await prisma.notification.deleteMany({
-        where: {
-          type: "review_liked",
-          userId: review.userId ?? undefined,
-          actorUserId: user.id,
-          reviewId: ratingId,
-        },
-      });
+    if (shouldLike) {
+      if (!existingLike) {
+        try {
+          await prisma.$transaction(async (tx) => {
+            await tx.ratingLike.create({
+              data: {
+                ratingId,
+                userId: user.id,
+                anonId: null,
+              },
+            });
+
+            if (review.userId && review.userId !== user.id) {
+              await tx.notification.create({
+                data: {
+                  userId: review.userId,
+                  actorUserId: user.id,
+                  type: "review_liked",
+                  reviewId: ratingId,
+                  day: review.day,
+                },
+              });
+            }
+          });
+        } catch (error) {
+          if (!isPrismaError(error, "P2002")) {
+            throw error;
+          }
+        }
+      }
 
       const likesCount = await prisma.ratingLike.count({
         where: { ratingId },
       });
 
-      return NextResponse.json({
-        ok: true,
-        liked: false,
-        likesCount,
-      });
+      return NextResponse.json(
+        {
+          ok: true,
+          liked: true,
+          likesCount,
+        },
+        {
+          headers: NO_STORE_HEADERS,
+        }
+      );
     }
 
-    await prisma.ratingLike.create({
-      data: {
-        ratingId,
-        userId: user.id,
-        anonId: null,
-      },
-    });
+    if (existingLike) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          await tx.ratingLike.delete({
+            where: likeWhere,
+          });
 
-    if (review.userId && review.userId !== user.id) {
-      await prisma.notification.create({
-        data: {
-          userId: review.userId,
-          actorUserId: user.id,
-          type: "review_liked",
-          reviewId: ratingId,
-          day: review.day,
-        },
-      });
+          if (review.userId) {
+            await tx.notification.deleteMany({
+              where: {
+                type: "review_liked",
+                userId: review.userId,
+                actorUserId: user.id,
+                reviewId: ratingId,
+              },
+            });
+          }
+        });
+      } catch (error) {
+        if (!isPrismaError(error, "P2025")) {
+          throw error;
+        }
+      }
     }
 
     const likesCount = await prisma.ratingLike.count({
       where: { ratingId },
     });
 
-    return NextResponse.json({
-      ok: true,
-      liked: true,
-      likesCount,
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        liked: false,
+        likesCount,
+      },
+      {
+        headers: NO_STORE_HEADERS,
+      }
+    );
   } catch (error) {
     console.error("review-like POST error:", error);
     return NextResponse.json(
       {
         error: "Server error",
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: NO_STORE_HEADERS,
+      }
     );
   }
-}
+}   
