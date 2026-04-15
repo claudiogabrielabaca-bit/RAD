@@ -1,29 +1,16 @@
-import { PrismaClient as PostgresClient } from "@prisma/client";
 import { PrismaClient as SqliteClient } from "../src/generated/prisma-sqlite/index.js";
-
-if (!process.env.DATABASE_URL) {
-  throw new Error("Missing DATABASE_URL for Postgres target");
-}
+import { PrismaClient as PostgresClient } from "../src/generated/prisma-postgres/index.js";
 
 if (!process.env.SQLITE_DATABASE_URL) {
   throw new Error("Missing SQLITE_DATABASE_URL for SQLite source");
 }
 
-const source = new SqliteClient({
-  datasources: {
-    db: {
-      url: process.env.SQLITE_DATABASE_URL,
-    },
-  },
-});
+if (!process.env.POSTGRES_DATABASE_URL) {
+  throw new Error("Missing POSTGRES_DATABASE_URL for Postgres target");
+}
 
-const target = new PostgresClient({
-  datasources: {
-    db: {
-      url: process.env.DATABASE_URL,
-    },
-  },
-});
+const source = new SqliteClient();
+const target = new PostgresClient();
 
 async function copyTable(label, fetchRows, insertRows) {
   const rows = await fetchRows();
@@ -66,7 +53,7 @@ async function resetTarget() {
 try {
   console.log("Starting SQLite -> Postgres migration...");
   console.log(`Source: ${process.env.SQLITE_DATABASE_URL}`);
-  console.log(`Target: ${process.env.DATABASE_URL}`);
+  console.log(`Target: ${process.env.POSTGRES_DATABASE_URL}`);
 
   await resetTarget();
 
