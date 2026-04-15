@@ -57,3 +57,5 @@ next-env.d.ts
 
 # local audit / scratch outputs
 surprise-audit-*.json
+/src/generated/prisma-sqlite
+/src/generated/prisma-postgres
