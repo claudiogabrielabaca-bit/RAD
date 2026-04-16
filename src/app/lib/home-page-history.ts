@@ -1,4 +1,4 @@
-  import { getDaysInMonth, isValidDayString, pad2 } from "@/app/lib/home-page-utils";
+import { getDaysInMonth, isValidDayString, pad2 } from "@/app/lib/home-page-utils";
 import {
   getDayWithOffset as shiftDayStringByOffset,
   getTodayDayString,
@@ -80,7 +80,9 @@ export function getRecentTodayHistory(monthDay = getTodayHistoryMonthDay()) {
       new Set(
         parsed.filter(
           (item): item is string =>
-            typeof item === "string" && isValidDayString(item)
+            typeof item === "string" &&
+            isValidDayString(item) &&
+            item.slice(5, 10) === monthDay
         )
       )
     ).slice(0, TODAY_HISTORY_MAX);
@@ -97,7 +99,13 @@ export function setRecentTodayHistory(
 
   try {
     const safe = Array.from(
-      new Set(days.filter((item) => isValidDayString(item)))
+      new Set(
+        days.filter(
+          (item) =>
+            isValidDayString(item) &&
+            item.slice(5, 10) === monthDay
+        )
+      )
     ).slice(0, TODAY_HISTORY_MAX);
 
     window.localStorage.setItem(
@@ -107,12 +115,10 @@ export function setRecentTodayHistory(
   } catch {}
 }
 
-export function rememberTodayHistoryDay(
-  day: string,
-  monthDay = getTodayHistoryMonthDay()
-) {
+export function rememberTodayHistoryDay(day: string) {
   if (!isValidDayString(day)) return;
 
+  const monthDay = day.slice(5, 10);
   const current = getRecentTodayHistory(monthDay).filter((item) => item !== day);
   setRecentTodayHistory([day, ...current], monthDay);
 }
@@ -207,8 +213,16 @@ export function buildTodayInHistoryRequestUrl({
     params.set("monthDay", monthDay);
   }
 
+  const historyDays = getRecentTodayHistory(monthDay);
+
   const uniqueExcludeDays = Array.from(
-    new Set(excludeDays.filter((item) => isValidDayString(item)))
+    new Set(
+      [...historyDays, ...excludeDays].filter(
+        (item) =>
+          isValidDayString(item) &&
+          item.slice(5, 10) === monthDay
+      )
+    )
   ).slice(0, TODAY_HISTORY_MAX);
 
   if (uniqueExcludeDays.length > 0) {
