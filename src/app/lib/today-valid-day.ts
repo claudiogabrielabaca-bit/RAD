@@ -2,6 +2,8 @@ import { prisma } from "@/app/lib/prisma";
 import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 
 const GENERATION_BATCH_SIZE = 4;
+const GENERATION_TARGET_VALID_DAYS = 12;
+const GENERATION_MAX_PROBED_CANDIDATES = 72;
 const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date.";
 
 function pad2(n: number) {
@@ -158,39 +160,6 @@ async function buildPoolDaysFromHighlightCache(
   return savePoolDays(monthStr, dayStr, validDays);
 }
 
-async function tryCandidateBatches(
-  candidates: string[],
-  restartedRound: boolean
-) {
-  for (let i = 0; i < candidates.length; i += GENERATION_BATCH_SIZE) {
-    const batch = candidates.slice(i, i + GENERATION_BATCH_SIZE);
-
-    const results = await Promise.allSettled(
-      batch.map(async (candidate) => {
-        const result = await ensureHighlightsForDay(candidate);
-
-        if (isUsableHighlight(result)) {
-          return candidate;
-        }
-
-        return null;
-      })
-    );
-
-    for (const result of results) {
-      if (result.status === "fulfilled" && result.value) {
-        return {
-          day: result.value,
-          source: "generated" as const,
-          restartedRound,
-        };
-      }
-    }
-  }
-
-  return null;
-}
-
 function pickFromPool(
   pooledDays: string[],
   excludedSet: Set<string>
@@ -220,6 +189,58 @@ function pickFromPool(
   };
 }
 
+async function generateAdditionalPoolDays(
+  month: number,
+  day: number,
+  monthStr: string,
+  dayStr: string,
+  existingPool: string[],
+  maxCandidatesToProbe: number
+) {
+  const existingSet = new Set(existingPool);
+  const candidateYears = getValidYearsForMonthDay(month, day);
+
+  const candidateDays = shuffleArray(
+    candidateYears
+      .map((year) => `${year}-${monthStr}-${dayStr}`)
+      .filter((candidate) => !existingSet.has(candidate))
+  ).slice(0, maxCandidatesToProbe);
+
+  const discovered: string[] = [];
+
+  for (let i = 0; i < candidateDays.length; i += GENERATION_BATCH_SIZE) {
+    const batch = candidateDays.slice(i, i + GENERATION_BATCH_SIZE);
+
+    const results = await Promise.allSettled(
+      batch.map(async (candidate) => {
+        const result = await ensureHighlightsForDay(candidate);
+
+        if (isUsableHighlight(result)) {
+          return candidate;
+        }
+
+        return null;
+      })
+    );
+
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value) {
+        discovered.push(result.value);
+      }
+    }
+
+    if (existingPool.length + discovered.length >= GENERATION_TARGET_VALID_DAYS) {
+      break;
+    }
+  }
+
+  if (discovered.length === 0) {
+    return existingPool;
+  }
+
+  return savePoolDays(monthStr, dayStr, [...existingPool, ...discovered]);
+}
+
 export async function getTodayValidDay(options?: {
   fresh?: boolean;
   maxAttempts?: number;
@@ -244,35 +265,31 @@ export async function getTodayValidDay(options?: {
     }
   }
 
-  const rebuiltPoolDays = await buildPoolDaysFromHighlightCache(monthStr, dayStr);
-  const rebuiltPick = pickFromPool(rebuiltPoolDays, excludedSet);
+  let pooledDays = await buildPoolDaysFromHighlightCache(monthStr, dayStr);
+  let pooledPick = pickFromPool(pooledDays, excludedSet);
 
-  if (rebuiltPick) {
-    return rebuiltPick;
+  if (pooledPick) {
+    return pooledPick;
   }
 
-  const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 72, 120));
-  const candidateYears = getValidYearsForMonthDay(month, day);
-  const candidateDays = candidateYears
-    .map((year) => `${year}-${monthStr}-${dayStr}`)
-    .filter((candidate) => !excludedSet.has(candidate));
+  const maxCandidatesToProbe = Math.max(
+    12,
+    Math.min(options?.maxAttempts ?? GENERATION_MAX_PROBED_CANDIDATES, 120)
+  );
 
-  const shuffled = shuffleArray(candidateDays);
-  const fastPass = shuffled.slice(0, maxAttempts);
-  const slowPass = shuffled.slice(maxAttempts);
+  pooledDays = await generateAdditionalPoolDays(
+    month,
+    day,
+    monthStr,
+    dayStr,
+    pooledDays,
+    maxCandidatesToProbe
+  );
 
-  const fastResult = await tryCandidateBatches(fastPass, false);
-  if (fastResult) {
-    await savePoolDays(monthStr, dayStr, [fastResult.day]);
-    return fastResult;
-  }
+  pooledPick = pickFromPool(pooledDays, excludedSet);
 
-  if (slowPass.length > 0) {
-    const slowResult = await tryCandidateBatches(slowPass, false);
-    if (slowResult) {
-      await savePoolDays(monthStr, dayStr, [slowResult.day]);
-      return slowResult;
-    }
+  if (pooledPick) {
+    return pooledPick;
   }
 
   return null;
