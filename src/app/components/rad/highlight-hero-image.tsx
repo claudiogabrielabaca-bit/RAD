@@ -11,6 +11,8 @@ type HighlightHeroImageProps = {
   preferImmediateSwap?: boolean;
 };
 
+const IMAGE_LOADING_FAILSAFE_MS = 3500;
+
 export default function HighlightHeroImage({
   src,
   alt,
@@ -23,6 +25,7 @@ export default function HighlightHeroImage({
 
   const [displaySrc, setDisplaySrc] = useState<string | null>(normalizedSrc);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const failSafeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadAttemptRef = useRef(0);
 
   useEffect(() => {
@@ -34,12 +37,19 @@ export default function HighlightHeroImage({
       revealTimerRef.current = null;
     }
 
+    if (failSafeTimerRef.current) {
+      clearTimeout(failSafeTimerRef.current);
+      failSafeTimerRef.current = null;
+    }
+
     if (!normalizedSrc) {
+      setDisplaySrc(null);
       onLoadingChange?.(false);
       return;
     }
 
     if (preferImmediateSwap) {
+      setDisplaySrc(normalizedSrc);
       onLoadingChange?.(false);
       return;
     }
@@ -53,28 +63,56 @@ export default function HighlightHeroImage({
 
     const img = new window.Image();
     img.decoding = "async";
-    img.src = normalizedSrc;
 
-    const handleLoad = () => {
+    const finish = (nextSrc: string | null) => {
       if (loadAttemptRef.current !== currentAttempt) return;
 
-      revealTimerRef.current = setTimeout(() => {
-        if (loadAttemptRef.current !== currentAttempt) return;
-
-        setDisplaySrc(normalizedSrc);
-        onLoadingChange?.(false);
+      if (revealTimerRef.current) {
+        clearTimeout(revealTimerRef.current);
         revealTimerRef.current = null;
-      }, revealDelayMs);
-    };
+      }
 
-    const handleError = () => {
-      if (loadAttemptRef.current !== currentAttempt) return;
+      if (failSafeTimerRef.current) {
+        clearTimeout(failSafeTimerRef.current);
+        failSafeTimerRef.current = null;
+      }
+
+      if (nextSrc) {
+        setDisplaySrc(nextSrc);
+      }
 
       onLoadingChange?.(false);
     };
 
+    const handleLoad = () => {
+      if (loadAttemptRef.current !== currentAttempt) return;
+
+      if (revealDelayMs > 0) {
+        revealTimerRef.current = setTimeout(() => {
+          finish(normalizedSrc);
+        }, revealDelayMs);
+        return;
+      }
+
+      finish(normalizedSrc);
+    };
+
+    const handleError = () => {
+      finish(null);
+    };
+
+    failSafeTimerRef.current = setTimeout(() => {
+      // Baja el overlay aunque la carga de la imagen quede rara o colgada.
+      finish(normalizedSrc);
+    }, IMAGE_LOADING_FAILSAFE_MS);
+
     img.onload = handleLoad;
     img.onerror = handleError;
+    img.src = normalizedSrc;
+
+    if (img.complete) {
+      handleLoad();
+    }
 
     return () => {
       img.onload = null;
@@ -84,8 +122,19 @@ export default function HighlightHeroImage({
         clearTimeout(revealTimerRef.current);
         revealTimerRef.current = null;
       }
+
+      if (failSafeTimerRef.current) {
+        clearTimeout(failSafeTimerRef.current);
+        failSafeTimerRef.current = null;
+      }
     };
-  }, [normalizedSrc, displaySrc, onLoadingChange, revealDelayMs, preferImmediateSwap]);
+  }, [
+    normalizedSrc,
+    displaySrc,
+    onLoadingChange,
+    revealDelayMs,
+    preferImmediateSwap,
+  ]);
 
   const resolvedDisplaySrc = !normalizedSrc
     ? null

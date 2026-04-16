@@ -2,6 +2,7 @@ import { prisma } from "@/app/lib/prisma";
 import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 
 const GENERATION_BATCH_SIZE = 4;
+const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date.";
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");
@@ -55,7 +56,7 @@ function normalizePoolDays(
           item.endsWith(`-${monthStr}-${dayStr}`)
       )
     )
-  );
+  ).sort();
 }
 
 async function getPoolDaysForMonthDay(monthStr: string, dayStr: string) {
@@ -73,6 +74,30 @@ async function getPoolDaysForMonthDay(monthStr: string, dayStr: string) {
   return normalizePoolDays(row?.validDays, monthStr, dayStr);
 }
 
+async function savePoolDays(
+  monthStr: string,
+  dayStr: string,
+  validDays: string[]
+) {
+  const monthDay = `${monthStr}-${dayStr}`;
+  const normalized = normalizePoolDays(validDays, monthStr, dayStr);
+
+  await prisma.todayHistoryPool.upsert({
+    where: { monthDay },
+    update: {
+      validDays: normalized,
+      validCount: normalized.length,
+    },
+    create: {
+      monthDay,
+      validDays: normalized,
+      validCount: normalized.length,
+    },
+  });
+
+  return normalized;
+}
+
 function isUsableHighlight(
   result: Awaited<ReturnType<typeof ensureHighlightsForDay>>
 ) {
@@ -82,7 +107,8 @@ function isUsableHighlight(
     primary &&
     primary.type !== "none" &&
     primary.text &&
-    primary.text.trim().length > 0
+    primary.text.trim().length > 0 &&
+    primary.text.trim() !== EMPTY_FALLBACK_TEXT
   );
 }
 
@@ -100,6 +126,36 @@ function getValidYearsForMonthDay(month: number, day: number) {
   }
 
   return years;
+}
+
+async function buildPoolDaysFromHighlightCache(
+  monthStr: string,
+  dayStr: string
+) {
+  const suffix = `-${monthStr}-${dayStr}`;
+
+  const rows = await prisma.dayHighlightCache.findMany({
+    where: {
+      day: {
+        endsWith: suffix,
+      },
+      type: {
+        not: "none",
+      },
+      text: {
+        not: EMPTY_FALLBACK_TEXT,
+      },
+    },
+    select: {
+      day: true,
+    },
+    orderBy: {
+      day: "asc",
+    },
+  });
+
+  const validDays = rows.map((row) => row.day);
+  return savePoolDays(monthStr, dayStr, validDays);
 }
 
 async function tryCandidateBatches(
@@ -135,6 +191,35 @@ async function tryCandidateBatches(
   return null;
 }
 
+function pickFromPool(
+  pooledDays: string[],
+  excludedSet: Set<string>
+) {
+  if (pooledDays.length === 0) return null;
+
+  const remainingDays = pooledDays.filter(
+    (candidate) => !excludedSet.has(candidate)
+  );
+
+  if (remainingDays.length > 0) {
+    const shuffled = shuffleArray(remainingDays);
+
+    return {
+      day: shuffled[0],
+      source: "cache" as const,
+      restartedRound: false,
+    };
+  }
+
+  const shuffled = shuffleArray(pooledDays);
+
+  return {
+    day: shuffled[0],
+    source: "cache" as const,
+    restartedRound: true,
+  };
+}
+
 export async function getTodayValidDay(options?: {
   fresh?: boolean;
   maxAttempts?: number;
@@ -150,31 +235,22 @@ export async function getTodayValidDay(options?: {
   const monthStr = pad2(month);
   const dayStr = pad2(day);
 
-  const pooledDays = await getPoolDaysForMonthDay(monthStr, dayStr);
+  if (!options?.fresh) {
+    const pooledDays = await getPoolDaysForMonthDay(monthStr, dayStr);
+    const pooledPick = pickFromPool(pooledDays, excludedSet);
 
-  if (pooledDays.length > 0) {
-    const remainingDays = pooledDays.filter((candidate) => !excludedSet.has(candidate));
-
-    if (remainingDays.length > 0) {
-      const shuffled = shuffleArray(remainingDays);
-
-      return {
-        day: shuffled[0],
-        source: "cache" as const,
-        restartedRound: false,
-      };
+    if (pooledPick) {
+      return pooledPick;
     }
-
-    const shuffled = shuffleArray(pooledDays);
-
-    return {
-      day: shuffled[0],
-      source: "cache" as const,
-      restartedRound: true,
-    };
   }
 
-  // Fallback seguro si todavía no construiste la pool.
+  const rebuiltPoolDays = await buildPoolDaysFromHighlightCache(monthStr, dayStr);
+  const rebuiltPick = pickFromPool(rebuiltPoolDays, excludedSet);
+
+  if (rebuiltPick) {
+    return rebuiltPick;
+  }
+
   const maxAttempts = Math.max(1, Math.min(options?.maxAttempts ?? 72, 120));
   const candidateYears = getValidYearsForMonthDay(month, day);
   const candidateDays = candidateYears
@@ -187,12 +263,14 @@ export async function getTodayValidDay(options?: {
 
   const fastResult = await tryCandidateBatches(fastPass, false);
   if (fastResult) {
+    await savePoolDays(monthStr, dayStr, [fastResult.day]);
     return fastResult;
   }
 
   if (slowPass.length > 0) {
     const slowResult = await tryCandidateBatches(slowPass, false);
     if (slowResult) {
+      await savePoolDays(monthStr, dayStr, [slowResult.day]);
       return slowResult;
     }
   }
