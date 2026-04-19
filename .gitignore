@@ -1,5 +1,3 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
 /node_modules
 /.pnp
@@ -22,9 +20,10 @@
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
 
-# debug
+# debug logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -34,21 +33,34 @@ yarn-error.log*
 .env*
 !.env.example
 
-# vercel
+# vercel / deploy
 .vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
 
-# generated
+# generated clients
 /src/generated/prisma
+/src/generated/prisma-sqlite
+/src/generated/prisma-postgres
 
-# local archives / backups
+# archives / backups / dumps
 *.zip
 *.bak
 *.backup
+*.tmp
+*.old
+*.orig
+*.dump
+*.sql
+*.sqlite
+*.sqlite3
+*.db
 /_app_root_backup
+/backups
+/dumps
+/tmp
 
 # local sqlite files
 /dev.db
@@ -57,5 +69,3 @@ next-env.d.ts
 
 # local audit / scratch outputs
 surprise-audit-*.json
-/src/generated/prisma-sqlite
-/src/generated/prisma-postgres
