@@ -8,12 +8,26 @@ const DECADE_COOLDOWN = 4;
 const MONTH_DAY_COOLDOWN = 12;
 const ERA_COOLDOWN = 2;
 
+type EraBucket = "nineteenth" | "twentieth" | "twentyFirst";
+
 type DeckRowLike = {
   deck: unknown;
-  cursor: number;
+  cursor: number | null;
 };
 
-type EraBucket = "nineteenth" | "twentieth" | "twentyFirst";
+type SurpriseDeckRow = {
+  ownerKey: string;
+  userId: string | null;
+  deck: unknown;
+  cursor: number;
+  poolSize: number;
+  poolSignature: string;
+};
+
+type CacheDayRow = {
+  day: string;
+  updatedAt: Date;
+};
 
 type HistoryState = {
   monthUsage: Map<number, number>;
@@ -27,6 +41,17 @@ type HistoryState = {
   recentDecades: number[];
   recentMonthDays: string[];
   recentEras: EraBucket[];
+};
+
+type DeckBuildResult = {
+  deck: string[];
+  cursor: number;
+};
+
+type SurprisePool = {
+  days: string[];
+  size: number;
+  signature: string;
 };
 
 function isValidDayString(value?: string | null): value is string {
@@ -61,7 +86,7 @@ function getEraBucket(day: string): EraBucket {
   return "twentieth";
 }
 
-function shuffleArray<T>(items: T[]) {
+function shuffleArray<T>(items: T[]): T[] {
   const arr = [...items];
 
   for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -72,12 +97,12 @@ function shuffleArray<T>(items: T[]) {
   return arr;
 }
 
-function pickRandom<T>(items: T[]) {
+function pickRandom<T>(items: T[]): T | null {
   if (items.length === 0) return null;
   return items[Math.floor(Math.random() * items.length)] ?? null;
 }
 
-function normalizeStoredDeck(value: unknown) {
+function normalizeStoredDeck(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
 
   return Array.from(
@@ -90,7 +115,7 @@ function normalizeStoredDeck(value: unknown) {
   );
 }
 
-function getSeenDays(row?: DeckRowLike | null) {
+function getSeenDays(row?: DeckRowLike | null): string[] {
   if (!row) return [];
 
   const deck = normalizeStoredDeck(row.deck);
@@ -185,7 +210,7 @@ function getMonthPriorityOrder(
   buckets: Map<number, string[]>,
   state: HistoryState,
   targetEra?: EraBucket
-) {
+): number[] {
   const availableMonths = [...buckets.entries()]
     .filter(([, days]) => {
       if (days.length === 0) return false;
@@ -240,7 +265,7 @@ function getMonthPriorityOrder(
 function getEraPriorityOrder(
   buckets: Map<number, string[]>,
   state: HistoryState
-) {
+): EraBucket[] {
   const availableEras = Array.from(
     new Set(
       [...buckets.values()]
@@ -303,7 +328,7 @@ function scoreCandidate(day: string, state: HistoryState) {
   return score;
 }
 
-function pickBestCandidate(days: string[], state: HistoryState) {
+function pickBestCandidate(days: string[], state: HistoryState): string | null {
   if (days.length === 0) return null;
 
   const scored = days.map((day) => ({
@@ -320,7 +345,7 @@ function pickBestCandidate(days: string[], state: HistoryState) {
   return shuffleArray(choicePool)[0]?.day ?? scored[0]?.day ?? null;
 }
 
-function buildBalancedDeck(days: string[], historyDays: string[] = []) {
+function buildBalancedDeck(days: string[], historyDays: string[] = []): string[] {
   const uniqueDays = Array.from(
     new Set(days.filter((day): day is string => isValidDayString(day)))
   );
@@ -393,7 +418,7 @@ function buildBalancedDeck(days: string[], historyDays: string[] = []) {
   return result;
 }
 
-function pickFreshSeedDay(poolDays: string[]) {
+function pickFreshSeedDay(poolDays: string[]): string | null {
   const uniqueDays = Array.from(
     new Set(poolDays.filter((day): day is string => isValidDayString(day)))
   );
@@ -442,7 +467,7 @@ function pickFreshSeedDay(poolDays: string[]) {
   return pickRandom(candidates);
 }
 
-function buildFreshDeck(poolDays: string[]) {
+function buildFreshDeck(poolDays: string[]): DeckBuildResult {
   const uniqueDays = Array.from(
     new Set(poolDays.filter((day): day is string => isValidDayString(day)))
   );
@@ -465,7 +490,10 @@ function buildFreshDeck(poolDays: string[]) {
   };
 }
 
-function buildDeckFromSeenDays(poolDays: string[], seenDays: string[]) {
+function buildDeckFromSeenDays(
+  poolDays: string[],
+  seenDays: string[]
+): DeckBuildResult {
   const poolSet = new Set(poolDays);
   const uniqueSeen: string[] = [];
   const seenSet = new Set<string>();
@@ -485,8 +513,8 @@ function buildDeckFromSeenDays(poolDays: string[], seenDays: string[]) {
   };
 }
 
-async function getSurprisePool() {
-  const rows = await prisma.dayHighlightCache.findMany({
+async function getSurprisePool(): Promise<SurprisePool> {
+  const rows: CacheDayRow[] = await prisma.dayHighlightCache.findMany({
     where: {
       type: { not: "none" },
       title: { not: null },
@@ -502,13 +530,20 @@ async function getSurprisePool() {
   });
 
   const days = Array.from(
-    new Set(rows.map((row) => row.day).filter(isValidDayString))
+    new Set(
+      rows
+        .map((row: CacheDayRow) => row.day)
+        .filter(isValidDayString)
+    )
   );
 
-  const lastUpdatedAt = rows.reduce((max, row) => {
-    const time = row.updatedAt.getTime();
-    return time > max ? time : max;
-  }, 0);
+  const lastUpdatedAt = rows.reduce(
+    (max: number, row: CacheDayRow) => {
+      const time = row.updatedAt.getTime();
+      return time > max ? time : max;
+    },
+    0
+  );
 
   return {
     days,
@@ -561,22 +596,23 @@ export async function claimVisitorDeckToUser(userId: string) {
 
   if (pool.days.length === 0) return;
 
-  const [visitorDeck, userDeck] = await Promise.all([
-    prisma.surpriseDeck.findUnique({
-      where: { ownerKey: visitorOwnerKey },
-    }),
-    prisma.surpriseDeck.findUnique({
-      where: { ownerKey: userOwnerKey },
-    }),
-  ]);
+  const [visitorDeck, userDeck]: [SurpriseDeckRow | null, SurpriseDeckRow | null] =
+    await Promise.all([
+      prisma.surpriseDeck.findUnique({
+        where: { ownerKey: visitorOwnerKey },
+      }),
+      prisma.surpriseDeck.findUnique({
+        where: { ownerKey: userOwnerKey },
+      }),
+    ]);
 
   if (!visitorDeck) return;
 
   const mergedSeenDays = [...getSeenDays(userDeck), ...getSeenDays(visitorDeck)];
   const merged = buildDeckFromSeenDays(pool.days, mergedSeenDays);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.surpriseDeck.upsert({
+  await prisma.$transaction([
+    prisma.surpriseDeck.upsert({
       where: { ownerKey: userOwnerKey },
       update: {
         userId,
@@ -593,14 +629,11 @@ export async function claimVisitorDeckToUser(userId: string) {
         poolSize: pool.size,
         poolSignature: pool.signature,
       },
-    });
-
-    await tx.surpriseDeck
-      .delete({
-        where: { ownerKey: visitorOwnerKey },
-      })
-      .catch(() => {});
-  });
+    }),
+    prisma.surpriseDeck.deleteMany({
+      where: { ownerKey: visitorOwnerKey },
+    }),
+  ]);
 }
 
 export async function getNextSurpriseDay(options?: { userId?: string | null }) {
@@ -619,7 +652,7 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
 
   const ownerKey = userId ? `user:${userId}` : `visitor:${visitorId}`;
 
-  let row = await prisma.surpriseDeck.findUnique({
+  let row: SurpriseDeckRow | null = await prisma.surpriseDeck.findUnique({
     where: { ownerKey },
   });
 
@@ -628,7 +661,7 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
 
   if (!row) {
     const fresh = buildFreshDeck(pool.days);
-    row = await upsertDeck({
+    await upsertDeck({
       ownerKey,
       userId,
       deck: fresh.deck,
@@ -649,7 +682,7 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
     ) {
       const rebuilt = buildDeckFromSeenDays(pool.days, seenDays);
 
-      row = await upsertDeck({
+      await upsertDeck({
         ownerKey,
         userId,
         deck: rebuilt.deck,
@@ -673,7 +706,7 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
   if (cursor >= deck.length) {
     const fresh = buildFreshDeck(pool.days);
 
-    row = await upsertDeck({
+    await upsertDeck({
       ownerKey,
       userId,
       deck: fresh.deck,
@@ -691,7 +724,7 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
   if (!isValidDayString(day)) {
     const fresh = buildFreshDeck(pool.days);
 
-    row = await upsertDeck({
+    await upsertDeck({
       ownerKey,
       userId,
       deck: fresh.deck,

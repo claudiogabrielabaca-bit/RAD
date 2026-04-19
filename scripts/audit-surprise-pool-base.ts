@@ -1,5 +1,9 @@
 import { prisma } from "../src/app/lib/prisma";
 
+type DayRow = {
+  day: string;
+};
+
 function monthFromDay(day: string) {
   return day.slice(5, 7);
 }
@@ -45,7 +49,7 @@ function toSortedObject<K extends string | number>(map: Map<K, number>) {
 }
 
 async function main() {
-  const rows = await prisma.dayHighlightCache.findMany({
+  const rows: DayRow[] = await prisma.dayHighlightCache.findMany({
     where: {
       type: { not: "none" },
       title: { not: null },
@@ -62,7 +66,7 @@ async function main() {
   const days = Array.from(
     new Set(
       rows
-        .map((row) => row.day)
+        .map((row: DayRow) => row.day)
         .filter((day): day is string => /^\d{4}-\d{2}-\d{2}$/.test(day))
     )
   );

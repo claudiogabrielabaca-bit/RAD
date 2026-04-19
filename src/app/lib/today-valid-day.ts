@@ -4,11 +4,30 @@ import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 const GENERATION_BATCH_SIZE = 4;
 const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date.";
 
+type TodayValidDayResult = {
+  day: string;
+  source: "cache" | "generated";
+  restartedRound: boolean;
+};
+
+type CachedHighlightRow = {
+  day: string;
+  type: string;
+  text: string;
+};
+
+type CachedState = {
+  testedDays: string[];
+  validDays: string[];
+};
+
+type EnsureHighlightResult = Awaited<ReturnType<typeof ensureHighlightsForDay>>;
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
-function shuffleArray<T>(items: T[]) {
+function shuffleArray<T>(items: T[]): T[] {
   const arr = [...items];
 
   for (let i = arr.length - 1; i > 0; i--) {
@@ -40,7 +59,11 @@ function isValidDayString(value?: string | null): value is string {
   return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
-function normalizePoolDays(raw: unknown, monthStr: string, dayStr: string) {
+function normalizePoolDays(
+  raw: unknown,
+  monthStr: string,
+  dayStr: string
+): string[] {
   if (!Array.isArray(raw)) return [];
 
   return Array.from(
@@ -55,7 +78,10 @@ function normalizePoolDays(raw: unknown, monthStr: string, dayStr: string) {
   ).sort();
 }
 
-async function getPoolDaysForMonthDay(monthStr: string, dayStr: string) {
+async function getPoolDaysForMonthDay(
+  monthStr: string,
+  dayStr: string
+): Promise<string[]> {
   const monthDay = `${monthStr}-${dayStr}`;
 
   const row = await prisma.todayHistoryPool.findUnique({
@@ -65,10 +91,14 @@ async function getPoolDaysForMonthDay(monthStr: string, dayStr: string) {
     },
   });
 
-  return normalizePoolDays(row?.validDays, monthStr, dayStr);
+  return normalizePoolDays(row?.validDays as unknown, monthStr, dayStr);
 }
 
-async function savePoolDays(monthStr: string, dayStr: string, validDays: string[]) {
+async function savePoolDays(
+  monthStr: string,
+  dayStr: string,
+  validDays: string[]
+): Promise<string[]> {
   const monthDay = `${monthStr}-${dayStr}`;
   const normalized = normalizePoolDays(validDays, monthStr, dayStr);
 
@@ -88,9 +118,7 @@ async function savePoolDays(monthStr: string, dayStr: string, validDays: string[
   return normalized;
 }
 
-function isUsableHighlight(
-  result: Awaited<ReturnType<typeof ensureHighlightsForDay>>
-) {
+function isUsableHighlight(result: EnsureHighlightResult) {
   const primary = result.highlight ?? result.highlights?.[0] ?? null;
 
   return !!(
@@ -102,7 +130,7 @@ function isUsableHighlight(
   );
 }
 
-function isUsableCachedRow(row: { type: string; text: string }) {
+function isUsableCachedRow(row: CachedHighlightRow) {
   return (
     row.type !== "none" &&
     !!row.text?.trim() &&
@@ -110,26 +138,29 @@ function isUsableCachedRow(row: { type: string; text: string }) {
   );
 }
 
-function getValidYearsForMonthDay(month: number, day: number) {
+function getValidYearsForMonthDay(month: number, day: number): string[] {
   const minYear = 1800;
   const maxYear = new Date().getFullYear();
-  const years: number[] = [];
+  const days: string[] = [];
 
   for (let year = minYear; year <= maxYear; year++) {
     if (month === 2 && day === 29 && !isLeapYear(year)) {
       continue;
     }
 
-    years.push(year);
+    days.push(`${year}-${pad2(month)}-${pad2(day)}`);
   }
 
-  return years;
+  return days;
 }
 
-async function getCachedStateForMonthDay(monthStr: string, dayStr: string) {
+async function getCachedStateForMonthDay(
+  monthStr: string,
+  dayStr: string
+): Promise<CachedState> {
   const suffix = `-${monthStr}-${dayStr}`;
 
-  const rows = await prisma.dayHighlightCache.findMany({
+  const rows: CachedHighlightRow[] = await prisma.dayHighlightCache.findMany({
     where: {
       day: {
         endsWith: suffix,
@@ -145,9 +176,16 @@ async function getCachedStateForMonthDay(monthStr: string, dayStr: string) {
     },
   });
 
-  const testedDays = Array.from(new Set(rows.map((row) => row.day))).sort();
+  const testedDays = Array.from(
+    new Set(rows.map((row: CachedHighlightRow) => row.day))
+  ).sort();
+
   const validDays = Array.from(
-    new Set(rows.filter(isUsableCachedRow).map((row) => row.day))
+    new Set(
+      rows
+        .filter((row: CachedHighlightRow) => isUsableCachedRow(row))
+        .map((row: CachedHighlightRow) => row.day)
+    )
   ).sort();
 
   return {
@@ -156,34 +194,33 @@ async function getCachedStateForMonthDay(monthStr: string, dayStr: string) {
   };
 }
 
-function pickFromPool(pooledDays: string[], excludedSet: Set<string>) {
+function pickFromPool(
+  pooledDays: string[],
+  excludedSet: Set<string>
+): TodayValidDayResult | null {
   if (pooledDays.length === 0) return null;
 
-  const remainingDays = pooledDays.filter((candidate) => !excludedSet.has(candidate));
+  const remainingDays = pooledDays.filter(
+    (candidate: string) => !excludedSet.has(candidate)
+  );
 
-  if (remainingDays.length > 0) {
-    const shuffled = shuffleArray(remainingDays);
-
-    return {
-      day: shuffled[0],
-      source: "cache" as const,
-      restartedRound: false,
-    };
+  if (remainingDays.length === 0) {
+    return null;
   }
 
-  const shuffled = shuffleArray(pooledDays);
+  const shuffled = shuffleArray(remainingDays);
 
   return {
     day: shuffled[0],
-    source: "cache" as const,
-    restartedRound: true,
+    source: "cache",
+    restartedRound: false,
   };
 }
 
 async function discoverUntilNextAvailable(
   candidates: string[],
   excludedSet: Set<string>
-) {
+): Promise<{ selectedDay: string | null; discoveredValidDays: string[] }> {
   const discoveredValidDays: string[] = [];
   let selectedDay: string | null = null;
 
@@ -191,7 +228,7 @@ async function discoverUntilNextAvailable(
     const batch = candidates.slice(i, i + GENERATION_BATCH_SIZE);
 
     const results = await Promise.allSettled(
-      batch.map(async (candidate) => {
+      batch.map(async (candidate: string) => {
         const result = await ensureHighlightsForDay(candidate);
         return {
           candidate,
@@ -204,7 +241,7 @@ async function discoverUntilNextAvailable(
       if (result.status !== "fulfilled") continue;
       if (!result.value.usable) continue;
 
-      const { candidate } = result.value;
+      const candidate = result.value.candidate;
       discoveredValidDays.push(candidate);
 
       if (!selectedDay && !excludedSet.has(candidate)) {
@@ -228,34 +265,32 @@ export async function getTodayValidDay(options?: {
   maxAttempts?: number;
   excludeDays?: string[];
   monthDay?: string;
-}) {
+}): Promise<TodayValidDayResult | null> {
   const excludeDays = Array.from(
     new Set((options?.excludeDays ?? []).filter(isValidDayString))
   );
-  const excludedSet = new Set(excludeDays);
+  const excludedSet = new Set<string>(excludeDays);
 
   const { month, day } = parseMonthDay(options?.monthDay);
   const monthStr = pad2(month);
   const dayStr = pad2(day);
 
-  const allCandidateDays = getValidYearsForMonthDay(month, day).map(
-    (year) => `${year}-${monthStr}-${dayStr}`
-  );
+  const allCandidateDays = getValidYearsForMonthDay(month, day);
 
-  const storedPool = options?.fresh
+  const storedPool: string[] = options?.fresh
     ? []
     : await getPoolDaysForMonthDay(monthStr, dayStr);
 
   const cachedState = await getCachedStateForMonthDay(monthStr, dayStr);
 
-  let pooledDays = Array.from(
-    new Set([...storedPool, ...cachedState.validDays])
+  let pooledDays: string[] = Array.from(
+    new Set<string>([...storedPool, ...cachedState.validDays])
   ).sort();
 
-  const storedPoolSet = new Set(storedPool);
+  const storedPoolSet = new Set<string>(storedPool);
   const poolChanged =
     pooledDays.length !== storedPool.length ||
-    pooledDays.some((dayValue) => !storedPoolSet.has(dayValue));
+    pooledDays.some((dayValue: string) => !storedPoolSet.has(dayValue));
 
   if (poolChanged) {
     pooledDays = await savePoolDays(monthStr, dayStr, pooledDays);
@@ -266,10 +301,17 @@ export async function getTodayValidDay(options?: {
     return pooledPick;
   }
 
-  const testedSet = new Set(cachedState.testedDays);
-  const untestedCandidates = shuffleArray(
-    allCandidateDays.filter((candidate) => !testedSet.has(candidate))
+  const testedSet = new Set<string>(cachedState.testedDays);
+  const rawUntestedCandidates = shuffleArray(
+    allCandidateDays.filter((candidate: string) => !testedSet.has(candidate))
   );
+
+  const maxAttempts = Math.max(
+    GENERATION_BATCH_SIZE,
+    options?.maxAttempts ?? 72
+  );
+
+  const untestedCandidates = rawUntestedCandidates.slice(0, maxAttempts);
 
   if (untestedCandidates.length > 0) {
     const { selectedDay, discoveredValidDays } =
@@ -285,7 +327,7 @@ export async function getTodayValidDay(options?: {
     if (selectedDay) {
       return {
         day: selectedDay,
-        source: "generated" as const,
+        source: "generated",
         restartedRound: false,
       };
     }
@@ -296,7 +338,7 @@ export async function getTodayValidDay(options?: {
 
     return {
       day: shuffled[0],
-      source: "cache" as const,
+      source: "cache",
       restartedRound: true,
     };
   }

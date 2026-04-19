@@ -5,6 +5,17 @@ import { getCurrentUser } from "@/app/lib/current-user";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+type NotificationRow = {
+  id: string;
+  type: string;
+  day: string | null;
+  isRead: boolean;
+  createdAt: Date;
+  actorUser: {
+    username: string;
+  };
+};
+
 function formatMessage(type: string, username: string) {
   switch (type) {
     case "review_liked":
@@ -29,37 +40,38 @@ export async function GET() {
       );
     }
 
-    const [notifications, unreadCount] = await Promise.all([
-      prisma.notification.findMany({
-        where: {
-          userId: user.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 20,
-        select: {
-          id: true,
-          type: true,
-          day: true,
-          isRead: true,
-          createdAt: true,
-          actorUser: {
-            select: {
-              username: true,
+    const [notifications, unreadCount]: [NotificationRow[], number] =
+      await Promise.all([
+        prisma.notification.findMany({
+          where: {
+            userId: user.id,
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          take: 20,
+          select: {
+            id: true,
+            type: true,
+            day: true,
+            isRead: true,
+            createdAt: true,
+            actorUser: {
+              select: {
+                username: true,
+              },
             },
           },
-        },
-      }),
-      prisma.notification.count({
-        where: {
-          userId: user.id,
-          isRead: false,
-        },
-      }),
-    ]);
+        }),
+        prisma.notification.count({
+          where: {
+            userId: user.id,
+            isRead: false,
+          },
+        }),
+      ]);
 
-    const items = notifications.map((item) => ({
+    const items = notifications.map((item: NotificationRow) => ({
       id: item.id,
       type: item.type,
       day: item.day,

@@ -10,12 +10,20 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
 
+type PrismaErrorWithCode = {
+  code: string;
+};
+
 function isPrismaError(
   error: unknown,
   code: "P2002" | "P2025"
-): error is Prisma.PrismaClientKnownRequestError {
+): error is PrismaErrorWithCode {
   return (
-    error instanceof Prisma.PrismaClientKnownRequestError && error.code === code
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string" &&
+    (error as { code: string }).code === code
   );
 }
 
@@ -25,58 +33,54 @@ export async function POST(req: Request) {
 
     if (!user) {
       return NextResponse.json(
-        { error: "You must be logged in to like a reply." },
+        { error: "You must be logged in to like reviews." },
         { status: 401, headers: NO_STORE_HEADERS }
       );
     }
 
     const body = await req.json().catch(() => null);
-    const replyId = body?.replyId;
+    const ratingId = body?.ratingId;
     const desiredLiked =
       typeof body?.liked === "boolean" ? body.liked : null;
 
-    if (!replyId || typeof replyId !== "string") {
+    if (!ratingId || typeof ratingId !== "string") {
       return NextResponse.json(
-        { error: "Invalid replyId" },
+        { error: "Missing ratingId" },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
-    const reply = await prisma.ratingReply.findUnique({
-      where: { id: replyId },
+    const review = await prisma.rating.findUnique({
+      where: { id: ratingId },
       select: {
         id: true,
         userId: true,
-        rating: {
-          select: {
-            day: true,
-          },
-        },
+        day: true,
       },
     });
 
-    if (!reply) {
+    if (!review) {
       return NextResponse.json(
-        { error: "Reply not found" },
+        { error: "Review not found" },
         { status: 404, headers: NO_STORE_HEADERS }
       );
     }
 
-    if (reply.userId === user.id) {
+    if (review.userId === user.id) {
       return NextResponse.json(
-        { error: "You cannot like your own reply." },
+        { error: "You cannot like your own review." },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
     const likeWhere = {
-      reply_like_user_unique: {
-        replyId,
+      rating_like_user_unique: {
+        ratingId,
         userId: user.id,
       },
     } as const;
 
-    const existingLike = await prisma.replyLike.findUnique({
+    const existingLike = await prisma.ratingLike.findUnique({
       where: likeWhere,
       select: {
         id: true,
@@ -89,27 +93,31 @@ export async function POST(req: Request) {
     if (shouldLike) {
       if (!existingLike) {
         try {
-          await prisma.$transaction(async (tx) => {
-            await tx.replyLike.create({
+          const ops: Prisma.PrismaPromise<unknown>[] = [
+            prisma.ratingLike.create({
               data: {
-                replyId,
+                ratingId,
                 userId: user.id,
                 anonId: null,
               },
-            });
+            }),
+          ];
 
-            if (reply.userId && reply.userId !== user.id) {
-              await tx.notification.create({
+          if (review.userId && review.userId !== user.id) {
+            ops.push(
+              prisma.notification.create({
                 data: {
-                  userId: reply.userId,
+                  userId: review.userId,
                   actorUserId: user.id,
-                  type: "reply_liked",
-                  replyId,
-                  day: reply.rating.day,
+                  type: "review_liked",
+                  reviewId: ratingId,
+                  day: review.day,
                 },
-              });
-            }
-          });
+              })
+            );
+          }
+
+          await prisma.$transaction(ops);
         } catch (error) {
           if (!isPrismaError(error, "P2002")) {
             throw error;
@@ -117,14 +125,14 @@ export async function POST(req: Request) {
         }
       }
 
-      const likesCount = await prisma.replyLike.count({
-        where: { replyId },
+      const likesCount = await prisma.ratingLike.count({
+        where: { ratingId },
       });
 
       return NextResponse.json(
         {
           ok: true,
-          likedByMe: true,
+          liked: true,
           likesCount,
         },
         {
@@ -135,22 +143,26 @@ export async function POST(req: Request) {
 
     if (existingLike) {
       try {
-        await prisma.$transaction(async (tx) => {
-          await tx.replyLike.delete({
+        const ops: Prisma.PrismaPromise<unknown>[] = [
+          prisma.ratingLike.delete({
             where: likeWhere,
-          });
+          }),
+        ];
 
-          if (reply.userId) {
-            await tx.notification.deleteMany({
+        if (review.userId) {
+          ops.push(
+            prisma.notification.deleteMany({
               where: {
-                type: "reply_liked",
-                userId: reply.userId,
+                type: "review_liked",
+                userId: review.userId,
                 actorUserId: user.id,
-                replyId,
+                reviewId: ratingId,
               },
-            });
-          }
-        });
+            })
+          );
+        }
+
+        await prisma.$transaction(ops);
       } catch (error) {
         if (!isPrismaError(error, "P2025")) {
           throw error;
@@ -158,14 +170,14 @@ export async function POST(req: Request) {
       }
     }
 
-    const likesCount = await prisma.replyLike.count({
-      where: { replyId },
+    const likesCount = await prisma.ratingLike.count({
+      where: { ratingId },
     });
 
     return NextResponse.json(
       {
         ok: true,
-        likedByMe: false,
+        liked: false,
         likesCount,
       },
       {
@@ -173,10 +185,15 @@ export async function POST(req: Request) {
       }
     );
   } catch (error) {
-    console.error("reply-like POST error:", error);
+    console.error("review-like POST error:", error);
     return NextResponse.json(
-      { error: "Server error" },
-      { status: 500, headers: NO_STORE_HEADERS }
+      {
+        error: "Server error",
+      },
+      {
+        status: 500,
+        headers: NO_STORE_HEADERS,
+      }
     );
   }
 }

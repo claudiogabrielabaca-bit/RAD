@@ -42,6 +42,18 @@ type HistoryState = {
   recentMonthDays: string[];
 };
 
+type CachedHighlightRow = {
+  day: string;
+  title: string | null;
+  text: string;
+  image: string | null;
+  type: string;
+};
+
+type CacheDayRow = {
+  day: string;
+};
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -50,7 +62,7 @@ function getRandomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function shuffleArray<T>(items: T[]) {
+function shuffleArray<T>(items: T[]): T[] {
   const arr = [...items];
 
   for (let i = arr.length - 1; i > 0; i -= 1) {
@@ -152,10 +164,13 @@ function pickWeightedRandomItem<T>(
 ): T | null {
   if (entries.length === 0) return null;
 
-  const totalWeight = entries.reduce((acc, item) => acc + item.weight, 0);
+  const totalWeight = entries.reduce(
+    (acc: number, item: { value: T; weight: number }) => acc + item.weight,
+    0
+  );
 
   if (totalWeight <= 0) {
-    return shuffleArray(entries.map((item) => item.value))[0] ?? null;
+    return shuffleArray(entries.map((item: { value: T; weight: number }) => item.value))[0] ?? null;
   }
 
   let roll = Math.random() * totalWeight;
@@ -335,7 +350,7 @@ export async function sampleRandomCachedHighlights(options?: {
 
   const take = Math.max(sampleSize * 8, 80);
 
-  const rows = await prisma.dayHighlightCache.findMany({
+  const rows: CachedHighlightRow[] = await prisma.dayHighlightCache.findMany({
     where: {
       type: { not: "none" },
       title: { not: null },
@@ -362,7 +377,7 @@ export async function sampleRandomCachedHighlights(options?: {
   });
 
   const filtered = rows.filter(
-    (item) =>
+    (item: CachedHighlightRow) =>
       !!item.day &&
       !!item.title?.trim() &&
       !!item.text?.trim() &&
@@ -382,7 +397,7 @@ export async function getRandomValidDay(
   const historyState = buildHistoryState(excludeDays);
 
   if (!fresh) {
-    const validDays = await prisma.dayHighlightCache.findMany({
+    const validDays: CacheDayRow[] = await prisma.dayHighlightCache.findMany({
       where: {
         type: { not: "none" },
         title: { not: null },
@@ -401,7 +416,9 @@ export async function getRandomValidDay(
       take: maxCacheTake,
     });
 
-    const cachePool = getUniqueDays(validDays.map((item) => item.day));
+    const cachePool = getUniqueDays(
+      validDays.map((item: CacheDayRow) => item.day)
+    );
     const pickedFromCache = pickBalancedDay(cachePool, historyState);
 
     if (pickedFromCache) {

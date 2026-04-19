@@ -1,6 +1,26 @@
 import { prisma } from "../src/app/lib/prisma";
 import { ensureHighlightsForDay } from "../src/app/lib/highlight-service";
 
+type CachedRow = {
+  day: string;
+  title: string | null;
+  type: string;
+};
+
+type BatchResult = {
+  day: string;
+  usable: boolean;
+  title: string | null;
+  type: string | null;
+};
+
+type UsableDay = {
+  day: string;
+  title: string | null;
+  type: string | null;
+  source: "cache" | "generated";
+};
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
@@ -44,13 +64,15 @@ async function main() {
 
   const [month, day] = monthDayArg.split("-").map(Number);
   const years = getValidYearsForMonthDay(month, day);
-  const candidateDays = years.map((year) => `${year}-${pad2(month)}-${pad2(day)}`);
+  const candidateDays: string[] = years.map(
+    (year) => `${year}-${pad2(month)}-${pad2(day)}`
+  );
 
   console.log(`Month-day: ${monthDayArg}`);
   console.log(`Candidate years: ${years.length}`);
   console.log("");
 
-  const cachedRows = await prisma.dayHighlightCache.findMany({
+  const cachedRows: CachedRow[] = await prisma.dayHighlightCache.findMany({
     where: {
       day: {
         endsWith: `-${pad2(month)}-${pad2(day)}`,
@@ -78,13 +100,7 @@ async function main() {
   console.log(`Cached valid rows: ${cachedRows.length}`);
   console.log("");
 
-  const usableDays: Array<{
-    day: string;
-    title: string | null;
-    type: string | null;
-    source: "cache" | "generated";
-  }> = [];
-
+  const usableDays: UsableDay[] = [];
   const unusableDays: string[] = [];
 
   const BATCH_SIZE = 4;
@@ -92,8 +108,8 @@ async function main() {
   for (let i = 0; i < candidateDays.length; i += BATCH_SIZE) {
     const batch = candidateDays.slice(i, i + BATCH_SIZE);
 
-    const results = await Promise.all(
-      batch.map(async (candidate) => {
+    const results: BatchResult[] = await Promise.all(
+      batch.map(async (candidate: string): Promise<BatchResult> => {
         try {
           const result = await ensureHighlightsForDay(candidate);
           const primary = result.highlight ?? result.highlights?.[0] ?? null;
@@ -126,7 +142,7 @@ async function main() {
 
     for (const item of results) {
       if (item.usable) {
-        const source = cachedRows.some((row) => row.day === item.day)
+        const source = cachedRows.some((row: CachedRow) => row.day === item.day)
           ? "cache"
           : "generated";
 
@@ -141,7 +157,9 @@ async function main() {
       }
     }
 
-    console.log(`Checked ${Math.min(i + BATCH_SIZE, candidateDays.length)}/${candidateDays.length}`);
+    console.log(
+      `Checked ${Math.min(i + BATCH_SIZE, candidateDays.length)}/${candidateDays.length}`
+    );
   }
 
   console.log("");

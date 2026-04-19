@@ -8,6 +8,50 @@ import { getNextSurpriseDay } from "@/app/lib/surprise-deck";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+type CurrentUser = Awaited<ReturnType<typeof getCurrentUser>>;
+
+type SurpriseReplyRow = {
+  id: string;
+  text: string;
+  createdAt: Date;
+  anonId: string | null;
+  userId: string | null;
+  user: {
+    username: string;
+  } | null;
+};
+
+type SurpriseRatingRow = {
+  id: string;
+  stars: number;
+  review: string;
+  createdAt: Date;
+  anonId: string | null;
+  userId: string | null;
+  likes: { id: string; userId: string | null }[];
+  replies: SurpriseReplyRow[];
+  user: {
+    username: string;
+  } | null;
+};
+
+function buildReplySummaries(
+  replies: SurpriseReplyRow[],
+  user: CurrentUser
+) {
+  return replies.map((reply: SurpriseReplyRow) => ({
+    id: reply.id,
+    text: reply.text,
+    createdAt: reply.createdAt.toISOString(),
+    isMine: user ? reply.userId === user.id : false,
+    authorLabel: reply.user?.username
+      ? `@${reply.user.username}`
+      : reply.anonId
+        ? getAnonLabel(reply.anonId)
+        : "User",
+  }));
+}
+
 export async function GET() {
   try {
     const user = await getCurrentUser();
@@ -25,7 +69,11 @@ export async function GET() {
 
     const day = result.day;
 
-    const [highlightResult, ratings, stats] = await Promise.all([
+    const [highlightResult, ratings, stats]: [
+      Awaited<ReturnType<typeof ensureHighlightsForDay>>,
+      SurpriseRatingRow[],
+      { views: number } | null
+    ] = await Promise.all([
       ensureHighlightsForDay(day),
       prisma.rating.findMany({
         where: { day },
@@ -61,17 +109,23 @@ export async function GET() {
     const avg =
       count === 0
         ? 0
-        : ratings.reduce((acc, r) => acc + r.stars, 0) / count;
+        : ratings.reduce(
+            (acc: number, r: SurpriseRatingRow) => acc + r.stars,
+            0
+          ) / count;
 
     const reviews = ratings
-      .map((r) => ({
+      .map((r: SurpriseRatingRow) => ({
         id: r.id,
         stars: r.stars,
         review: r.review,
         createdAt: r.createdAt.toISOString(),
         likesCount: r.likes.length,
         likedByMe: user
-          ? r.likes.some((like) => like.userId === user.id)
+          ? r.likes.some(
+              (like: { id: string; userId: string | null }) =>
+                like.userId === user.id
+            )
           : false,
         isMine: user ? r.userId === user.id : false,
         authorLabel: r.user?.username
@@ -79,17 +133,7 @@ export async function GET() {
           : r.anonId
             ? getAnonLabel(r.anonId)
             : "User",
-        replies: r.replies.map((reply) => ({
-          id: reply.id,
-          text: reply.text,
-          createdAt: reply.createdAt.toISOString(),
-          isMine: user ? reply.userId === user.id : false,
-          authorLabel: reply.user?.username
-            ? `@${reply.user.username}`
-            : reply.anonId
-              ? getAnonLabel(reply.anonId)
-              : "User",
-        })),
+        replies: buildReplySummaries(r.replies, user),
       }))
       .sort((a, b) => {
         if (a.isMine && !b.isMine) return -1;

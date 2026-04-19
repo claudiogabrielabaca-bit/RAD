@@ -25,8 +25,34 @@ type ReplyRecord = {
   reports: { id: string; userId: string | null }[];
 };
 
+type RatingRecord = {
+  id: string;
+  stars: number;
+  review: string;
+  createdAt: Date;
+  anonId: string | null;
+  userId: string | null;
+  user: {
+    username: string;
+  } | null;
+  likes: { id: string; userId: string | null }[];
+  replies: ReplyRecord[];
+};
+
+type ReviewItem = {
+  id: string;
+  stars: number;
+  review: string;
+  createdAt: string;
+  likesCount: number;
+  likedByMe: boolean;
+  isMine: boolean;
+  authorLabel: string;
+  replies: ReplyItem[];
+};
+
 function buildReplyTree(replies: ReplyRecord[], user: CurrentUser): ReplyItem[] {
-  const nodes = replies.map((reply) => ({
+  const nodes: ReplyItem[] = replies.map((reply: ReplyRecord) => ({
     id: reply.id,
     ratingId: reply.ratingId,
     parentReplyId: reply.parentReplyId,
@@ -39,14 +65,16 @@ function buildReplyTree(replies: ReplyRecord[], user: CurrentUser): ReplyItem[] 
         ? getAnonLabel(reply.anonId)
         : "User",
     likesCount: reply.likes.length,
-    likedByMe: user ? reply.likes.some((like) => like.userId === user.id) : false,
+    likedByMe: user
+      ? reply.likes.some((like: { id: string; userId: string | null }) => like.userId === user.id)
+      : false,
     reportedByMe: user
-      ? reply.reports.some((report) => report.userId === user.id)
+      ? reply.reports.some((report: { id: string; userId: string | null }) => report.userId === user.id)
       : false,
     replies: [] as ReplyItem[],
   }));
 
-  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const byId = new Map<string, ReplyItem>(nodes.map((node: ReplyItem) => [node.id, node]));
   const roots: ReplyItem[] = [];
 
   for (const node of nodes) {
@@ -75,7 +103,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Invalid day" }, { status: 400 });
     }
 
-    const [ratings, stats] = await Promise.all([
+    const [ratings, stats]: [RatingRecord[], { views: number } | null] = await Promise.all([
       prisma.rating.findMany({
         where: { day },
         orderBy: { createdAt: "desc" },
@@ -112,25 +140,30 @@ export async function GET(req: Request) {
     const avg =
       count === 0
         ? 0
-        : ratings.reduce((acc, r) => acc + r.stars, 0) / count;
+        : ratings.reduce(
+            (acc: number, r: RatingRecord) => acc + r.stars,
+            0
+          ) / count;
 
-    const reviews = ratings
-      .map((r) => ({
+    const reviews: ReviewItem[] = ratings
+      .map((r: RatingRecord) => ({
         id: r.id,
         stars: r.stars,
         review: r.review,
         createdAt: r.createdAt.toISOString(),
         likesCount: r.likes.length,
-        likedByMe: user ? r.likes.some((like) => like.userId === user.id) : false,
+        likedByMe: user
+          ? r.likes.some((like: { id: string; userId: string | null }) => like.userId === user.id)
+          : false,
         isMine: user ? r.userId === user.id : false,
         authorLabel: r.user?.username
           ? `@${r.user.username}`
           : r.anonId
             ? getAnonLabel(r.anonId)
             : "User",
-        replies: buildReplyTree(r.replies as ReplyRecord[], user),
+        replies: buildReplyTree(r.replies, user),
       }))
-      .sort((a, b) => {
+      .sort((a: ReviewItem, b: ReviewItem) => {
         if (a.isMine && !b.isMine) return -1;
         if (!a.isMine && b.isMine) return 1;
 

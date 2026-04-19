@@ -9,11 +9,21 @@ const MAX_PER_YEAR = 16;
 const MAX_PER_DECADE = 160;
 const MAX_PROBES_PER_MONTH_DAY = 120;
 
+type DayRow = {
+  day: string;
+};
+
+type RebuildState = {
+  monthDayUsage: Map<string, number>;
+  yearUsage: Map<number, number>;
+  decadeUsage: Map<number, number>;
+};
+
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
 
-function shuffleArray<T>(items: T[]) {
+function shuffleArray<T>(items: T[]): T[] {
   const arr = [...items];
 
   for (let i = arr.length - 1; i > 0; i--) {
@@ -71,8 +81,8 @@ async function wipeExistingData() {
   console.log(`Deleted ${deletedDecks.count} surprise decks`);
 }
 
-async function getExistingCounts() {
-  const rows = await prisma.dayHighlightCache.findMany({
+async function getExistingCounts(): Promise<RebuildState> {
+  const rows: DayRow[] = await prisma.dayHighlightCache.findMany({
     select: { day: true },
   });
 
@@ -119,14 +129,7 @@ function scoreYear(
   return yearCount * 1000 + decadeCount * 10 + modernPenalty;
 }
 
-async function fillMonthDay(
-  monthDay: string,
-  state: {
-    monthDayUsage: Map<string, number>;
-    yearUsage: Map<number, number>;
-    decadeUsage: Map<number, number>;
-  }
-) {
+async function fillMonthDay(monthDay: string, state: RebuildState) {
   const existing = state.monthDayUsage.get(monthDay) ?? 0;
 
   if (existing >= TARGET_PER_MONTH_DAY) {
@@ -137,7 +140,7 @@ async function fillMonthDay(
   const month = Number(monthStr);
   const day = Number(dayStr);
 
-  const existingRows = await prisma.dayHighlightCache.findMany({
+  const existingRows: DayRow[] = await prisma.dayHighlightCache.findMany({
     where: {
       day: {
         endsWith: `-${monthDay}`,
@@ -148,12 +151,16 @@ async function fillMonthDay(
     },
   });
 
-  const existingDays = new Set(existingRows.map((row) => row.day));
+  const existingDays = new Set<string>(
+    existingRows.map((row: DayRow) => row.day)
+  );
 
   const candidateYears = buildCandidateYearsForMonthDay(month, day)
     .filter((year) => {
       if ((state.yearUsage.get(year) ?? 0) >= MAX_PER_YEAR) return false;
-      if ((state.decadeUsage.get(getDecade(year)) ?? 0) >= MAX_PER_DECADE) return false;
+      if ((state.decadeUsage.get(getDecade(year)) ?? 0) >= MAX_PER_DECADE) {
+        return false;
+      }
 
       const iso = `${year}-${monthDay}`;
       return !existingDays.has(iso);
@@ -197,7 +204,10 @@ async function fillMonthDay(
 
       existingDays.add(iso);
       added += 1;
-      state.monthDayUsage.set(monthDay, (state.monthDayUsage.get(monthDay) ?? 0) + 1);
+      state.monthDayUsage.set(
+        monthDay,
+        (state.monthDayUsage.get(monthDay) ?? 0) + 1
+      );
       state.yearUsage.set(year, (state.yearUsage.get(year) ?? 0) + 1);
       state.decadeUsage.set(
         getDecade(year),
@@ -240,7 +250,7 @@ async function main() {
     }
   }
 
-  const rows = await prisma.dayHighlightCache.findMany({
+  const rows: DayRow[] = await prisma.dayHighlightCache.findMany({
     select: { day: true },
   });
 
@@ -256,7 +266,10 @@ async function main() {
 
     monthCounts.set(month, (monthCounts.get(month) ?? 0) + 1);
     yearCounts.set(year, (yearCounts.get(year) ?? 0) + 1);
-    decadeCounts.set(getDecade(year), (decadeCounts.get(getDecade(year)) ?? 0) + 1);
+    decadeCounts.set(
+      getDecade(year),
+      (decadeCounts.get(getDecade(year)) ?? 0) + 1
+    );
     monthDayCounts.set(monthDay, (monthDayCounts.get(monthDay) ?? 0) + 1);
   }
 
@@ -311,7 +324,9 @@ async function main() {
   console.log("Strongest month-days:");
   console.table(strongestMonthDays);
 
-  console.log(`Month-days below target (${TARGET_PER_MONTH_DAY}): ${belowTarget.length}`);
+  console.log(
+    `Month-days below target (${TARGET_PER_MONTH_DAY}): ${belowTarget.length}`
+  );
   if (belowTarget.length > 0) {
     console.table(belowTarget.slice(0, 50));
   }

@@ -5,6 +5,21 @@ import type { DiscoverCard } from "@/app/lib/rad-types";
 
 export const dynamic = "force-dynamic";
 
+type RatingStatsRow = {
+  day: string;
+  _avg: {
+    stars: number | null;
+  };
+  _count: {
+    day: number;
+  };
+};
+
+type DayStatsRow = {
+  day: string;
+  views: number;
+};
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
@@ -22,36 +37,37 @@ export async function GET(req: NextRequest) {
     const featured = FEATURED_MOMENTS.slice(0, count);
     const featuredDays = featured.map((item) => item.day);
 
-    const [stats, dayStats] = await Promise.all([
-      prisma.rating.groupBy({
-        by: ["day"],
-        where: {
-          day: {
-            in: featuredDays,
+    const [stats, dayStats]: [RatingStatsRow[], DayStatsRow[]] =
+      await Promise.all([
+        prisma.rating.groupBy({
+          by: ["day"],
+          where: {
+            day: {
+              in: featuredDays,
+            },
           },
-        },
-        _count: {
-          day: true,
-        },
-        _avg: {
-          stars: true,
-        },
-      }),
-      prisma.dayStats.findMany({
-        where: {
-          day: {
-            in: featuredDays,
+          _count: {
+            day: true,
           },
-        },
-        select: {
-          day: true,
-          views: true,
-        },
-      }),
-    ]);
+          _avg: {
+            stars: true,
+          },
+        }),
+        prisma.dayStats.findMany({
+          where: {
+            day: {
+              in: featuredDays,
+            },
+          },
+          select: {
+            day: true,
+            views: true,
+          },
+        }),
+      ]);
 
-    const statsMap = new Map(
-      stats.map((item) => [
+    const statsMap = new Map<string, { avg: number; count: number }>(
+      stats.map((item: RatingStatsRow) => [
         item.day,
         {
           avg: item._avg.stars ?? 0,
@@ -60,7 +76,9 @@ export async function GET(req: NextRequest) {
       ])
     );
 
-    const viewsMap = new Map(dayStats.map((item) => [item.day, item.views]));
+    const viewsMap = new Map<string, number>(
+      dayStats.map((item: DayStatsRow) => [item.day, item.views])
+    );
 
     const cards: DiscoverCard[] = featured.map((item) => ({
       day: item.day,

@@ -1,4 +1,3 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
@@ -11,12 +10,20 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
 
+type PrismaErrorWithCode = {
+  code: string;
+};
+
 function isPrismaError(
   error: unknown,
   code: "P2002" | "P2025"
-): error is Prisma.PrismaClientKnownRequestError {
+): error is PrismaErrorWithCode {
   return (
-    error instanceof Prisma.PrismaClientKnownRequestError && error.code === code
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string" &&
+    (error as { code: string }).code === code
   );
 }
 

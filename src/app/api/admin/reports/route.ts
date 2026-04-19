@@ -11,19 +11,61 @@ const STATUS_PRIORITY: Record<string, number> = {
   ignored: 2,
 };
 
-function getReportAuthorLabel(report: {
+type ReportAuthor = {
   user?: { username: string } | null;
   anonId?: string | null;
-}) {
+};
+
+type RatingAuthor = {
+  user?: { username: string } | null;
+  anonId?: string | null;
+};
+
+type AdminReportRecord = {
+  id: string;
+  ratingId: string;
+  reason: string;
+  status: string;
+  anonId: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  user: { username: string } | null;
+  rating: {
+    id: string;
+    day: string;
+    stars: number;
+    review: string;
+    anonId: string | null;
+    createdAt: Date;
+    user: { username: string } | null;
+  } | null;
+};
+
+type NormalizedReport = {
+  id: string;
+  ratingId: string;
+  reason: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  reportAuthorLabel: string;
+  rating: {
+    id: string;
+    day: string;
+    stars: number;
+    review: string;
+    authorLabel: string;
+    createdAt: string;
+  } | null;
+};
+
+function getReportAuthorLabel(report: ReportAuthor) {
   if (report.user?.username) return `@${report.user.username}`;
   if (report.anonId) return report.anonId;
   return "Unknown";
 }
 
-function getRatingAuthorLabel(rating: {
-  user?: { username: string } | null;
-  anonId?: string | null;
-}) {
+function getRatingAuthorLabel(rating: RatingAuthor) {
   if (rating.user?.username) return `@${rating.user.username}`;
   if (rating.anonId) return rating.anonId;
   return "Unknown";
@@ -37,7 +79,7 @@ export async function GET() {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const reports = await prisma.reviewReport.findMany({
+    const reports: AdminReportRecord[] = await prisma.reviewReport.findMany({
       orderBy: { updatedAt: "desc" },
       include: {
         user: {
@@ -57,8 +99,8 @@ export async function GET() {
       },
     });
 
-    const normalized = reports
-      .map((report) => ({
+    const normalized: NormalizedReport[] = reports
+      .map((report: AdminReportRecord) => ({
         id: report.id,
         ratingId: report.ratingId,
         reason: report.reason,
@@ -77,7 +119,7 @@ export async function GET() {
             }
           : null,
       }))
-      .sort((a, b) => {
+      .sort((a: NormalizedReport, b: NormalizedReport) => {
         const aPriority = STATUS_PRIORITY[a.status] ?? 999;
         const bPriority = STATUS_PRIORITY[b.status] ?? 999;
 

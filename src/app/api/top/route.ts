@@ -42,7 +42,7 @@ function groupRatings(
 async function buildTitleMap(days: string[]): Promise<Map<string, string>> {
   const uniqueDays = [...new Set(days)];
 
-  const cached = await prisma.dayHighlightCache.findMany({
+  const cached: CacheTitleRow[] = await prisma.dayHighlightCache.findMany({
     where: {
       day: { in: uniqueDays },
     },
@@ -54,7 +54,7 @@ async function buildTitleMap(days: string[]): Promise<Map<string, string>> {
   });
 
   const cachedByDay = new Map<string, CacheTitleRow>(
-    cached.map((row) => [row.day, row])
+    cached.map((row: CacheTitleRow) => [row.day, row])
   );
 
   const daysNeedingResolution = uniqueDays.filter((day) => {
@@ -118,7 +118,7 @@ function attachTitles(
 
 export async function GET() {
   try {
-    const ratings = await prisma.rating.findMany({
+    const ratings: { day: string; stars: number }[] = await prisma.rating.findMany({
       select: {
         day: true,
         stars: true,

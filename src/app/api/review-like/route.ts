@@ -10,12 +10,20 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
 
+type PrismaErrorWithCode = {
+  code: string;
+};
+
 function isPrismaError(
   error: unknown,
   code: "P2002" | "P2025"
-): error is Prisma.PrismaClientKnownRequestError {
+): error is PrismaErrorWithCode {
   return (
-    error instanceof Prisma.PrismaClientKnownRequestError && error.code === code
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string" &&
+    (error as { code: string }).code === code
   );
 }
 
@@ -85,17 +93,19 @@ export async function POST(req: Request) {
     if (shouldLike) {
       if (!existingLike) {
         try {
-          await prisma.$transaction(async (tx) => {
-            await tx.ratingLike.create({
+          const ops: Prisma.PrismaPromise<unknown>[] = [
+            prisma.ratingLike.create({
               data: {
                 ratingId,
                 userId: user.id,
                 anonId: null,
               },
-            });
+            }),
+          ];
 
-            if (review.userId && review.userId !== user.id) {
-              await tx.notification.create({
+          if (review.userId && review.userId !== user.id) {
+            ops.push(
+              prisma.notification.create({
                 data: {
                   userId: review.userId,
                   actorUserId: user.id,
@@ -103,9 +113,11 @@ export async function POST(req: Request) {
                   reviewId: ratingId,
                   day: review.day,
                 },
-              });
-            }
-          });
+              })
+            );
+          }
+
+          await prisma.$transaction(ops);
         } catch (error) {
           if (!isPrismaError(error, "P2002")) {
             throw error;
@@ -131,22 +143,26 @@ export async function POST(req: Request) {
 
     if (existingLike) {
       try {
-        await prisma.$transaction(async (tx) => {
-          await tx.ratingLike.delete({
+        const ops: Prisma.PrismaPromise<unknown>[] = [
+          prisma.ratingLike.delete({
             where: likeWhere,
-          });
+          }),
+        ];
 
-          if (review.userId) {
-            await tx.notification.deleteMany({
+        if (review.userId) {
+          ops.push(
+            prisma.notification.deleteMany({
               where: {
                 type: "review_liked",
                 userId: review.userId,
                 actorUserId: user.id,
                 reviewId: ratingId,
               },
-            });
-          }
-        });
+            })
+          );
+        }
+
+        await prisma.$transaction(ops);
       } catch (error) {
         if (!isPrismaError(error, "P2025")) {
           throw error;
@@ -180,4 +196,4 @@ export async function POST(req: Request) {
       }
     );
   }
-}   
+}

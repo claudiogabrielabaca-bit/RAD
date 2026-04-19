@@ -5,10 +5,25 @@ import { isAdminAuthenticated } from "@/app/lib/admin";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function getRatingAuthorLabel(rating: {
+type RatingAuthor = {
   user?: { username: string } | null;
   anonId?: string | null;
-}) {
+};
+
+type RecentReviewRating = {
+  id: string;
+  day: string;
+  stars: number;
+  review: string;
+  anonId: string | null;
+  createdAt: Date;
+  user: { username: string } | null;
+  reports: Array<{ status: string }>;
+  replies: Array<{ id: string }>;
+  likes: Array<{ id: string }>;
+};
+
+function getRatingAuthorLabel(rating: RatingAuthor) {
   if (rating.user?.username) return `@${rating.user.username}`;
   if (rating.anonId) return rating.anonId;
   return "Unknown";
@@ -22,7 +37,7 @@ export async function GET() {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    const ratings = await prisma.rating.findMany({
+    const ratings: RecentReviewRating[] = await prisma.rating.findMany({
       orderBy: { createdAt: "desc" },
       take: 24,
       include: {
@@ -49,10 +64,10 @@ export async function GET() {
       },
     });
 
-    const reviews = ratings.map((rating) => {
+    const reviews = ratings.map((rating: RecentReviewRating) => {
       const reportsCount = rating.reports.length;
       const pendingReportsCount = rating.reports.filter(
-        (report) => report.status === "pending"
+        (report: { status: string }) => report.status === "pending"
       ).length;
 
       return {

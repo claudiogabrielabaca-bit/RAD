@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 import {
   createSession,
@@ -12,6 +11,23 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const EMAIL_VERIFY_TTL_MINUTES = 20;
+
+type PrismaErrorWithCode = {
+  code: string;
+};
+
+function isPrismaError(
+  error: unknown,
+  code: "P2002"
+): error is PrismaErrorWithCode {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string" &&
+    (error as { code: string }).code === code
+  );
+}
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
@@ -188,13 +204,11 @@ export async function POST(req: Request) {
   } catch (error) {
     console.error("register POST error:", error);
 
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2002") {
-        return NextResponse.json(
-          { error: "Email or username already exists." },
-          { status: 409 }
-        );
-      }
+    if (isPrismaError(error, "P2002")) {
+      return NextResponse.json(
+        { error: "Email or username already exists." },
+        { status: 409 }
+      );
     }
 
     return NextResponse.json({ error: "Server error" }, { status: 500 });

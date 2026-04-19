@@ -1,9 +1,42 @@
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+type JsonLike =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonLike[]
+  | { [key: string]: JsonLike };
+
+type JsonObjectLike = { [key: string]: JsonLike };
+
+type FeedRatingRow = {
+  id: string;
+  day: string;
+  stars: number;
+  review: string;
+  createdAt: Date;
+  updatedAt: Date;
+  user: {
+    username: string;
+  } | null;
+  _count: {
+    likes: number;
+  };
+};
+
+type HighlightRow = {
+  day: string;
+  title: string | null;
+  text: string;
+  image: string | null;
+  type: string;
+  highlights: unknown;
+};
 
 function formatDisplayDate(date: string) {
   const [year, month, day] = date.split("-");
@@ -16,14 +49,12 @@ function formatDisplayDate(date: string) {
   });
 }
 
-function isJsonObject(
-  value: Prisma.JsonValue | null | undefined
-): value is Prisma.JsonObject {
+function isJsonObject(value: unknown): value is JsonObjectLike {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function getJsonString(
-  obj: Prisma.JsonObject | null,
+  obj: JsonObjectLike | null,
   key: string
 ): string | null {
   if (!obj) return null;
@@ -34,7 +65,7 @@ function getJsonString(
 
 export async function GET() {
   try {
-    const ratings = await prisma.rating.findMany({
+    const ratings: FeedRatingRow[] = await prisma.rating.findMany({
       where: {
         review: {
           not: "",
@@ -65,12 +96,14 @@ export async function GET() {
     });
 
     const filteredRatings = ratings.filter(
-      (item) => item.review.trim().length > 0
+      (item: FeedRatingRow) => item.review.trim().length > 0
     );
 
-    const days = Array.from(new Set(filteredRatings.map((item) => item.day)));
+    const days = Array.from(
+      new Set(filteredRatings.map((item: FeedRatingRow) => item.day))
+    );
 
-    const highlights = days.length
+    const highlights: HighlightRow[] = days.length
       ? await prisma.dayHighlightCache.findMany({
           where: {
             day: {
@@ -88,10 +121,12 @@ export async function GET() {
         })
       : [];
 
-    const highlightMap = new Map(highlights.map((item) => [item.day, item]));
+    const highlightMap = new Map<string, HighlightRow>(
+      highlights.map((item: HighlightRow) => [item.day, item])
+    );
 
-    const items = filteredRatings.map((item) => {
-      const highlight = highlightMap.get(item.day);
+    const items = filteredRatings.map((item: FeedRatingRow) => {
+      const highlight = highlightMap.get(item.day) ?? null;
 
       const rawHighlights = highlight?.highlights;
       const firstHighlight =

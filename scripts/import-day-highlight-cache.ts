@@ -1,7 +1,14 @@
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { Prisma } from "@prisma/client";
 import { prisma } from "../src/app/lib/prisma";
+
+type JsonLike =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonLike[]
+  | { [key: string]: JsonLike };
 
 type CacheRow = {
   day: string;
@@ -18,6 +25,27 @@ function isValidDayString(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function isJsonLike(value: unknown): value is JsonLike {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+
+  if (Array.isArray(value)) {
+    return value.every(isJsonLike);
+  }
+
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).every(isJsonLike);
+  }
+
+  return false;
+}
+
 async function main() {
   const inputPath = resolve(
     process.argv[2] ?? "scripts/day-highlight-cache-export.json"
@@ -25,9 +53,9 @@ async function main() {
 
   const raw = JSON.parse(readFileSync(inputPath, "utf8")) as CacheRow[];
 
-  const rows = raw.filter(
-    (row) =>
-      row &&
+  const rows: CacheRow[] = raw.filter(
+    (row): row is CacheRow =>
+      !!row &&
       typeof row.day === "string" &&
       isValidDayString(row.day) &&
       typeof row.type === "string" &&
@@ -47,7 +75,7 @@ async function main() {
     const batch = rows.slice(i, i + batchSize);
 
     await prisma.dayHighlightCache.createMany({
-      data: batch.map((row) => ({
+      data: batch.map((row: CacheRow) => ({
         day: row.day,
         type: row.type,
         year: row.year ?? null,
@@ -55,10 +83,7 @@ async function main() {
         text: row.text,
         image: row.image ?? null,
         articleUrl: row.articleUrl ?? null,
-        highlights:
-          row.highlights == null
-            ? Prisma.DbNull
-            : (row.highlights as Prisma.InputJsonValue),
+        ...(isJsonLike(row.highlights) ? { highlights: row.highlights } : {}),
       })),
     });
 
