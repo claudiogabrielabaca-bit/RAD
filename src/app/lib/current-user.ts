@@ -1,13 +1,15 @@
 import { prisma } from "@/app/lib/prisma";
-import { getSessionToken } from "@/app/lib/auth";
+import { getSessionToken, hashSessionToken } from "@/app/lib/auth";
 
 export async function getCurrentUser() {
   const token = await getSessionToken();
 
   if (!token) return null;
 
+  const tokenHash = hashSessionToken(token);
+
   const session = await prisma.session.findUnique({
-    where: { token },
+    where: { tokenHash },
     include: {
       user: {
         select: {
@@ -25,9 +27,12 @@ export async function getCurrentUser() {
   if (!session) return null;
 
   if (session.expiresAt < new Date()) {
-    await prisma.session.delete({
-      where: { token },
-    }).catch(() => {});
+    await prisma.session
+      .delete({
+        where: { id: session.id },
+      })
+      .catch(() => {});
+
     return null;
   }
 

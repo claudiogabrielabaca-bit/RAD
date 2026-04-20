@@ -46,12 +46,14 @@ model User {
 
 model Session {
   id        String   @id @default(cuid())
-  token     String   @unique
+  tokenHash String   @unique
   userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 model AdminSession {
   id        String   @id @default(cuid())

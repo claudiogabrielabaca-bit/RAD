@@ -26,6 +26,16 @@ function getAuthCodeSecret() {
   return secret;
 }
 
+function getSessionSecret() {
+  const secret = process.env.SESSION_SECRET?.trim();
+
+  if (!secret) {
+    throw new Error("Missing SESSION_SECRET");
+  }
+
+  return secret;
+}
+
 function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
@@ -40,6 +50,15 @@ export async function verifyPassword(password: string, passwordHash: string) {
 
 export function generateSessionToken() {
   return randomBytes(32).toString("hex");
+}
+
+export function hashSessionToken(token: string) {
+  return createHmac("sha256", getSessionSecret()).update(token).digest("hex");
+}
+
+async function readIncomingSessionToken() {
+  const store = await cookies();
+  return store.get(SESSION_COOKIE)?.value ?? "";
 }
 
 export function generateNumericCode(length = 6) {
@@ -97,6 +116,7 @@ export function verifyAuthCode({
 
 export async function createSession(userId: string) {
   const token = generateSessionToken();
+  const tokenHash = hashSessionToken(token);
   const expiresAt = new Date(Date.now() + SESSION_MAX_AGE * 1000);
 
   await prisma.session.deleteMany({
@@ -109,7 +129,7 @@ export async function createSession(userId: string) {
 
   await prisma.session.create({
     data: {
-      token,
+      tokenHash,
       userId,
       expiresAt,
     },
@@ -137,14 +157,17 @@ export async function createSession(userId: string) {
 }
 
 export async function clearSession() {
-  const store = await cookies();
-  const token = store.get(SESSION_COOKIE)?.value;
+  const token = await readIncomingSessionToken();
 
   if (token) {
+    const tokenHash = hashSessionToken(token);
+
     await prisma.session.deleteMany({
-      where: { token },
+      where: { tokenHash },
     });
   }
+
+  const store = await cookies();
 
   store.set({
     name: SESSION_COOKIE,
@@ -160,6 +183,6 @@ export async function clearSession() {
 }
 
 export async function getSessionToken() {
-  const store = await cookies();
-  return store.get(SESSION_COOKIE)?.value ?? null;
+  const token = await readIncomingSessionToken();
+  return token || null;
 }
