@@ -2,6 +2,7 @@ import { prisma } from "@/app/lib/prisma";
 import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 
 const GENERATION_BATCH_SIZE = 4;
+const TARGET_POOL_MIN = 30;
 const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date.";
 
 type TodayValidDayResult = {
@@ -248,10 +249,6 @@ async function discoverUntilNextAvailable(
         selectedDay = candidate;
       }
     }
-
-    if (selectedDay) {
-      break;
-    }
   }
 
   return {
@@ -297,9 +294,6 @@ export async function getTodayValidDay(options?: {
   }
 
   const pooledPick = pickFromPool(pooledDays, excludedSet);
-  if (pooledPick) {
-    return pooledPick;
-  }
 
   const testedSet = new Set<string>(cachedState.testedDays);
   const rawUntestedCandidates = shuffleArray(
@@ -311,7 +305,14 @@ export async function getTodayValidDay(options?: {
     options?.maxAttempts ?? 72
   );
 
-  const untestedCandidates = rawUntestedCandidates.slice(0, maxAttempts);
+  const shouldBackfill =
+    options?.fresh === true || pooledDays.length < TARGET_POOL_MIN;
+
+  const untestedCandidates = shouldBackfill
+    ? rawUntestedCandidates.slice(0, maxAttempts)
+    : [];
+
+  let generatedSelectedDay: string | null = null;
 
   if (untestedCandidates.length > 0) {
     const { selectedDay, discoveredValidDays } =
@@ -324,13 +325,19 @@ export async function getTodayValidDay(options?: {
       ]);
     }
 
-    if (selectedDay) {
-      return {
-        day: selectedDay,
-        source: "generated",
-        restartedRound: false,
-      };
-    }
+    generatedSelectedDay = selectedDay;
+  }
+
+  if (pooledPick) {
+    return pooledPick;
+  }
+
+  if (generatedSelectedDay) {
+    return {
+      day: generatedSelectedDay,
+      source: "generated",
+      restartedRound: false,
+    };
   }
 
   if (pooledDays.length > 0) {
