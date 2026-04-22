@@ -125,7 +125,7 @@ export default function HomeReactionsPanel({
     const compact = !hasReviewText(item.review);
 
     return (
-      <div key={item.id} className="border-t border-white/8 pt-5 first:border-t-0 first:pt-0">
+      <div key={item.id} className="pt-5 first:pt-0">
         {showSectionLabel ? (
           <div className="mb-3 text-sm font-medium text-zinc-200">
             {showSectionLabel}
