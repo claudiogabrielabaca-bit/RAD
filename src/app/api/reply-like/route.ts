@@ -33,54 +33,59 @@ export async function POST(req: Request) {
 
     if (!user) {
       return NextResponse.json(
-        { error: "You must be logged in to like reviews." },
+        { error: "You must be logged in to like replies." },
         { status: 401, headers: NO_STORE_HEADERS }
       );
     }
 
     const body = await req.json().catch(() => null);
-    const ratingId = body?.ratingId;
+    const replyId = body?.replyId;
     const desiredLiked =
       typeof body?.liked === "boolean" ? body.liked : null;
 
-    if (!ratingId || typeof ratingId !== "string") {
+    if (!replyId || typeof replyId !== "string") {
       return NextResponse.json(
-        { error: "Missing ratingId" },
+        { error: "Missing replyId" },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
-    const review = await prisma.rating.findUnique({
-      where: { id: ratingId },
+    const reply = await prisma.ratingReply.findUnique({
+      where: { id: replyId },
       select: {
         id: true,
         userId: true,
-        day: true,
+        ratingId: true,
+        rating: {
+          select: {
+            day: true,
+          },
+        },
       },
     });
 
-    if (!review) {
+    if (!reply) {
       return NextResponse.json(
-        { error: "Review not found" },
+        { error: "Reply not found" },
         { status: 404, headers: NO_STORE_HEADERS }
       );
     }
 
-    if (review.userId === user.id) {
+    if (reply.userId === user.id) {
       return NextResponse.json(
-        { error: "You cannot like your own review." },
+        { error: "You cannot like your own reply." },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
     const likeWhere = {
-      rating_like_user_unique: {
-        ratingId,
+      reply_like_user_unique: {
+        replyId,
         userId: user.id,
       },
     } as const;
 
-    const existingLike = await prisma.ratingLike.findUnique({
+    const existingLike = await prisma.replyLike.findUnique({
       where: likeWhere,
       select: {
         id: true,
@@ -94,24 +99,25 @@ export async function POST(req: Request) {
       if (!existingLike) {
         try {
           const ops: Prisma.PrismaPromise<unknown>[] = [
-            prisma.ratingLike.create({
+            prisma.replyLike.create({
               data: {
-                ratingId,
+                replyId,
                 userId: user.id,
                 anonId: null,
               },
             }),
           ];
 
-          if (review.userId && review.userId !== user.id) {
+          if (reply.userId && reply.userId !== user.id) {
             ops.push(
               prisma.notification.create({
                 data: {
-                  userId: review.userId,
+                  userId: reply.userId,
                   actorUserId: user.id,
-                  type: "review_liked",
-                  reviewId: ratingId,
-                  day: review.day,
+                  type: "reply_liked",
+                  reviewId: reply.ratingId,
+                  replyId,
+                  day: reply.rating.day,
                 },
               })
             );
@@ -125,8 +131,8 @@ export async function POST(req: Request) {
         }
       }
 
-      const likesCount = await prisma.ratingLike.count({
-        where: { ratingId },
+      const likesCount = await prisma.replyLike.count({
+        where: { replyId },
       });
 
       return NextResponse.json(
@@ -144,19 +150,19 @@ export async function POST(req: Request) {
     if (existingLike) {
       try {
         const ops: Prisma.PrismaPromise<unknown>[] = [
-          prisma.ratingLike.delete({
+          prisma.replyLike.delete({
             where: likeWhere,
           }),
         ];
 
-        if (review.userId) {
+        if (reply.userId) {
           ops.push(
             prisma.notification.deleteMany({
               where: {
-                type: "review_liked",
-                userId: review.userId,
+                type: "reply_liked",
+                userId: reply.userId,
                 actorUserId: user.id,
-                reviewId: ratingId,
+                replyId,
               },
             })
           );
@@ -170,8 +176,8 @@ export async function POST(req: Request) {
       }
     }
 
-    const likesCount = await prisma.ratingLike.count({
-      where: { ratingId },
+    const likesCount = await prisma.replyLike.count({
+      where: { replyId },
     });
 
     return NextResponse.json(
@@ -185,7 +191,7 @@ export async function POST(req: Request) {
       }
     );
   } catch (error) {
-    console.error("review-like POST error:", error);
+    console.error("reply-like POST error:", error);
     return NextResponse.json(
       {
         error: "Server error",
