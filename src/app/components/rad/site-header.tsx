@@ -23,6 +23,8 @@ type HeaderNotification = {
   id: string;
   type: "review_liked" | "review_replied" | "reply_liked";
   day: string | null;
+  reviewId: string | null;
+  replyId: string | null;
   isRead: boolean;
   createdAt: string;
   actorUsername: string;
@@ -35,6 +37,26 @@ type NotificationsResponse = {
 };
 
 const NOTIFICATIONS_MUTED_STORAGE_KEY = "rad:notifications-muted";
+const NOTIFICATIONS_POLL_MS = 8000;
+
+function buildNotificationHref(item: HeaderNotification) {
+  const params = new URLSearchParams();
+
+  if (item.day) {
+    params.set("day", item.day);
+  }
+
+  if (item.reviewId) {
+    params.set("reviewId", item.reviewId);
+  }
+
+  if (item.replyId) {
+    params.set("replyId", item.replyId);
+  }
+
+  const query = params.toString();
+  return query ? `/?${query}` : "/";
+}
 
 function formatNotificationTime(value: string) {
   try {
@@ -503,10 +525,25 @@ export default function SiteHeader() {
 
     const intervalId = window.setInterval(() => {
       void loadNotifications();
-    }, 30000);
+    }, NOTIFICATIONS_POLL_MS);
+
+    function handleWindowFocus() {
+      void loadNotifications();
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void loadNotifications();
+      }
+    }
+
+    window.addEventListener("focus", handleWindowFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       window.clearInterval(intervalId);
+      window.removeEventListener("focus", handleWindowFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, [currentUser?.id, loadNotifications]);
 
@@ -583,22 +620,36 @@ export default function SiteHeader() {
     if (!nextOpen || !currentUser) return;
 
     await loadNotifications();
+  }
 
-    if (unreadNotifications > 0) {
+  async function handleNotificationClick(item: HeaderNotification) {
+    setNotificationsOpen(false);
+
+    if (!item.isRead) {
+      setUnreadNotifications((prev) => Math.max(0, prev - 1));
+      setNotifications((prev) =>
+        prev.map((entry) =>
+          entry.id === item.id ? { ...entry, isRead: true } : entry
+        )
+      );
+
       try {
         await fetch("/api/notifications/read", {
           method: "POST",
           credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            notificationId: item.id,
+          }),
         });
       } catch {
         //
-      } finally {
-        setUnreadNotifications(0);
-        setNotifications((prev) =>
-          prev.map((item) => ({ ...item, isRead: true }))
-        );
       }
     }
+
+    router.push(buildNotificationHref(item));
   }
 
   async function handleClearNotifications() {
@@ -846,15 +897,11 @@ export default function SiteHeader() {
                     ) : (
                       <div className="max-h-[380px] space-y-2 overflow-y-auto p-2">
                         {notifications.map((item) => (
-                          <Link
+                          <button
                             key={item.id}
-                            href={
-                              item.day
-                                ? `/?day=${encodeURIComponent(item.day)}`
-                                : "/"
-                            }
-                            onClick={() => setNotificationsOpen(false)}
-                            className={`block rounded-[14px] border px-3 py-3 transition ${
+                            type="button"
+                            onClick={() => void handleNotificationClick(item)}
+                            className={`block w-full rounded-[14px] border px-3 py-3 text-left transition ${
                               item.isRead
                                 ? "border-white/6 bg-white/[0.03] hover:bg-white/[0.05]"
                                 : "border-white/10 bg-white/[0.06] hover:bg-white/[0.08]"
@@ -868,7 +915,7 @@ export default function SiteHeader() {
                               {item.day ? item.day : "Unknown day"} •{" "}
                               {formatNotificationTime(item.createdAt)}
                             </div>
-                          </Link>
+                          </button>
                         ))}
                       </div>
                     )}

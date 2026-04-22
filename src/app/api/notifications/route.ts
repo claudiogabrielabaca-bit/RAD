@@ -9,6 +9,8 @@ type NotificationRow = {
   id: string;
   type: string;
   day: string | null;
+  reviewId: string | null;
+  replyId: string | null;
   isRead: boolean;
   createdAt: Date;
   actorUser: {
@@ -54,6 +56,8 @@ export async function GET() {
             id: true,
             type: true,
             day: true,
+            reviewId: true,
+            replyId: true,
             isRead: true,
             createdAt: true,
             actorUser: {
@@ -75,6 +79,8 @@ export async function GET() {
       id: item.id,
       type: item.type,
       day: item.day,
+      reviewId: item.reviewId,
+      replyId: item.replyId,
       isRead: item.isRead,
       createdAt: item.createdAt.toISOString(),
       actorUsername: item.actorUser.username,

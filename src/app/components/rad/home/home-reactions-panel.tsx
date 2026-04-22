@@ -18,6 +18,7 @@ type ReviewItem = DayResponse["reviews"][number];
 type HomeReactionsPanelProps = {
   rateBoxRef: React.RefObject<HTMLDivElement | null>;
   myReviewBlockRef: React.RefObject<HTMLDivElement | null>;
+  targetReviewId: string | null;
   myReview: ReviewItem | null;
   shownStars: number;
   review: string;
@@ -62,6 +63,7 @@ type HomeReactionsPanelProps = {
 export default function HomeReactionsPanel({
   rateBoxRef,
   myReviewBlockRef,
+  targetReviewId,
   myReview,
   shownStars,
   review,
@@ -98,6 +100,20 @@ export default function HomeReactionsPanel({
   onSubmitReply,
   onReportReview,
 }: HomeReactionsPanelProps) {
+  const visibleOtherReviews = (() => {
+    const base = sortedOtherReviews.slice(0, 8);
+
+    if (!targetReviewId) return base;
+    if (myReview?.id === targetReviewId) return base;
+    if (base.some((item) => item.id === targetReviewId)) return base;
+
+    const target = sortedOtherReviews.find((item) => item.id === targetReviewId);
+
+    if (!target) return base;
+
+    return [target, ...base.filter((item) => item.id !== target.id)];
+  })();
+
   return (
     <>
       <div
@@ -267,7 +283,12 @@ export default function HomeReactionsPanel({
         </div>
 
         {myReview ? (
-          <div ref={myReviewBlockRef} className="mt-5">
+          <div
+            ref={myReviewBlockRef}
+            id={`review-${myReview.id}`}
+            data-review-id={myReview.id}
+            className="mt-5"
+          >
             <div className="mb-2 text-sm font-medium text-zinc-200">
               Your rating
             </div>
@@ -412,12 +433,14 @@ export default function HomeReactionsPanel({
           ) : null}
 
           <div className="space-y-3">
-            {sortedOtherReviews.slice(0, 8).map((r) => {
+            {visibleOtherReviews.map((r) => {
               const compact = !hasReviewText(r.review);
 
               return (
                 <div
                   key={r.id}
+                  id={`review-${r.id}`}
+                  data-review-id={r.id}
                   className="rounded-2xl border border-white/8 bg-black/20 p-4 backdrop-blur-xl"
                 >
                   <div className="flex flex-wrap items-center gap-2">
