@@ -113,7 +113,11 @@ function ReplyThreadItem({
   const showReport = !reply.isMine;
 
   return (
-    <div className="rounded-2xl border border-white/8 bg-black/20 p-4 backdrop-blur-xl">
+    <div
+      id={`reply-${reply.id}`}
+      data-reply-id={reply.id}
+      className="border-l border-white/10 pl-4"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-md border border-white/8 bg-white/[0.05] px-2 py-0.5 text-xs text-zinc-300">
           {reply.authorLabel}
@@ -146,9 +150,9 @@ function ReplyThreadItem({
         ) : null}
       </div>
 
-      <div className="mt-3">
+      <div className="mt-2">
         <div
-          className={`text-sm leading-6 text-zinc-200 break-all [overflow-wrap:anywhere] ${
+          className={`text-sm leading-7 text-zinc-200 break-all [overflow-wrap:anywhere] ${
             expandedReplies[reply.id] ? "" : "line-clamp-3"
           }`}
         >
@@ -171,14 +175,16 @@ function ReplyThreadItem({
         ) : null}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center gap-4">
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
         <button
           type="button"
           onClick={() => onToggleLike(reply)}
-          className="inline-flex items-center gap-2 text-sm text-zinc-400 transition hover:text-zinc-200"
+          className="inline-flex items-center gap-2 text-zinc-400 transition hover:text-zinc-200"
         >
           <span
-            className={`text-base ${reply.likedByMe ? "text-pink-400" : "text-zinc-500"}`}
+            className={`text-base ${
+              reply.likedByMe ? "text-pink-400" : "text-zinc-500"
+            }`}
           >
             ♥
           </span>
@@ -189,7 +195,7 @@ function ReplyThreadItem({
           <button
             type="button"
             onClick={() => onRequestReply(reply)}
-            className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
+            className="text-zinc-400 underline underline-offset-4 transition hover:text-zinc-200"
           >
             Reply
           </button>
@@ -209,7 +215,7 @@ function ReplyThreadItem({
       ) : null}
 
       {reply.replies?.length ? (
-        <div className="mt-4 space-y-3 border-l border-white/10 pl-4">
+        <div className="mt-4 space-y-4 pl-4">
           {reply.replies.map((childReply) => (
             <ReplyThreadItem
               key={childReply.id}
@@ -354,7 +360,10 @@ export default function ReplyList({
       setLocalReplies((prev) =>
         updateReplyNode(prev, reply.id, (current) => ({
           ...current,
-          likedByMe: !!json?.likedByMe,
+          likedByMe:
+            typeof json?.liked === "boolean"
+              ? json.liked
+              : current.likedByMe,
           likesCount:
             typeof json?.likesCount === "number"
               ? json.likesCount
@@ -436,7 +445,7 @@ export default function ReplyList({
 
   return (
     <>
-      <div className="mt-4 space-y-3">
+      <div className="mt-4 space-y-4">
         {localReplies.map((reply) => (
           <ReplyThreadItem
             key={reply.id}

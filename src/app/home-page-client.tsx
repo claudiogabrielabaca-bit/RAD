@@ -106,7 +106,9 @@ export default function Page({
       : [];
 
   const [day, setDay] = useState<string>(initialBundle?.day ?? minDay);
-  const [hasPickedInitialDay, setHasPickedInitialDay] = useState(!!initialBundle);
+  const [hasPickedInitialDay, setHasPickedInitialDay] = useState(
+    !!initialBundle
+  );
   const [canGoBack, setCanGoBack] = useState(false);
 
   const [selectedYear, setSelectedYear] = useState("1800");
@@ -128,7 +130,8 @@ export default function Page({
   const [highlight, setHighlight] = useState<HighlightItem | null>(
     initialHighlightItems[0] ?? null
   );
-  const [highlights, setHighlights] = useState<HighlightItem[]>(initialHighlightItems);
+  const [highlights, setHighlights] =
+    useState<HighlightItem[]>(initialHighlightItems);
   const [activeHighlightIndex, setActiveHighlightIndex] = useState(0);
   const [isHighlightPaused, setIsHighlightPaused] = useState(false);
   const [loadingHighlight, setLoadingHighlight] = useState(false);
@@ -147,17 +150,21 @@ export default function Page({
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string>("");
 
-  const [expandedReviews, setExpandedReviews] = useState<Record<string, boolean>>(
-    {}
-  );
+  const [expandedReviews, setExpandedReviews] = useState<
+    Record<string, boolean>
+  >({});
 
   const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
   const [reportingReviewId, setReportingReviewId] = useState<string | null>(
     null
   );
   const [reportReviewModalOpen, setReportReviewModalOpen] = useState(false);
-  const [reportReviewTargetId, setReportReviewTargetId] = useState<string | null>(null);
-  const [reportReviewReason, setReportReviewReason] = useState("Spam or abusive content");
+  const [reportReviewTargetId, setReportReviewTargetId] = useState<
+    string | null
+  >(null);
+  const [reportReviewReason, setReportReviewReason] = useState(
+    "Spam or abusive content"
+  );
   const [reportReviewError, setReportReviewError] = useState("");
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [replyTextByRating, setReplyTextByRating] = useState<
@@ -189,10 +196,7 @@ export default function Page({
     Number(selectedMonth)
   );
 
-  const DAYS = Array.from(
-    { length: daysInSelectedMonth },
-    (_, i) => pad2(i + 1)
-  );
+  const DAYS = Array.from({ length: daysInSelectedMonth }, (_, i) => pad2(i + 1));
 
   function openAuthModal(view: AuthView = "login", nextEmail = "") {
     setAuthView(view);
@@ -450,19 +454,22 @@ export default function Page({
     });
   }, []);
 
-  const transitionToHighlight = useCallback(async (nextIndex: number) => {
-    if (highlights.length <= 1) return;
-    if (nextIndex < 0 || nextIndex >= highlights.length) return;
-    if (nextIndex === activeHighlightIndex) return;
+  const transitionToHighlight = useCallback(
+    async (nextIndex: number) => {
+      if (highlights.length <= 1) return;
+      if (nextIndex < 0 || nextIndex >= highlights.length) return;
+      if (nextIndex === activeHighlightIndex) return;
 
-    const nextItem = highlights[nextIndex];
-    const nextImage = nextItem?.image?.trim() || "";
+      const nextItem = highlights[nextIndex];
+      const nextImage = nextItem?.image?.trim() || "";
 
-    await preloadImage(nextImage);
+      await preloadImage(nextImage);
 
-    setPreferImmediateHighlightImageSwap(true);
-    setActiveHighlightIndex(nextIndex);
-  }, [activeHighlightIndex, highlights, preloadImage]);
+      setPreferImmediateHighlightImageSwap(true);
+      setActiveHighlightIndex(nextIndex);
+    },
+    [activeHighlightIndex, highlights, preloadImage]
+  );
 
   function clearMinTransitionTimer() {
     if (minTransitionTimerRef.current) {
@@ -535,7 +542,11 @@ export default function Page({
     if (didInitDayRef.current) return;
     didInitDayRef.current = true;
 
-    if (initialBundle?.day && initialBundle?.dayData && initialBundle?.highlightData) {
+    if (
+      initialBundle?.day &&
+      initialBundle?.dayData &&
+      initialBundle?.highlightData
+    ) {
       navigationActionsRef.current.cacheBundlePayload(initialBundle);
       setHasPickedInitialDay(true);
       return;
@@ -552,7 +563,8 @@ export default function Page({
 
       if (queryDay && isValidDayString(queryDay)) {
         try {
-          const payload = await navigationActionsRef.current.fetchDayBundle(queryDay);
+          const payload =
+            await navigationActionsRef.current.fetchDayBundle(queryDay);
 
           if (!cancelled) {
             skipNextAutoDayLoadRef.current = true;
@@ -573,11 +585,14 @@ export default function Page({
       }
 
       try {
-        const res = await fetch(buildSurpriseRequestUrl({
-          fresh: FORCE_FRESH_MODE,
-        }), {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          buildSurpriseRequestUrl({
+            fresh: FORCE_FRESH_MODE,
+          }),
+          {
+            cache: "no-store",
+          }
+        );
 
         const json = (await res.json().catch(() => null)) as
           | SurpriseResponse
@@ -801,29 +816,35 @@ export default function Page({
     }
   }
 
-  const loadFavoriteDayStatus = useCallback(async (d: string) => {
-    if (!currentUser) {
-      setIsFavoriteDay(false);
-      return;
-    }
+  const loadFavoriteDayStatus = useCallback(
+    async (d: string) => {
+      if (!currentUser) {
+        setIsFavoriteDay(false);
+        return;
+      }
 
-    setLoadingFavoriteDay(true);
+      setLoadingFavoriteDay(true);
 
-    try {
-      const res = await fetch(`/api/favorite-day?day=${encodeURIComponent(d)}`, {
-        cache: "no-store",
-      });
+      try {
+        const res = await fetch(
+          `/api/favorite-day?day=${encodeURIComponent(d)}`,
+          {
+            cache: "no-store",
+          }
+        );
 
-      if (!res.ok) throw new Error("Failed to load favorite day status");
+        if (!res.ok) throw new Error("Failed to load favorite day status");
 
-      const json = (await res.json()) as FavoriteDayResponse;
-      setIsFavoriteDay(!!json.isFavorite);
-    } catch {
-      setIsFavoriteDay(false);
-    } finally {
-      setLoadingFavoriteDay(false);
-    }
-  }, [currentUser]);
+        const json = (await res.json()) as FavoriteDayResponse;
+        setIsFavoriteDay(!!json.isFavorite);
+      } catch {
+        setIsFavoriteDay(false);
+      } finally {
+        setLoadingFavoriteDay(false);
+      }
+    },
+    [currentUser]
+  );
 
   async function toggleFavoriteDay() {
     if (!currentUser) {
@@ -864,11 +885,14 @@ export default function Page({
     const transitionId = transitionIdRef.current;
 
     try {
-      const res = await fetch(buildSurpriseRequestUrl({
-        fresh: FORCE_FRESH_MODE,
-      }), {
-        cache: "no-store",
-      });
+      const res = await fetch(
+        buildSurpriseRequestUrl({
+          fresh: FORCE_FRESH_MODE,
+        }),
+        {
+          cache: "no-store",
+        }
+      );
 
       const json = (await res.json().catch(() => null)) as
         | SurpriseResponse
@@ -901,7 +925,11 @@ export default function Page({
       skipNextAutoDayLoadRef.current = true;
       pendingScrollToHighlightRef.current = scrollToResult;
 
-      if (hasPickedInitialDay && isValidDayString(day) && !isGoingBackRef.current) {
+      if (
+        hasPickedInitialDay &&
+        isValidDayString(day) &&
+        !isGoingBackRef.current
+      ) {
         pushCurrentDayToBackHistory(day, json.day);
       }
 
@@ -987,7 +1015,11 @@ export default function Page({
       skipNextAutoDayLoadRef.current = true;
       pendingScrollToHighlightRef.current = scrollToResult;
 
-      if (hasPickedInitialDay && isValidDayString(day) && !isGoingBackRef.current) {
+      if (
+        hasPickedInitialDay &&
+        isValidDayString(day) &&
+        !isGoingBackRef.current
+      ) {
         pushCurrentDayToBackHistory(day, payload.day);
       }
 
@@ -1387,6 +1419,39 @@ export default function Page({
     }
 
     if (requireVerifiedEmail()) return;
+    if (!data) return;
+
+    const targetReview = data.reviews.find((item) => item.id === ratingId);
+
+    if (!targetReview) return;
+
+    const previousReviews = data.reviews.map((item) => ({
+      ...item,
+      replies: item.replies,
+    }));
+
+    const optimisticLiked = !targetReview.likedByMe;
+    const optimisticLikesCount = Math.max(
+      0,
+      targetReview.likesCount + (optimisticLiked ? 1 : -1)
+    );
+
+    setData((prev) => {
+      if (!prev) return prev;
+
+      return {
+        ...prev,
+        reviews: prev.reviews.map((item) =>
+          item.id === ratingId
+            ? {
+                ...item,
+                likedByMe: optimisticLiked,
+                likesCount: optimisticLikesCount,
+              }
+            : item
+        ),
+      };
+    });
 
     try {
       const res = await fetch("/api/review-like", {
@@ -1394,19 +1459,60 @@ export default function Page({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ ratingId }),
+        body: JSON.stringify({
+          ratingId,
+          liked: optimisticLiked,
+        }),
       });
 
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
+        setData((prev) => {
+          if (!prev) return prev;
+
+          return {
+            ...prev,
+            reviews: previousReviews,
+          };
+        });
+
         showToast(json?.error ?? "Error giving like.");
         return;
       }
 
-      invalidateDayCache(day);
-      await loadDay(day);
+      setData((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          reviews: prev.reviews.map((item) =>
+            item.id === ratingId
+              ? {
+                  ...item,
+                  likedByMe:
+                    typeof json?.liked === "boolean"
+                      ? json.liked
+                      : optimisticLiked,
+                  likesCount:
+                    typeof json?.likesCount === "number"
+                      ? json.likesCount
+                      : optimisticLikesCount,
+                }
+              : item
+          ),
+        };
+      });
     } catch {
+      setData((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          reviews: previousReviews,
+        };
+      });
+
       showToast("Error dando like.");
     }
   }
@@ -1773,9 +1879,15 @@ export default function Page({
                       onClick={toggleFavoriteDay}
                       disabled={loadingFavoriteDay}
                       aria-label={
-                        isFavoriteDay ? "Remove favorite day" : "Set as favorite day"
+                        isFavoriteDay
+                          ? "Remove favorite day"
+                          : "Set as favorite day"
                       }
-                      title={isFavoriteDay ? "Remove favorite day" : "Set as favorite day"}
+                      title={
+                        isFavoriteDay
+                          ? "Remove favorite day"
+                          : "Set as favorite day"
+                      }
                       className={`absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-xl transition ${
                         isFavoriteDay
                           ? "border-yellow-400/30 bg-yellow-500/18 text-yellow-300 hover:bg-yellow-500/22"
@@ -1851,7 +1963,9 @@ export default function Page({
                   >
                     <div
                       className={`grid gap-4 ${
-                        highlights.length > 1 ? "sm:grid-cols-[1fr_auto_auto] sm:items-center" : ""
+                        highlights.length > 1
+                          ? "sm:grid-cols-[1fr_auto_auto] sm:items-center"
+                          : ""
                       }`}
                     >
                       <div className="flex flex-wrap items-center gap-3">
@@ -1908,7 +2022,9 @@ export default function Page({
                                 type="button"
                                 onClick={() => void transitionToHighlight(index)}
                                 className={`h-2.5 w-2.5 rounded-full transition ${
-                                  index === activeHighlightIndex ? "bg-white" : "bg-white/30"
+                                  index === activeHighlightIndex
+                                    ? "bg-white"
+                                    : "bg-white/30"
                                 }`}
                                 aria-label={`Go to highlight ${index + 1}`}
                               />

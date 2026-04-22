@@ -66,13 +66,6 @@ export async function POST(req: Request) {
       );
     }
 
-    if (review.userId === user.id) {
-      return NextResponse.json(
-        { error: "You cannot like your own review." },
-        { status: 400, headers: NO_STORE_HEADERS }
-      );
-    }
-
     const likeWhere = {
       rating_like_user_unique: {
         ratingId,
@@ -149,7 +142,7 @@ export async function POST(req: Request) {
           }),
         ];
 
-        if (review.userId) {
+        if (review.userId && review.userId !== user.id) {
           ops.push(
             prisma.notification.deleteMany({
               where: {
