@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import ReplyComposer from "@/app/components/rad/reply-composer";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { ReplyItem } from "@/app/lib/rad-types";
@@ -26,6 +27,20 @@ function formatReviewDate(date?: string) {
 
 function isLongReply(text?: string, limit = 140) {
   return !!text && text.trim().length > limit;
+}
+
+function countDescendantReplies(reply: ReplyItem): number {
+  if (!reply.replies?.length) return 0;
+
+  return reply.replies.reduce(
+    (total, child) => total + 1 + countDescendantReplies(child),
+    0
+  );
+}
+
+function containsReplyId(reply: ReplyItem, replyId: string): boolean {
+  if (reply.id === replyId) return true;
+  return (reply.replies ?? []).some((child) => containsReplyId(child, replyId));
 }
 
 function insertNestedReply(
@@ -73,6 +88,29 @@ function updateReplyNode(
   });
 }
 
+function Chevron({
+  expanded,
+  className = "",
+}: {
+  expanded: boolean;
+  className?: string;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {expanded ? <path d="m6 15 6-6 6 6" /> : <path d="m6 9 6 6 6-6" />}
+    </svg>
+  );
+}
+
 function ReplyThreadItem({
   reply,
   depth,
@@ -88,6 +126,8 @@ function ReplyThreadItem({
   sendingReplyId,
   onToggleLike,
   onReportReply,
+  expandedThreads,
+  onToggleThread,
 }: {
   reply: ReplyItem;
   depth: number;
@@ -103,6 +143,8 @@ function ReplyThreadItem({
   sendingReplyId: string | null;
   onToggleLike: (reply: ReplyItem) => void;
   onReportReply: (reply: ReplyItem) => void;
+  expandedThreads: Record<string, boolean>;
+  onToggleThread: (replyId: string) => void;
 }) {
   const [expandedReplies, setExpandedReplies] = useState<Record<string, boolean>>(
     {}
@@ -111,6 +153,8 @@ function ReplyThreadItem({
   const canReply = depth < maxReplyDepth;
   const showDelete = !!reply.isMine;
   const showReport = !reply.isMine;
+  const descendantCount = countDescendantReplies(reply);
+  const threadExpanded = !!expandedThreads[reply.id];
 
   return (
     <div
@@ -200,6 +244,21 @@ function ReplyThreadItem({
             Reply
           </button>
         ) : null}
+
+        {descendantCount > 0 ? (
+          <button
+            type="button"
+            onClick={() => onToggleThread(reply.id)}
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-300 transition hover:text-white"
+          >
+            <Chevron expanded={threadExpanded} className="h-4 w-4" />
+            <span>
+              {threadExpanded
+                ? "Hide replies"
+                : `View ${descendantCount} ${descendantCount === 1 ? "reply" : "replies"}`}
+            </span>
+          </button>
+        ) : null}
       </div>
 
       {replyingToReplyId === reply.id ? (
@@ -214,7 +273,7 @@ function ReplyThreadItem({
         </div>
       ) : null}
 
-      {reply.replies?.length ? (
+      {reply.replies?.length && threadExpanded ? (
         <div className="mt-4 space-y-4 pl-4">
           {reply.replies.map((childReply) => (
             <ReplyThreadItem
@@ -233,6 +292,8 @@ function ReplyThreadItem({
               sendingReplyId={sendingReplyId}
               onToggleLike={onToggleLike}
               onReportReply={onReportReply}
+              expandedThreads={expandedThreads}
+              onToggleThread={onToggleThread}
             />
           ))}
         </div>
@@ -252,6 +313,8 @@ export default function ReplyList({
   onDeleteReply: (replyId: string) => void;
   onRequireInteraction: () => boolean;
 }) {
+  const searchParams = useSearchParams();
+
   const [localReplies, setLocalReplies] = useState<ReplyItem[]>(replies ?? []);
   const [replyingToReplyId, setReplyingToReplyId] = useState<string | null>(null);
   const [replyDraftByReplyId, setReplyDraftByReplyId] = useState<
@@ -261,13 +324,52 @@ export default function ReplyList({
   const [feedbackMessage, setFeedbackMessage] = useState<string>("");
 
   const [reportReplyModalOpen, setReportReplyModalOpen] = useState(false);
-  const [reportReplyTargetId, setReportReplyTargetId] = useState<string | null>(null);
-  const [reportReplyReason, setReportReplyReason] = useState("Spam or abusive content");
+  const [reportReplyTargetId, setReportReplyTargetId] = useState<string | null>(
+    null
+  );
+  const [reportReplyReason, setReportReplyReason] = useState(
+    "Spam or abusive content"
+  );
   const [reportReplySubmitting, setReportReplySubmitting] = useState(false);
+  const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>(
+    {}
+  );
+
+  const targetReplyId = searchParams.get("replyId");
 
   useEffect(() => {
     setLocalReplies(replies ?? []);
   }, [replies]);
+
+  useEffect(() => {
+    if (!targetReplyId) return;
+    if (!localReplies.length) return;
+
+    setExpandedThreads((prev) => {
+      const next = { ...prev };
+      let changed = false;
+
+      const visit = (reply: ReplyItem) => {
+        if (reply.replies?.length && containsReplyId(reply, targetReplyId)) {
+          if (!next[reply.id]) {
+            next[reply.id] = true;
+            changed = true;
+          }
+        }
+
+        (reply.replies ?? []).forEach(visit);
+      };
+
+      localReplies.forEach(visit);
+
+      return changed ? next : prev;
+    });
+  }, [localReplies, targetReplyId]);
+
+  const totalReplies = useMemo(
+    () => localReplies.reduce((total, reply) => total + 1 + countDescendantReplies(reply), 0),
+    [localReplies]
+  );
 
   if (!localReplies?.length) return null;
 
@@ -317,6 +419,10 @@ export default function ReplyList({
       setLocalReplies((prev) =>
         insertNestedReply(prev, parentReply.id, json.reply as ReplyItem)
       );
+      setExpandedThreads((prev) => ({
+        ...prev,
+        [parentReply.id]: true,
+      }));
       setReplyDraftByReplyId((prev) => ({
         ...prev,
         [parentReply.id]: "",
@@ -443,9 +549,22 @@ export default function ReplyList({
     }
   }
 
+  function toggleThread(replyId: string) {
+    setExpandedThreads((prev) => ({
+      ...prev,
+      [replyId]: !prev[replyId],
+    }));
+  }
+
   return (
     <>
       <div className="mt-4 space-y-4">
+        {totalReplies > 0 ? (
+          <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-500">
+            Replies
+          </div>
+        ) : null}
+
         {localReplies.map((reply) => (
           <ReplyThreadItem
             key={reply.id}
@@ -475,6 +594,8 @@ export default function ReplyList({
             sendingReplyId={sendingReplyId}
             onToggleLike={toggleLike}
             onReportReply={reportReply}
+            expandedThreads={expandedThreads}
+            onToggleThread={toggleThread}
           />
         ))}
 

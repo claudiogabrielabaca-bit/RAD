@@ -449,7 +449,12 @@ export default function HomeReactionsPanel({
         </div>
 
         <div className="mt-6">
-          {myReview ? renderReviewRow(myReview, { mine: true, showSectionLabel: "Your rating" }) : null}
+          {myReview
+            ? renderReviewRow(myReview, {
+                mine: true,
+                showSectionLabel: "Your rating",
+              })
+            : null}
 
           <div className={`${myReview ? "mt-8" : ""}`}>
             <div className="mb-3 text-sm font-medium text-zinc-200">
