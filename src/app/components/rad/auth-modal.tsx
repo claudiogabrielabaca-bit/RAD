@@ -22,6 +22,31 @@ function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
+function maskEmail(value: string) {
+  const normalized = normalizeEmail(value);
+
+  if (!normalized.includes("@")) {
+    return normalized;
+  }
+
+  const [local, domain] = normalized.split("@");
+  const [domainName, ...domainRest] = domain.split(".");
+
+  const maskedLocal =
+    local.length <= 2
+      ? `${local[0] ?? ""}${"•".repeat(Math.max(1, local.length - 1))}`
+      : `${local.slice(0, 2)}${"•".repeat(Math.max(1, local.length - 2))}`;
+
+  const maskedDomainName =
+    domainName.length <= 1
+      ? domainName
+      : `${domainName[0]}${"•".repeat(Math.max(1, domainName.length - 1))}`;
+
+  return `${maskedLocal}@${maskedDomainName}${
+    domainRest.length ? `.${domainRest.join(".")}` : ""
+  }`;
+}
+
 function EyeIcon() {
   return (
     <svg
@@ -461,7 +486,6 @@ export default function AuthModal({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          email: normalizeEmail(email),
           code: code.trim(),
         }),
       });
@@ -495,12 +519,6 @@ export default function AuthModal({
     try {
       const res = await fetch("/api/resend-login-code", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: normalizeEmail(email),
-        }),
       });
 
       const json = await res.json().catch(() => null);
@@ -508,6 +526,10 @@ export default function AuthModal({
       if (!res.ok) {
         setError(json?.error ?? "Could not resend login code.");
         return;
+      }
+
+      if (typeof json?.email === "string" && json.email) {
+        setEmail(json.email);
       }
 
       setMessage(json?.message ?? "New login code sent.");
@@ -844,7 +866,11 @@ export default function AuthModal({
 
           {view === "login-code" ? (
             <ContextLink
-              text={email ? `We sent a code to ${email}.` : "We sent a code to your email."}
+              text={
+                email
+                  ? `We sent a code to ${maskEmail(email)}.`
+                  : "We sent a code to your email."
+              }
               action="Use another email"
               onClick={() => goToView("login", email)}
             />
@@ -931,15 +957,16 @@ export default function AuthModal({
 
           {view === "login-code" ? (
             <form onSubmit={handleLoginCode} className="mt-6 space-y-5">
-              <div>
-                <label className="mb-2 block text-sm text-zinc-300">Email</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  className="w-full rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
-                />
+              <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
+                <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">
+                  Email
+                </div>
+
+                <div className="mt-2 text-sm text-zinc-200">
+                  {email
+                    ? maskEmail(email)
+                    : "We’ll use the email from the previous step."}
+                </div>
               </div>
 
               <div>

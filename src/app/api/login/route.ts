@@ -1,5 +1,6 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import {
   generateNumericCode,
   hashAuthCode,
@@ -16,6 +17,42 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const PENDING_LOGIN_COOKIE = "rad_pending_login_email";
+const PENDING_LOGIN_MAX_AGE_SEC = 10 * 60;
+
+async function setPendingLoginEmailCookie(email: string) {
+  const store = await cookies();
+  const expiresAt = new Date(Date.now() + PENDING_LOGIN_MAX_AGE_SEC * 1000);
+
+  store.set({
+    name: PENDING_LOGIN_COOKIE,
+    value: email,
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: expiresAt,
+    maxAge: PENDING_LOGIN_MAX_AGE_SEC,
+    priority: "high",
+  });
+}
+
+async function clearPendingLoginEmailCookie() {
+  const store = await cookies();
+
+  store.set({
+    name: PENDING_LOGIN_COOKIE,
+    value: "",
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: new Date(0),
+    maxAge: 0,
+    priority: "high",
+  });
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -23,6 +60,8 @@ export async function POST(req: Request) {
     const email = body?.email?.toString().trim().toLowerCase();
     const password = body?.password?.toString() ?? "";
     const turnstileToken = body?.turnstileToken?.toString() ?? "";
+
+    await clearPendingLoginEmailCookie();
 
     if (!email || !password) {
       return NextResponse.json(
@@ -160,6 +199,8 @@ This code expires in 15 minutes.`,
         loginCodeAttempts: 0,
       },
     });
+
+    await setPendingLoginEmailCookie(user.email);
 
     let emailSent = false;
 
