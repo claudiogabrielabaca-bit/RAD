@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ReplyComposer from "@/app/components/rad/reply-composer";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
@@ -34,6 +34,13 @@ function countDescendantReplies(reply: ReplyItem): number {
 
   return reply.replies.reduce(
     (total, child) => total + 1 + countDescendantReplies(child),
+    0
+  );
+}
+
+function countAllReplies(replies: ReplyItem[]): number {
+  return replies.reduce(
+    (total, reply) => total + 1 + countDescendantReplies(reply),
     0
   );
 }
@@ -255,7 +262,7 @@ function ReplyThreadItem({
             <span>
               {threadExpanded
                 ? "Hide replies"
-                : `View ${descendantCount} ${descendantCount === 1 ? "reply" : "replies"}`}
+                : `See replies (${descendantCount})`}
             </span>
           </button>
         ) : null}
@@ -334,6 +341,7 @@ export default function ReplyList({
   const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>(
     {}
   );
+  const [topLevelExpanded, setTopLevelExpanded] = useState(false);
 
   const targetReplyId = searchParams.get("replyId");
 
@@ -344,6 +352,14 @@ export default function ReplyList({
   useEffect(() => {
     if (!targetReplyId) return;
     if (!localReplies.length) return;
+
+    const targetExists = localReplies.some((reply) =>
+      containsReplyId(reply, targetReplyId)
+    );
+
+    if (!targetExists) return;
+
+    setTopLevelExpanded(true);
 
     setExpandedThreads((prev) => {
       const next = { ...prev };
@@ -367,7 +383,7 @@ export default function ReplyList({
   }, [localReplies, targetReplyId]);
 
   const totalReplies = useMemo(
-    () => localReplies.reduce((total, reply) => total + 1 + countDescendantReplies(reply), 0),
+    () => countAllReplies(localReplies),
     [localReplies]
   );
 
@@ -419,6 +435,7 @@ export default function ReplyList({
       setLocalReplies((prev) =>
         insertNestedReply(prev, parentReply.id, json.reply as ReplyItem)
       );
+      setTopLevelExpanded(true);
       setExpandedThreads((prev) => ({
         ...prev,
         [parentReply.id]: true,
@@ -558,49 +575,60 @@ export default function ReplyList({
 
   return (
     <>
-      <div className="mt-4 space-y-4">
-        {totalReplies > 0 ? (
-          <div className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-500">
-            Replies
+      <div className="mt-4">
+        <button
+          type="button"
+          onClick={() => setTopLevelExpanded((prev) => !prev)}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-zinc-300 transition hover:text-white"
+        >
+          <Chevron expanded={topLevelExpanded} className="h-4 w-4" />
+          <span>
+            {topLevelExpanded
+              ? "Hide replies"
+              : `See replies (${totalReplies})`}
+          </span>
+        </button>
+
+        {topLevelExpanded ? (
+          <div className="mt-4 space-y-4">
+            {localReplies.map((reply) => (
+              <ReplyThreadItem
+                key={reply.id}
+                reply={reply}
+                depth={0}
+                maxReplyDepth={1}
+                deletingReplyId={deletingReplyId}
+                onDeleteReply={onDeleteReply}
+                replyingToReplyId={replyingToReplyId}
+                onRequestReply={(targetReply) => {
+                  if (onRequireInteraction()) return;
+
+                  setFeedbackMessage("");
+                  setReplyingToReplyId((prev) =>
+                    prev === targetReply.id ? null : targetReply.id
+                  );
+                }}
+                replyDraftByReplyId={replyDraftByReplyId}
+                onReplyDraftChange={(replyId, value) =>
+                  setReplyDraftByReplyId((prev) => ({
+                    ...prev,
+                    [replyId]: value,
+                  }))
+                }
+                onSubmitReplyToReply={submitReplyToReply}
+                onCancelReply={() => setReplyingToReplyId(null)}
+                sendingReplyId={sendingReplyId}
+                onToggleLike={toggleLike}
+                onReportReply={reportReply}
+                expandedThreads={expandedThreads}
+                onToggleThread={toggleThread}
+              />
+            ))}
+
+            {feedbackMessage ? (
+              <div className="text-xs text-amber-300">{feedbackMessage}</div>
+            ) : null}
           </div>
-        ) : null}
-
-        {localReplies.map((reply) => (
-          <ReplyThreadItem
-            key={reply.id}
-            reply={reply}
-            depth={0}
-            maxReplyDepth={1}
-            deletingReplyId={deletingReplyId}
-            onDeleteReply={onDeleteReply}
-            replyingToReplyId={replyingToReplyId}
-            onRequestReply={(targetReply) => {
-              if (onRequireInteraction()) return;
-
-              setFeedbackMessage("");
-              setReplyingToReplyId((prev) =>
-                prev === targetReply.id ? null : targetReply.id
-              );
-            }}
-            replyDraftByReplyId={replyDraftByReplyId}
-            onReplyDraftChange={(replyId, value) =>
-              setReplyDraftByReplyId((prev) => ({
-                ...prev,
-                [replyId]: value,
-              }))
-            }
-            onSubmitReplyToReply={submitReplyToReply}
-            onCancelReply={() => setReplyingToReplyId(null)}
-            sendingReplyId={sendingReplyId}
-            onToggleLike={toggleLike}
-            onReportReply={reportReply}
-            expandedThreads={expandedThreads}
-            onToggleThread={toggleThread}
-          />
-        ))}
-
-        {feedbackMessage ? (
-          <div className="text-xs text-amber-300">{feedbackMessage}</div>
         ) : null}
       </div>
 

@@ -71,13 +71,6 @@ export async function POST(req: Request) {
       );
     }
 
-    if (reply.userId === user.id) {
-      return NextResponse.json(
-        { error: "You cannot like your own reply." },
-        { status: 400, headers: NO_STORE_HEADERS }
-      );
-    }
-
     const likeWhere = {
       reply_like_user_unique: {
         replyId,
@@ -155,7 +148,7 @@ export async function POST(req: Request) {
           }),
         ];
 
-        if (reply.userId) {
+        if (reply.userId && reply.userId !== user.id) {
           ops.push(
             prisma.notification.deleteMany({
               where: {
