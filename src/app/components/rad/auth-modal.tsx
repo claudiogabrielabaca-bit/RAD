@@ -22,31 +22,6 @@ function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
-function maskEmail(value: string) {
-  const normalized = normalizeEmail(value);
-
-  if (!normalized.includes("@")) {
-    return normalized;
-  }
-
-  const [local, domain] = normalized.split("@");
-  const [domainName, ...domainRest] = domain.split(".");
-
-  const maskedLocal =
-    local.length <= 2
-      ? `${local[0] ?? ""}${"•".repeat(Math.max(1, local.length - 1))}`
-      : `${local.slice(0, 2)}${"•".repeat(Math.max(1, local.length - 2))}`;
-
-  const maskedDomainName =
-    domainName.length <= 1
-      ? domainName
-      : `${domainName[0]}${"•".repeat(Math.max(1, domainName.length - 1))}`;
-
-  return `${maskedLocal}@${maskedDomainName}${
-    domainRest.length ? `.${domainRest.join(".")}` : ""
-  }`;
-}
-
 function EyeIcon() {
   return (
     <svg
@@ -864,18 +839,6 @@ export default function AuthModal({
             />
           ) : null}
 
-          {view === "login-code" ? (
-            <ContextLink
-              text={
-                email
-                  ? `We sent a code to ${maskEmail(email)}.`
-                  : "We sent a code to your email."
-              }
-              action="Use another email"
-              onClick={() => goToView("login", email)}
-            />
-          ) : null}
-
           {view === "verify-email" ? (
             <ContextLink
               text="Want to verify later?"
@@ -957,18 +920,6 @@ export default function AuthModal({
 
           {view === "login-code" ? (
             <form onSubmit={handleLoginCode} className="mt-6 space-y-5">
-              <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
-                <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">
-                  Email
-                </div>
-
-                <div className="mt-2 text-sm text-zinc-200">
-                  {email
-                    ? maskEmail(email)
-                    : "We’ll use the email from the previous step."}
-                </div>
-              </div>
-
               <div>
                 <label className="mb-2 block text-sm text-zinc-300">
                   Login code
@@ -1000,6 +951,16 @@ export default function AuthModal({
                   className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-zinc-200 transition hover:bg-white/10 disabled:opacity-60"
                 >
                   {secondaryLoading ? "Generating..." : "Resend code"}
+                </button>
+              </div>
+
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => goToView("login", email)}
+                  className="text-sm text-zinc-400 underline underline-offset-4 transition hover:text-white"
+                >
+                  Use another email
                 </button>
               </div>
             </form>
