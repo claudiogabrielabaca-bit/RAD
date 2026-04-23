@@ -15,11 +15,10 @@ const MIN_YEAR = 1800;
 const CURRENT_YEAR = new Date().getFullYear();
 const FEED_TYPES: FeedType[] = ["selected", "events", "births", "deaths"];
 const TARGET_SECTIONS = ["Events", "Births", "Deaths"] as const;
-
 const REQUEST_TIMEOUT_MS = 8000;
-const MAX_RETRIES = 3;
-const BASE_BACKOFF_MS = 1500;
-const REQUEST_GAP_MS = 500;
+const MAX_RETRIES = 5;
+const BASE_BACKOFF_MS = 5000;
+const REQUEST_GAP_MS = 2500;
 
 function pad2(n: number) {
   return String(n).padStart(2, "0");

@@ -2,6 +2,11 @@ import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
 import { Resend } from "resend";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,6 +18,9 @@ const resend = process.env.RESEND_API_KEY
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
+
+const REPORT_REASON_MIN_LENGTH = 3;
+const REPORT_REASON_MAX_LENGTH = 280;
 
 function escapeHtml(value: string) {
   return value
@@ -34,6 +42,27 @@ export async function POST(req: Request) {
       );
     }
 
+    if (user.emailVerified === false) {
+      return NextResponse.json(
+        { error: "You must verify your email to report a review." },
+        { status: 403, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "review-report",
+      key: buildRateLimitKey(req, user.id),
+      limit: 6,
+      windowMs: 30 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many review reports. Please try again later."
+      );
+    }
+
     const body = await req.json().catch(() => null);
 
     const ratingId = body?.ratingId;
@@ -46,7 +75,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!reason || typeof reason !== "string" || reason.trim().length < 3) {
+    if (!reason || typeof reason !== "string") {
       return NextResponse.json(
         { error: "Invalid reason" },
         { status: 400, headers: NO_STORE_HEADERS }
@@ -54,6 +83,24 @@ export async function POST(req: Request) {
     }
 
     const trimmedReason = reason.trim();
+
+    if (trimmedReason.length < REPORT_REASON_MIN_LENGTH) {
+      return NextResponse.json(
+        {
+          error: `Reason must be at least ${REPORT_REASON_MIN_LENGTH} characters.`,
+        },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (trimmedReason.length > REPORT_REASON_MAX_LENGTH) {
+      return NextResponse.json(
+        {
+          error: `Reason is too long (max ${REPORT_REASON_MAX_LENGTH} chars).`,
+        },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
 
     const rating = await prisma.rating.findUnique({
       where: { id: ratingId },

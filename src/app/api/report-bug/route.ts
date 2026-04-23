@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { getCurrentUser } from "@/app/lib/current-user";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,6 +13,11 @@ export const revalidate = 0;
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const DESCRIPTION_MIN_LENGTH = 10;
+const DESCRIPTION_MAX_LENGTH = 3000;
+const PAGE_PATH_MAX_LENGTH = 512;
+const PAGE_URL_MAX_LENGTH = 2048;
+const USER_AGENT_MAX_LENGTH = 1024;
 
 function escapeHtml(value: string) {
   return value
@@ -33,6 +43,27 @@ export async function POST(req: Request) {
       );
     }
 
+    if (user.emailVerified === false) {
+      return NextResponse.json(
+        { error: "You must verify your email to report a bug." },
+        { status: 403 }
+      );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "report-bug",
+      key: buildRateLimitKey(req, user.id),
+      limit: 3,
+      windowMs: 60 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many bug reports. Please try again later."
+      );
+    }
+
     const formData = await req.formData().catch(() => null);
 
     if (!formData) {
@@ -45,9 +76,41 @@ export async function POST(req: Request) {
     const userAgent = normalizeText(formData.get("userAgent"));
     const screenshotEntry = formData.get("screenshot");
 
-    if (description.length < 10) {
+    if (description.length < DESCRIPTION_MIN_LENGTH) {
       return NextResponse.json(
         { error: "Bug description is too short." },
+        { status: 400 }
+      );
+    }
+
+    if (description.length > DESCRIPTION_MAX_LENGTH) {
+      return NextResponse.json(
+        {
+          error: `Bug description is too long. Max ${DESCRIPTION_MAX_LENGTH} chars.`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (pagePath.length > PAGE_PATH_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: `Path is too long. Max ${PAGE_PATH_MAX_LENGTH} chars.` },
+        { status: 400 }
+      );
+    }
+
+    if (pageUrl.length > PAGE_URL_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: `URL is too long. Max ${PAGE_URL_MAX_LENGTH} chars.` },
+        { status: 400 }
+      );
+    }
+
+    if (userAgent.length > USER_AGENT_MAX_LENGTH) {
+      return NextResponse.json(
+        {
+          error: `User agent is too long. Max ${USER_AGENT_MAX_LENGTH} chars.`,
+        },
         { status: 400 }
       );
     }
@@ -92,7 +155,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const from = process.env.MAIL_FROM?.trim() || "Rate Any Day <onboarding@resend.dev>";
+    const from =
+      process.env.MAIL_FROM?.trim() ||
+      "Rate Any Day <onboarding@resend.dev>";
 
     const safeDescription = escapeHtml(description);
     const safePagePath = escapeHtml(pagePath || "—");
@@ -131,7 +196,10 @@ export async function POST(req: Request) {
 
     if (result.error) {
       console.error("report-bug POST resend error:", result.error);
-      return NextResponse.json({ error: "Could not send bug report." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Could not send bug report." },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ ok: true });

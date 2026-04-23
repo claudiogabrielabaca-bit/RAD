@@ -20,6 +20,10 @@ export const revalidate = 0;
 const PENDING_LOGIN_COOKIE = "rad_pending_login_email";
 const PENDING_LOGIN_MAX_AGE_SEC = 10 * 60;
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
 async function setPendingLoginEmailCookie(email: string) {
   const store = await cookies();
   const expiresAt = new Date(Date.now() + PENDING_LOGIN_MAX_AGE_SEC * 1000);
@@ -66,7 +70,7 @@ export async function POST(req: Request) {
     if (!email || !password) {
       return NextResponse.json(
         { error: "Email and password are required." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -89,7 +93,7 @@ export async function POST(req: Request) {
     if (!turnstile.ok) {
       return NextResponse.json(
         { error: "Security check failed. Please try again." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -107,7 +111,7 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json(
         { error: "Invalid credentials." },
-        { status: 401 }
+        { status: 401, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -116,7 +120,7 @@ export async function POST(req: Request) {
     if (!isValidPassword) {
       return NextResponse.json(
         { error: "Invalid credentials." },
-        { status: 401 }
+        { status: 401, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -179,7 +183,7 @@ This code expires in 15 minutes.`,
           devCode:
             process.env.NODE_ENV !== "production" ? verifyCode : undefined,
         },
-        { status: 403 }
+        { status: 403, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -244,13 +248,14 @@ This code expires in 10 minutes.`,
         devCode: process.env.NODE_ENV !== "production" ? loginCode : undefined,
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("login POST error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

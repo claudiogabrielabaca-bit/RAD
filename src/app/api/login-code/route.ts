@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { prisma } from "@/app/lib/prisma";
-import {
-  createSession,
-  verifyAuthCode,
-} from "@/app/lib/auth";
+import { createSession, verifyAuthCode } from "@/app/lib/auth";
 import {
   buildRateLimitKey,
   consumeRateLimit,
@@ -17,6 +14,10 @@ export const revalidate = 0;
 const PENDING_LOGIN_COOKIE = "rad_pending_login_email";
 const CODE_ATTEMPT_LIMIT = 5;
 const INVALID_MESSAGE = "Invalid or expired login code.";
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
@@ -53,12 +54,15 @@ export async function POST(req: Request) {
     if (!email) {
       return NextResponse.json(
         { error: "Start the login flow again." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
     if (!/^\d{6}$/.test(code)) {
-      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     const rateLimit = await consumeRateLimit({
@@ -94,14 +98,17 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         { error: "Start the login flow again." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
     if (!user.loginCode || !user.loginCodeExpiresAt) {
       await clearPendingLoginEmailCookie();
 
-      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (user.loginCodeExpiresAt < new Date()) {
@@ -116,7 +123,10 @@ export async function POST(req: Request) {
 
       await clearPendingLoginEmailCookie();
 
-      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (user.loginCodeAttempts >= CODE_ATTEMPT_LIMIT) {
@@ -133,7 +143,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         { error: "Too many invalid attempts. Request a new code." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -171,7 +181,7 @@ export async function POST(req: Request) {
             ? "Too many invalid attempts. Request a new code."
             : INVALID_MESSAGE,
         },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -200,13 +210,14 @@ export async function POST(req: Request) {
         },
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("login-code POST error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

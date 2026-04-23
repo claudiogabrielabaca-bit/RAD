@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { hashPassword, verifyAuthCode } from "@/app/lib/auth";
+import { verifyTurnstileToken } from "@/app/lib/turnstile";
 import {
   buildRateLimitKey,
   consumeRateLimit,
@@ -13,6 +14,10 @@ export const revalidate = 0;
 const CODE_ATTEMPT_LIMIT = 5;
 const INVALID_MESSAGE = "Invalid or expired reset code.";
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -20,19 +25,26 @@ export async function POST(req: Request) {
     const email = body?.email?.toString().trim().toLowerCase();
     const code = body?.code?.toString().trim();
     const newPassword = body?.newPassword?.toString() ?? "";
+    const turnstileToken = body?.turnstileToken?.toString() ?? "";
 
     if (!email || !email.includes("@")) {
-      return NextResponse.json({ error: "Invalid email." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid email." },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (!code || !/^\d{6}$/.test(code)) {
-      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (newPassword.length < 8) {
       return NextResponse.json(
         { error: "Password must be at least 8 characters." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -50,6 +62,15 @@ export async function POST(req: Request) {
       );
     }
 
+    const turnstile = await verifyTurnstileToken(turnstileToken, req);
+
+    if (!turnstile.ok) {
+      return NextResponse.json(
+        { error: "Security check failed. Please try again." },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
     const user = await prisma.user.findUnique({
       where: { email },
       select: {
@@ -62,7 +83,10 @@ export async function POST(req: Request) {
     });
 
     if (!user || !user.passwordResetCode || !user.passwordResetExpiresAt) {
-      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (user.passwordResetExpiresAt < new Date()) {
@@ -75,7 +99,10 @@ export async function POST(req: Request) {
         },
       });
 
-      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (user.passwordResetAttempts >= CODE_ATTEMPT_LIMIT) {
@@ -90,7 +117,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         { error: "Too many invalid attempts. Request a new reset code." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -124,7 +151,7 @@ export async function POST(req: Request) {
             ? "Too many invalid attempts. Request a new reset code."
             : INVALID_MESSAGE,
         },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -148,13 +175,14 @@ export async function POST(req: Request) {
         message: "Password updated successfully. Please log in again.",
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("reset-password POST error:", error);
-    return NextResponse.json({ error: "Server error." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error." },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

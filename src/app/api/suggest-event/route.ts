@@ -2,11 +2,23 @@ import { NextResponse } from "next/server";
 import { Resend } from "resend";
 import { getCurrentUser } from "@/app/lib/current-user";
 import { isValidDayString } from "@/app/lib/day";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const EVENT_MIN_LENGTH = 5;
+const EVENT_MAX_LENGTH = 160;
+const DESCRIPTION_MIN_LENGTH = 10;
+const DESCRIPTION_MAX_LENGTH = 2000;
+const SOURCE_MAX_LENGTH = 2048;
+const EMAIL_MAX_LENGTH = 320;
 
 function escapeHtml(value: string) {
   return value
@@ -56,6 +68,13 @@ function normalizeAndValidateSource(input?: string) {
     return { ok: false as const, error: "Source is required." };
   }
 
+  if (raw.length > SOURCE_MAX_LENGTH) {
+    return {
+      ok: false as const,
+      error: `Source is too long (max ${SOURCE_MAX_LENGTH} chars).`,
+    };
+  }
+
   let value = raw;
 
   if (!/^https?:\/\//i.test(value)) {
@@ -98,6 +117,27 @@ export async function POST(req: Request) {
       );
     }
 
+    if (user.emailVerified === false) {
+      return NextResponse.json(
+        { error: "You must verify your email to suggest an event." },
+        { status: 403 }
+      );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "suggest-event",
+      key: buildRateLimitKey(req, user.id),
+      limit: 3,
+      windowMs: 60 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many event suggestions. Please try again later."
+      );
+    }
+
     const body = await req.json().catch(() => null);
 
     if (!body) {
@@ -128,13 +168,40 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid day" }, { status: 400 });
     }
 
-    if (!event || event.trim().length < 5) {
+    const trimmedEvent = (event ?? "").trim();
+    const trimmedDescription = (description ?? "").trim();
+    const trimmedTypedEmail = (email ?? "").trim();
+
+    if (trimmedEvent.length < EVENT_MIN_LENGTH) {
       return NextResponse.json({ error: "Event too short" }, { status: 400 });
     }
 
-    if (!description || description.trim().length < 10) {
+    if (trimmedEvent.length > EVENT_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: `Event is too long (max ${EVENT_MAX_LENGTH} chars)` },
+        { status: 400 }
+      );
+    }
+
+    if (trimmedDescription.length < DESCRIPTION_MIN_LENGTH) {
       return NextResponse.json(
         { error: "Description too short" },
+        { status: 400 }
+      );
+    }
+
+    if (trimmedDescription.length > DESCRIPTION_MAX_LENGTH) {
+      return NextResponse.json(
+        {
+          error: `Description is too long (max ${DESCRIPTION_MAX_LENGTH} chars)`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (trimmedTypedEmail.length > EMAIL_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: `Email is too long (max ${EMAIL_MAX_LENGTH} chars)` },
         { status: 400 }
       );
     }
@@ -158,11 +225,11 @@ export async function POST(req: Request) {
     }
 
     const safeDay = escapeHtml(day);
-    const safeEvent = escapeHtml(event.trim());
-    const safeDescription = escapeHtml(description.trim());
+    const safeEvent = escapeHtml(trimmedEvent);
+    const safeDescription = escapeHtml(trimmedDescription);
     const safeSource = escapeHtml(validatedSource.value);
     const safeUserEmail = escapeHtml(user.email);
-    const safeTypedEmail = escapeHtml((email ?? "").trim());
+    const safeTypedEmail = escapeHtml(trimmedTypedEmail);
 
     await resend.emails.send({
       from: "Rate Any Day <onboarding@resend.dev>",

@@ -1,11 +1,20 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const REPLY_MAX_LENGTH = 220;
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
 
 export async function POST(req: Request) {
   try {
@@ -14,7 +23,28 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json(
         { error: "You must be logged in to reply." },
-        { status: 401 }
+        { status: 401, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (user.emailVerified === false) {
+      return NextResponse.json(
+        { error: "You must verify your email to reply." },
+        { status: 403, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "review-reply",
+      key: buildRateLimitKey(req, user.id),
+      limit: 12,
+      windowMs: 15 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many replies. Please try again later."
       );
     }
 
@@ -25,20 +55,23 @@ export async function POST(req: Request) {
     const rawParentReplyId = body?.parentReplyId;
 
     if (!ratingId || typeof ratingId !== "string") {
-      return NextResponse.json({ error: "Invalid ratingId" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid ratingId" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (!text || typeof text !== "string" || text.trim().length < 1) {
       return NextResponse.json(
         { error: "Reply cannot be empty" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
     if (text.trim().length > REPLY_MAX_LENGTH) {
       return NextResponse.json(
         { error: `Reply is too long (max ${REPLY_MAX_LENGTH} chars)` },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -52,7 +85,7 @@ export async function POST(req: Request) {
     if (parentReplyId === "__invalid__") {
       return NextResponse.json(
         { error: "Invalid parentReplyId" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -66,7 +99,10 @@ export async function POST(req: Request) {
     });
 
     if (!rating) {
-      return NextResponse.json({ error: "Review not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Review not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
 
     let parentReplyOwnerId: string | null = null;
@@ -85,21 +121,21 @@ export async function POST(req: Request) {
       if (!parentReply) {
         return NextResponse.json(
           { error: "Parent reply not found" },
-          { status: 404 }
+          { status: 404, headers: NO_STORE_HEADERS }
         );
       }
 
       if (parentReply.ratingId !== ratingId) {
         return NextResponse.json(
           { error: "Parent reply does not belong to this review" },
-          { status: 400 }
+          { status: 400, headers: NO_STORE_HEADERS }
         );
       }
 
       if (parentReply.parentReplyId) {
         return NextResponse.json(
           { error: "Only one nested reply level is allowed." },
-          { status: 400 }
+          { status: 400, headers: NO_STORE_HEADERS }
         );
       }
 
@@ -156,13 +192,14 @@ export async function POST(req: Request) {
         },
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("review-reply POST error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

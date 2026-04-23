@@ -2,6 +2,7 @@ import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { generateNumericCode, hashAuthCode } from "@/app/lib/auth";
 import { sendMail } from "@/app/lib/mail";
+import { verifyTurnstileToken } from "@/app/lib/turnstile";
 import {
   buildRateLimitKey,
   consumeRateLimit,
@@ -11,13 +12,21 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
     const email = body?.email?.toString().trim().toLowerCase();
+    const turnstileToken = body?.turnstileToken?.toString() ?? "";
 
     if (!email || !email.includes("@")) {
-      return NextResponse.json({ error: "Invalid email." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid email." },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     const rateLimit = await consumeRateLimit({
@@ -31,6 +40,15 @@ export async function POST(req: Request) {
       return createRateLimitResponse(
         rateLimit.retryAfterSec,
         "Too many requests. Please try again later."
+      );
+    }
+
+    const turnstile = await verifyTurnstileToken(turnstileToken, req);
+
+    if (!turnstile.ok) {
+      return NextResponse.json(
+        { error: "Security check failed. Please try again." },
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -101,13 +119,14 @@ This code expires in 15 minutes.`,
         devCode,
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("forgot-password POST error:", error);
-    return NextResponse.json({ error: "Server error." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error." },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

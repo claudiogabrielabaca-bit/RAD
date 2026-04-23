@@ -14,6 +14,10 @@ export const revalidate = 0;
 const CODE_ATTEMPT_LIMIT = 5;
 const INVALID_MESSAGE = "Invalid or expired verification code.";
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -25,12 +29,15 @@ export async function POST(req: Request) {
     if (!email || !code) {
       return NextResponse.json(
         { error: "Email and verification code are required." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
     if (!/^\d{6}$/.test(code)) {
-      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     const rateLimit = await consumeRateLimit({
@@ -52,7 +59,7 @@ export async function POST(req: Request) {
     if (!turnstile.ok) {
       return NextResponse.json(
         { error: "Security check failed. Please try again." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -69,18 +76,29 @@ export async function POST(req: Request) {
     });
 
     if (!user) {
-      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (user.emailVerified) {
-      return NextResponse.json({
-        ok: true,
-        message: "Your email is already verified.",
-      });
+      return NextResponse.json(
+        {
+          ok: true,
+          message: "Your email is already verified.",
+        },
+        {
+          headers: NO_STORE_HEADERS,
+        }
+      );
     }
 
     if (!user.emailVerifyCode || !user.emailVerifyExpiresAt) {
-      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (user.emailVerifyExpiresAt < new Date()) {
@@ -93,7 +111,10 @@ export async function POST(req: Request) {
         },
       });
 
-      return NextResponse.json({ error: INVALID_MESSAGE }, { status: 400 });
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (user.emailVerifyAttempts >= CODE_ATTEMPT_LIMIT) {
@@ -108,7 +129,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         { error: "Too many invalid attempts. Request a new code." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -142,7 +163,7 @@ export async function POST(req: Request) {
             ? "Too many invalid attempts. Request a new code."
             : INVALID_MESSAGE,
         },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -156,12 +177,20 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({
-      ok: true,
-      message: "Email verified successfully. Now you can log in.",
-    });
+    return NextResponse.json(
+      {
+        ok: true,
+        message: "Email verified successfully. Now you can log in.",
+      },
+      {
+        headers: NO_STORE_HEADERS,
+      }
+    );
   } catch (error) {
     console.error("verify-email POST error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

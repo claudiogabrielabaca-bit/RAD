@@ -2,6 +2,11 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -35,6 +40,27 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "You must be logged in to like reviews." },
         { status: 401, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (user.emailVerified === false) {
+      return NextResponse.json(
+        { error: "You must verify your email to like reviews." },
+        { status: 403, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "review-like",
+      key: buildRateLimitKey(req, user.id),
+      limit: 120,
+      windowMs: 15 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many review like attempts. Please try again later."
       );
     }
 
