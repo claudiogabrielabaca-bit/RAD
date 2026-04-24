@@ -1,147 +1,181 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { isAdminAuthenticated } from "@/app/lib/admin";
+import { requireAdminSession } from "@/app/lib/admin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const STATUS_PRIORITY: Record<string, number> = {
-  pending: 0,
-  resolved: 1,
-  ignored: 2,
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
 };
 
-type ReportAuthor = {
-  user?: { username: string } | null;
-  anonId?: string | null;
-};
-
-type RatingAuthor = {
-  user?: { username: string } | null;
-  anonId?: string | null;
-};
-
-type AdminReportRecord = {
+type AdminReportItem = {
   id: string;
-  ratingId: string;
-  reason: string;
+  reportType: "review" | "reply";
   status: string;
-  anonId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-  user: { username: string } | null;
-  rating: {
-    id: string;
-    day: string;
-    stars: number;
-    review: string;
-    anonId: string | null;
-    createdAt: Date;
-    user: { username: string } | null;
-  } | null;
-};
-
-type NormalizedReport = {
-  id: string;
-  ratingId: string;
   reason: string;
-  status: string;
   createdAt: string;
   updatedAt: string;
-  reportAuthorLabel: string;
-  rating: {
-    id: string;
-    day: string;
-    stars: number;
-    review: string;
-    authorLabel: string;
-    createdAt: string;
-  } | null;
+  day: string;
+  ratingId: string;
+  replyId: string | null;
+  reviewStars: number | null;
+  reviewText: string | null;
+  replyText: string | null;
+  reportedBy: string | null;
+  reportedByEmail: string | null;
+  targetAuthor: string | null;
+  targetAuthorEmail: string | null;
+  parentReviewAuthor: string | null;
+  parentReviewAuthorEmail: string | null;
 };
-
-function getReportAuthorLabel(report: ReportAuthor) {
-  if (report.user?.username) return `@${report.user.username}`;
-  if (report.anonId) return report.anonId;
-  return "Unknown";
-}
-
-function getRatingAuthorLabel(rating: RatingAuthor) {
-  if (rating.user?.username) return `@${rating.user.username}`;
-  if (rating.anonId) return rating.anonId;
-  return "Unknown";
-}
 
 export async function GET() {
   try {
-    const isAdmin = await isAdminAuthenticated();
+    const adminSession = await requireAdminSession();
 
-    if (!isAdmin) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (!adminSession) {
+      return NextResponse.json(
+        { error: "Not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
 
-    const reports: AdminReportRecord[] = await prisma.reviewReport.findMany({
-      orderBy: { updatedAt: "desc" },
-      include: {
-        user: {
-          select: {
-            username: true,
-          },
+    const [reviewReports, replyReports] = await Promise.all([
+      prisma.reviewReport.findMany({
+        orderBy: {
+          createdAt: "desc",
         },
-        rating: {
-          include: {
-            user: {
-              select: {
-                username: true,
+        take: 100,
+        include: {
+          user: {
+            select: {
+              username: true,
+              email: true,
+            },
+          },
+          rating: {
+            select: {
+              id: true,
+              day: true,
+              stars: true,
+              review: true,
+              user: {
+                select: {
+                  username: true,
+                  email: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      }),
 
-    const normalized: NormalizedReport[] = reports
-      .map((report: AdminReportRecord) => ({
-        id: report.id,
-        ratingId: report.ratingId,
-        reason: report.reason,
-        status: report.status,
-        createdAt: report.createdAt.toISOString(),
-        updatedAt: report.updatedAt.toISOString(),
-        reportAuthorLabel: getReportAuthorLabel(report),
-        rating: report.rating
-          ? {
-              id: report.rating.id,
-              day: report.rating.day,
-              stars: report.rating.stars,
-              review: report.rating.review,
-              authorLabel: getRatingAuthorLabel(report.rating),
-              createdAt: report.rating.createdAt.toISOString(),
-            }
-          : null,
-      }))
-      .sort((a: NormalizedReport, b: NormalizedReport) => {
-        const aPriority = STATUS_PRIORITY[a.status] ?? 999;
-        const bPriority = STATUS_PRIORITY[b.status] ?? 999;
+      prisma.replyReport.findMany({
+        orderBy: {
+          createdAt: "desc",
+        },
+        take: 100,
+        include: {
+          user: {
+            select: {
+              username: true,
+              email: true,
+            },
+          },
+          reply: {
+            select: {
+              id: true,
+              ratingId: true,
+              text: true,
+              user: {
+                select: {
+                  username: true,
+                  email: true,
+                },
+              },
+              rating: {
+                select: {
+                  id: true,
+                  day: true,
+                  stars: true,
+                  review: true,
+                  user: {
+                    select: {
+                      username: true,
+                      email: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
 
-        if (aPriority !== bPriority) {
-          return aPriority - bPriority;
-        }
+    const mappedReviewReports: AdminReportItem[] = reviewReports.map((item) => ({
+      id: item.id,
+      reportType: "review",
+      status: item.status,
+      reason: item.reason,
+      createdAt: item.createdAt.toISOString(),
+      updatedAt: item.updatedAt.toISOString(),
+      day: item.rating.day,
+      ratingId: item.rating.id,
+      replyId: null,
+      reviewStars: item.rating.stars,
+      reviewText: item.rating.review,
+      replyText: null,
+      reportedBy: item.user?.username ?? null,
+      reportedByEmail: item.user?.email ?? null,
+      targetAuthor: item.rating.user?.username ?? null,
+      targetAuthorEmail: item.rating.user?.email ?? null,
+      parentReviewAuthor: item.rating.user?.username ?? null,
+      parentReviewAuthorEmail: item.rating.user?.email ?? null,
+    }));
 
-        return (
-          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-        );
-      });
+    const mappedReplyReports: AdminReportItem[] = replyReports.map((item) => ({
+      id: item.id,
+      reportType: "reply",
+      status: item.status,
+      reason: item.reason,
+      createdAt: item.createdAt.toISOString(),
+      updatedAt: item.updatedAt.toISOString(),
+      day: item.reply.rating.day,
+      ratingId: item.reply.rating.id,
+      replyId: item.reply.id,
+      reviewStars: item.reply.rating.stars,
+      reviewText: item.reply.rating.review,
+      replyText: item.reply.text,
+      reportedBy: item.user?.username ?? null,
+      reportedByEmail: item.user?.email ?? null,
+      targetAuthor: item.reply.user?.username ?? null,
+      targetAuthorEmail: item.reply.user?.email ?? null,
+      parentReviewAuthor: item.reply.rating.user?.username ?? null,
+      parentReviewAuthorEmail: item.reply.rating.user?.email ?? null,
+    }));
+
+    const items = [...mappedReviewReports, ...mappedReplyReports].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
 
     return NextResponse.json(
-      { reports: normalized },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        ok: true,
+        items,
+        reports: items,
+      },
+      {
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("admin reports GET error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

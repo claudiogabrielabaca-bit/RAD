@@ -2,94 +2,107 @@ import { prisma } from "@/app/lib/prisma";
 import { cookies } from "next/headers";
 import { createHmac, randomBytes, timingSafeEqual } from "crypto";
 import bcrypt from "bcryptjs";
-import { NextResponse } from "next/server";
+import type { NextResponse } from "next/server";
 
 export const ADMIN_COOKIE_NAME = "rad_admin_session";
-const ADMIN_COOKIE_MAX_AGE = 60 * 60 * 12;
 
-function safeEqual(a: string, b: string) {
-  const aBuffer = Buffer.from(a, "utf8");
-  const bBuffer = Buffer.from(b, "utf8");
-
-  if (aBuffer.length !== bBuffer.length) {
-    return false;
-  }
-
-  return timingSafeEqual(aBuffer, bBuffer);
-}
+const ADMIN_SESSION_DAYS = 7;
+const ADMIN_SESSION_MAX_AGE = ADMIN_SESSION_DAYS * 24 * 60 * 60;
 
 function normalizeAdminUsername(value: string) {
   return value.trim().toLowerCase();
 }
 
-function getRequiredEnv(
-  name: "ADMIN_USERNAME" | "ADMIN_PASSWORD_HASH" | "ADMIN_SECRET"
-) {
-  const value = process.env[name]?.trim();
+function getAdminSessionSecret() {
+  const secret =
+    process.env.ADMIN_SECRET?.trim() ||
+    process.env.SESSION_SECRET?.trim() ||
+    "";
 
-  if (!value) {
-    throw new Error(`Missing ${name}`);
+  if (!secret) {
+    throw new Error("Missing ADMIN_SECRET or SESSION_SECRET");
   }
 
-  return value;
+  return secret;
 }
 
-function getAdminUsername() {
-  return normalizeAdminUsername(getRequiredEnv("ADMIN_USERNAME"));
+function safeEqual(a: string, b: string) {
+  const aBuf = Buffer.from(a, "utf8");
+  const bBuf = Buffer.from(b, "utf8");
+
+  if (aBuf.length !== bBuf.length) {
+    return false;
+  }
+
+  return timingSafeEqual(aBuf, bBuf);
 }
 
-function getAdminPasswordHash() {
-  return getRequiredEnv("ADMIN_PASSWORD_HASH");
+function isBcryptHash(value: string) {
+  return /^\$2[aby]\$\d{2}\$/.test(value);
 }
 
-function getAdminSessionSecret() {
-  return getRequiredEnv("ADMIN_SECRET");
+async function compareAdminPassword(input: string, expected: string) {
+  if (isBcryptHash(expected)) {
+    return bcrypt.compare(input, expected);
+  }
+
+  return safeEqual(input, expected);
 }
 
-function hashAdminSessionToken(token: string) {
-  return createHmac("sha256", getAdminSessionSecret())
-    .update(token)
-    .digest("hex");
-}
-
-async function readIncomingAdminToken() {
+async function readIncomingAdminSessionToken() {
   const store = await cookies();
   return store.get(ADMIN_COOKIE_NAME)?.value ?? "";
 }
 
-export async function verifyAdminCredentials({
-  username,
-  password,
-}: {
-  username: string;
-  password: string;
-}) {
-  const normalizedUsername = normalizeAdminUsername(username);
-  const expectedUsername = getAdminUsername();
-  const passwordHash = getAdminPasswordHash();
-
-  const validUsername = safeEqual(normalizedUsername, expectedUsername);
-  const validPassword = await bcrypt.compare(password, passwordHash).catch(() => false);
-
-  return validUsername && validPassword;
+function getAdminCookieValueOptions(expiresAt?: Date | null) {
+  return {
+    httpOnly: true as const,
+    sameSite: "strict" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires:
+      expiresAt ?? new Date(Date.now() + ADMIN_SESSION_MAX_AGE * 1000),
+    maxAge: ADMIN_SESSION_MAX_AGE,
+    priority: "high" as const,
+  };
 }
 
-async function createAdminSessionRecord() {
+function getExpiredAdminCookieOptions() {
+  return {
+    httpOnly: true as const,
+    sameSite: "strict" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    expires: new Date(0),
+    maxAge: 0,
+    priority: "high" as const,
+  };
+}
+
+async function createAdminSessionRecord(username: string) {
+  const normalizedUsername = normalizeAdminUsername(username);
+  const token = generateAdminSessionToken();
+  const tokenHash = hashAdminSessionToken(token);
+  const expiresAt = new Date(Date.now() + ADMIN_SESSION_MAX_AGE * 1000);
+
   await prisma.adminSession.deleteMany({
     where: {
-      expiresAt: {
-        lt: new Date(),
-      },
+      OR: [
+        {
+          expiresAt: {
+            lt: new Date(),
+          },
+        },
+        {
+          username: normalizedUsername,
+        },
+      ],
     },
   });
 
-  const token = randomBytes(32).toString("hex");
-  const tokenHash = hashAdminSessionToken(token);
-  const expiresAt = new Date(Date.now() + ADMIN_COOKIE_MAX_AGE * 1000);
-
   await prisma.adminSession.create({
     data: {
-      username: getAdminUsername(),
+      username: normalizedUsername,
       tokenHash,
       expiresAt,
     },
@@ -101,76 +114,172 @@ async function createAdminSessionRecord() {
   };
 }
 
-export async function isAdminAuthenticated() {
-  const token = await readIncomingAdminToken();
-
-  if (!token) {
-    return false;
-  }
-
-  const tokenHash = hashAdminSessionToken(token);
-
-  const session = await prisma.adminSession.findUnique({
-    where: {
-      tokenHash,
-    },
-  });
-
-  if (!session) {
-    return false;
-  }
-
-  if (session.expiresAt <= new Date()) {
-    await prisma.adminSession.deleteMany({
-      where: {
-        tokenHash,
-      },
-    }).catch(() => {});
-
-    return false;
-  }
-
-  return true;
+export function generateAdminSessionToken() {
+  return randomBytes(32).toString("hex");
 }
 
-export async function setAdminSessionCookie(res: NextResponse) {
-  const { token, expiresAt } = await createAdminSessionRecord();
+export function hashAdminSessionToken(token: string) {
+  return createHmac("sha256", getAdminSessionSecret())
+    .update(token)
+    .digest("hex");
+}
 
-  res.cookies.set({
+export async function verifyAdminCredentials(
+  input:
+    | {
+        username: string;
+        password: string;
+      }
+    | string,
+  maybePassword?: string
+) {
+  const expectedUsername = process.env.ADMIN_USERNAME?.trim() ?? "";
+  const expectedPassword = process.env.ADMIN_PASSWORD?.trim() ?? "";
+
+  if (!expectedUsername || !expectedPassword) {
+    return false;
+  }
+
+  const username =
+    typeof input === "string" ? input : (input?.username ?? "");
+  const password =
+    typeof input === "string" ? (maybePassword ?? "") : (input?.password ?? "");
+
+  const normalizedInputUsername = normalizeAdminUsername(username);
+  const normalizedExpectedUsername = normalizeAdminUsername(expectedUsername);
+
+  if (!safeEqual(normalizedInputUsername, normalizedExpectedUsername)) {
+    return false;
+  }
+
+  return compareAdminPassword(password, expectedPassword);
+}
+
+export async function setAdminSessionCookie(
+  input: string | NextResponse<unknown>,
+  expiresAt?: Date | null
+) {
+  if (typeof input !== "string") {
+    const expectedUsername = process.env.ADMIN_USERNAME?.trim() ?? "";
+
+    if (!expectedUsername) {
+      throw new Error("Missing ADMIN_USERNAME");
+    }
+
+    const session = await createAdminSessionRecord(expectedUsername);
+
+    input.cookies.set({
+      name: ADMIN_COOKIE_NAME,
+      value: session.token,
+      ...getAdminCookieValueOptions(session.expiresAt),
+    });
+
+    return session.token;
+  }
+
+  const store = await cookies();
+
+  store.set({
     name: ADMIN_COOKIE_NAME,
-    value: token,
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    expires: expiresAt,
-    maxAge: ADMIN_COOKIE_MAX_AGE,
-    priority: "high",
+    value: input,
+    ...getAdminCookieValueOptions(expiresAt),
+  });
+
+  return input;
+}
+
+export async function clearAdminSessionCookie(
+  res?: NextResponse<unknown>
+) {
+  if (res) {
+    res.cookies.set({
+      name: ADMIN_COOKIE_NAME,
+      value: "",
+      ...getExpiredAdminCookieOptions(),
+    });
+    return;
+  }
+
+  const store = await cookies();
+
+  store.set({
+    name: ADMIN_COOKIE_NAME,
+    value: "",
+    ...getExpiredAdminCookieOptions(),
   });
 }
 
-export async function clearAdminSessionCookie(res: NextResponse) {
-  const token = await readIncomingAdminToken();
+export async function createAdminSession(username: string) {
+  const session = await createAdminSessionRecord(username);
+  await setAdminSessionCookie(session.token, session.expiresAt);
+  return session.token;
+}
+
+export async function clearAdminSession() {
+  const token = await readIncomingAdminSessionToken();
 
   if (token) {
     const tokenHash = hashAdminSessionToken(token);
 
     await prisma.adminSession.deleteMany({
-      where: {
-        tokenHash,
-      },
-    }).catch(() => {});
+      where: { tokenHash },
+    });
   }
 
-  res.cookies.set({
-    name: ADMIN_COOKIE_NAME,
-    value: "",
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    expires: new Date(0),
-    maxAge: 0,
-    priority: "high",
+  await clearAdminSessionCookie();
+}
+
+export async function getAdminSession() {
+  const token = await readIncomingAdminSessionToken();
+
+  if (!token) return null;
+
+  const tokenHash = hashAdminSessionToken(token);
+
+  const session = await prisma.adminSession.findUnique({
+    where: { tokenHash },
+    select: {
+      id: true,
+      username: true,
+      expiresAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
   });
+
+  if (!session) {
+    return null;
+  }
+
+  if (session.expiresAt < new Date()) {
+    await prisma.adminSession
+      .delete({
+        where: { id: session.id },
+      })
+      .catch(() => {});
+
+    await clearAdminSessionCookie();
+
+    return null;
+  }
+
+  return session;
+}
+
+export async function requireAdminSession() {
+  return getAdminSession();
+}
+
+export async function isAdminAuthenticated() {
+  return !!(await getAdminSession());
+}
+
+export function verifyAdminSessionValue(value: string | null | undefined) {
+  const expected = process.env.ADMIN_SECRET?.trim();
+
+  if (!expected || !value) {
+    return false;
+  }
+
+  return safeEqual(value, expected);
 }
