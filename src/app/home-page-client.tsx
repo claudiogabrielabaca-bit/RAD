@@ -31,7 +31,6 @@ import type {
   DayResponse,
   FavoriteDayResponse,
   HighlightItem,
-  HighlightResponse,
   SurpriseResponse,
 } from "@/app/lib/rad-types";
 import {
@@ -66,6 +65,42 @@ type TodayInHistoryResponse = SurpriseResponse & {
   restartedRound?: boolean;
 };
 
+function recomputeDayStats(reviews: DayResponse["reviews"]) {
+  const count = reviews.length;
+  const avg =
+    count > 0
+      ? reviews.reduce((sum, item) => sum + item.stars, 0) / count
+      : 0;
+
+  return { avg, count };
+}
+
+function withUpdatedReviews(
+  prev: DayResponse,
+  reviews: DayResponse["reviews"]
+): DayResponse {
+  const { avg, count } = recomputeDayStats(reviews);
+
+  return {
+    ...prev,
+    reviews,
+    avg,
+    count,
+  };
+}
+
+function removeReplyFromTree(
+  replies: DayResponse["reviews"][number]["replies"],
+  replyId: string
+): DayResponse["reviews"][number]["replies"] {
+  return replies
+    .filter((reply) => reply.id !== replyId)
+    .map((reply) => ({
+      ...reply,
+      replies: removeReplyFromTree(reply.replies ?? [], replyId),
+    }));
+}
+
 export default function Page({
   initialBundle = null,
 }: {
@@ -93,7 +128,6 @@ export default function Page({
   const didInitDayRef = useRef(false);
 
   const dayRequestRef = useRef(0);
-  const highlightRequestRef = useRef(0);
   const skipNextAutoDayLoadRef = useRef(false);
 
   const dayBackHistoryRef = useRef<string[]>([]);
@@ -780,42 +814,6 @@ export default function Page({
     }
   }
 
-  async function loadHighlight(d: string) {
-    const requestId = ++highlightRequestRef.current;
-    setLoadingHighlight(true);
-
-    try {
-      const res = await fetch(`/api/highlight?day=${encodeURIComponent(d)}`, {
-        cache: "no-store",
-      });
-
-      if (!res.ok) throw new Error("Failed to load highlight");
-
-      const json = (await res.json()) as HighlightResponse;
-
-      const items = json.highlights?.length
-        ? json.highlights
-        : json.highlight
-          ? [json.highlight]
-          : [];
-
-      if (requestId !== highlightRequestRef.current) return;
-
-      setHighlights(items);
-      setHighlight(items[0] ?? null);
-      setActiveHighlightIndex(0);
-      setPreferImmediateHighlightImageSwap(false);
-    } catch {
-      if (requestId !== highlightRequestRef.current) return;
-      setHighlights([]);
-      setHighlight(null);
-    } finally {
-      if (requestId === highlightRequestRef.current) {
-        setLoadingHighlight(false);
-      }
-    }
-  }
-
   const loadFavoriteDayStatus = useCallback(
     async (d: string) => {
       if (!currentUser) {
@@ -1287,6 +1285,8 @@ export default function Page({
       return;
     }
 
+    const trimmedReview = review.trim();
+
     setSaving(true);
     setToast("");
 
@@ -1297,7 +1297,7 @@ export default function Page({
         body: JSON.stringify({
           day,
           stars: s,
-          review: review.trim(),
+          review: trimmedReview,
         }),
       });
 
@@ -1309,7 +1309,27 @@ export default function Page({
       }
 
       invalidateDayCache(day);
-      await Promise.all([loadDay(day), loadHighlight(day)]);
+
+      if (myReview) {
+        setData((prev) => {
+          if (!prev) return prev;
+
+          const nextReviews = prev.reviews.map((item) =>
+            item.id === myReview.id
+              ? {
+                  ...item,
+                  stars: s,
+                  review: trimmedReview,
+                }
+              : item
+          );
+
+          return withUpdatedReviews(prev, nextReviews);
+        });
+      } else {
+        await loadDay(day);
+      }
+
       showToast("Review saved.");
     } catch {
       showToast("Error guardando.");
@@ -1345,7 +1365,14 @@ export default function Page({
       }
 
       invalidateDayCache(day);
-      await Promise.all([loadDay(day)]);
+
+      setData((prev) => {
+        if (!prev) return prev;
+
+        const nextReviews = prev.reviews.filter((item) => item.id !== ratingId);
+        return withUpdatedReviews(prev, nextReviews);
+      });
+
       showToast("Review deleted.");
     } catch {
       showToast("Could not delete review.");
@@ -1566,7 +1593,25 @@ export default function Page({
       setReplyingToId(null);
 
       invalidateDayCache(day);
-      await loadDay(day);
+
+      if (json?.reply) {
+        setData((prev) => {
+          if (!prev) return prev;
+
+          return {
+            ...prev,
+            reviews: prev.reviews.map((item) =>
+              item.id === ratingId
+                ? {
+                    ...item,
+                    replies: [...(item.replies ?? []), json.reply],
+                  }
+                : item
+            ),
+          };
+        });
+      }
+
       showToast("Reply sent.");
     } catch {
       showToast("Could not send reply.");
@@ -1601,7 +1646,19 @@ export default function Page({
       }
 
       invalidateDayCache(day);
-      await loadDay(day);
+
+      setData((prev) => {
+        if (!prev) return prev;
+
+        return {
+          ...prev,
+          reviews: prev.reviews.map((item) => ({
+            ...item,
+            replies: removeReplyFromTree(item.replies ?? [], replyId),
+          })),
+        };
+      });
+
       showToast("Reply deleted.");
     } catch {
       showToast("Could not delete reply.");
@@ -1618,6 +1675,11 @@ export default function Page({
 
     if (!suggestDescription.trim()) {
       setSuggestToast("Write a short description.");
+      return;
+    }
+
+    if (!suggestSource.trim()) {
+      setSuggestToast("Source is required.");
       return;
     }
 
@@ -1647,7 +1709,7 @@ export default function Page({
         return;
       }
 
-      setSuggestToast("Suggestion sent ✅");
+      setSuggestToast("Suggestion sent");
       setSuggestEvent("");
       setSuggestDescription("");
       setSuggestSource("");
@@ -2156,14 +2218,18 @@ export default function Page({
 
               <div>
                 <label className="mb-2 block text-sm text-zinc-300">
-                  Source (optional)
+                  Source *
                 </label>
                 <input
                   value={suggestSource}
                   onChange={(e) => setSuggestSource(e.target.value)}
-                  placeholder="Wikipedia, article URL, book, etc."
+                  placeholder="Paste a public URL (Wikipedia, article, archive, etc.)"
                   className="w-full rounded-xl border border-white/8 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/10"
+                  required
                 />
+                <p className="mt-2 text-xs text-zinc-500">
+                  A public source URL is required.
+                </p>
               </div>
 
               <div>

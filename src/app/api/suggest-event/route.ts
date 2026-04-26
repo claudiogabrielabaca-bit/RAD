@@ -1,24 +1,14 @@
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
 import { getCurrentUser } from "@/app/lib/current-user";
 import { isValidDayString } from "@/app/lib/day";
-import {
-  buildRateLimitKey,
-  consumeRateLimit,
-  createRateLimitResponse,
-} from "@/app/lib/rate-limit";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { sendMail } from "@/app/lib/mail";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const EVENT_MIN_LENGTH = 5;
-const EVENT_MAX_LENGTH = 160;
-const DESCRIPTION_MIN_LENGTH = 10;
-const DESCRIPTION_MAX_LENGTH = 2000;
-const SOURCE_MAX_LENGTH = 2048;
-const EMAIL_MAX_LENGTH = 320;
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
 
 function escapeHtml(value: string) {
   return value
@@ -68,13 +58,6 @@ function normalizeAndValidateSource(input?: string) {
     return { ok: false as const, error: "Source is required." };
   }
 
-  if (raw.length > SOURCE_MAX_LENGTH) {
-    return {
-      ok: false as const,
-      error: `Source is too long (max ${SOURCE_MAX_LENGTH} chars).`,
-    };
-  }
-
   let value = raw;
 
   if (!/^https?:\/\//i.test(value)) {
@@ -113,35 +96,17 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json(
         { error: "You must be logged in to suggest an event." },
-        { status: 401 }
-      );
-    }
-
-    if (user.emailVerified === false) {
-      return NextResponse.json(
-        { error: "You must verify your email to suggest an event." },
-        { status: 403 }
-      );
-    }
-
-    const rateLimit = await consumeRateLimit({
-      action: "suggest-event",
-      key: buildRateLimitKey(req, user.id),
-      limit: 3,
-      windowMs: 60 * 60 * 1000,
-    });
-
-    if (!rateLimit.ok) {
-      return createRateLimitResponse(
-        rateLimit.retryAfterSec,
-        "Too many event suggestions. Please try again later."
+        { status: 401, headers: NO_STORE_HEADERS }
       );
     }
 
     const body = await req.json().catch(() => null);
 
     if (!body) {
-      return NextResponse.json({ error: "Bad JSON" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Bad JSON" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     const {
@@ -161,48 +126,30 @@ export async function POST(req: Request) {
     };
 
     if (website && website.trim() !== "") {
-      return NextResponse.json({ ok: true });
+      return NextResponse.json(
+        { ok: true },
+        { headers: NO_STORE_HEADERS }
+      );
     }
 
     if (!isValidDayString(day)) {
-      return NextResponse.json({ error: "Invalid day" }, { status: 400 });
-    }
-
-    const trimmedEvent = (event ?? "").trim();
-    const trimmedDescription = (description ?? "").trim();
-    const trimmedTypedEmail = (email ?? "").trim();
-
-    if (trimmedEvent.length < EVENT_MIN_LENGTH) {
-      return NextResponse.json({ error: "Event too short" }, { status: 400 });
-    }
-
-    if (trimmedEvent.length > EVENT_MAX_LENGTH) {
       return NextResponse.json(
-        { error: `Event is too long (max ${EVENT_MAX_LENGTH} chars)` },
-        { status: 400 }
+        { error: "Invalid day" },
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
-    if (trimmedDescription.length < DESCRIPTION_MIN_LENGTH) {
+    if (!event || event.trim().length < 5) {
+      return NextResponse.json(
+        { error: "Event too short" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (!description || description.trim().length < 10) {
       return NextResponse.json(
         { error: "Description too short" },
-        { status: 400 }
-      );
-    }
-
-    if (trimmedDescription.length > DESCRIPTION_MAX_LENGTH) {
-      return NextResponse.json(
-        {
-          error: `Description is too long (max ${DESCRIPTION_MAX_LENGTH} chars)`,
-        },
-        { status: 400 }
-      );
-    }
-
-    if (trimmedTypedEmail.length > EMAIL_MAX_LENGTH) {
-      return NextResponse.json(
-        { error: `Email is too long (max ${EMAIL_MAX_LENGTH} chars)` },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -211,7 +158,7 @@ export async function POST(req: Request) {
     if (!validatedSource.ok) {
       return NextResponse.json(
         { error: validatedSource.error },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -220,35 +167,67 @@ export async function POST(req: Request) {
     if (!toEmail) {
       return NextResponse.json(
         { error: "Suggestions inbox is not configured." },
-        { status: 500 }
+        { status: 500, headers: NO_STORE_HEADERS }
       );
     }
 
     const safeDay = escapeHtml(day);
-    const safeEvent = escapeHtml(trimmedEvent);
-    const safeDescription = escapeHtml(trimmedDescription);
+    const safeEvent = escapeHtml(event.trim());
+    const safeDescription = escapeHtml(description.trim());
     const safeSource = escapeHtml(validatedSource.value);
     const safeUserEmail = escapeHtml(user.email);
-    const safeTypedEmail = escapeHtml(trimmedTypedEmail);
+    const safeUsername = escapeHtml(user.username);
+    const safeTypedEmail = escapeHtml((email ?? "").trim());
 
-    await resend.emails.send({
-      from: "Rate Any Day <onboarding@resend.dev>",
-      to: toEmail,
-      subject: `New historical suggestion for ${safeDay}`,
-      html: `
-        <h2>New historical suggestion</h2>
-        <p><strong>Date:</strong> ${safeDay}</p>
-        <p><strong>Event:</strong> ${safeEvent}</p>
-        <p><strong>Description:</strong><br/>${safeDescription}</p>
-        <p><strong>Source URL:</strong> ${safeSource}</p>
-        <p><strong>Logged user email:</strong> ${safeUserEmail}</p>
-        <p><strong>Typed email field:</strong> ${safeTypedEmail || "—"}</p>
-      `,
-    });
+    try {
+      const mailResult = await sendMail({
+        to: toEmail,
+        subject: `New historical suggestion for ${safeDay}`,
+        text: [
+          "New historical suggestion",
+          `Day: ${day}`,
+          `Event: ${event.trim()}`,
+          `Description: ${description.trim()}`,
+          `Source URL: ${validatedSource.value}`,
+          `Logged user: @${user.username}`,
+          `Logged user email: ${user.email}`,
+          `Typed email field: ${(email ?? "").trim() || "—"}`,
+        ].join("\n"),
+        html: `
+          <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
+            <h2>New historical suggestion</h2>
+            <p><strong>Date:</strong> ${safeDay}</p>
+            <p><strong>Event:</strong> ${safeEvent}</p>
+            <p><strong>Description:</strong><br/>${safeDescription.replace(/\n/g, "<br/>")}</p>
+            <p><strong>Source URL:</strong> ${safeSource}</p>
+            <p><strong>Logged user:</strong> @${safeUsername}</p>
+            <p><strong>Logged user email:</strong> ${safeUserEmail}</p>
+            <p><strong>Typed email field:</strong> ${safeTypedEmail || "—"}</p>
+          </div>
+        `,
+      });
 
-    return NextResponse.json({ ok: true });
+      console.log("suggest-event email sent:", mailResult?.id);
+    } catch (mailError) {
+      console.error("suggest-event mail send error:", mailError);
+
+      return NextResponse.json(
+        { error: "Could not send suggestion email." },
+        { status: 500, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    return NextResponse.json(
+      { ok: true },
+      {
+        headers: NO_STORE_HEADERS,
+      }
+    );
   } catch (error) {
     console.error("suggest-event POST error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }
