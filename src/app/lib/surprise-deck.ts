@@ -1,16 +1,20 @@
 import { prisma } from "@/app/lib/prisma";
 import { getOrCreateVisitorId, getVisitorId } from "@/app/lib/visitor-id";
 
-const SURPRISE_ENGINE_VERSION = "v17-realtime-balanced";
-const SURPRISE_HISTORY_MAX = 120;
-const EXACT_DAY_HARD_COOLDOWN = 72;
-const MONTH_HARD_COOLDOWN = 3;
-const YEAR_HARD_COOLDOWN = 8;
-const DECADE_HARD_COOLDOWN = 5;
-const CENTURY_HARD_COOLDOWN = 3;
-const MONTH_DAY_HARD_COOLDOWN = 18;
-const MIN_EXACT_FILTER_SIZE = 2;
-const MIN_BUCKET_CANDIDATES = 1;
+const SURPRISE_ENGINE_VERSION = "v19-monthday-first-balanced";
+const SURPRISE_HISTORY_MAX = 360;
+const EXACT_DAY_COOLDOWN_MIN = 48;
+const EXACT_DAY_COOLDOWN_MAX = 120;
+const EXACT_DAY_COOLDOWN_POOL_RATIO = 0.45;
+const MONTH_DAY_HARD_COOLDOWN = 48;
+const MONTH_HARD_COOLDOWN = 5;
+const YEAR_HARD_COOLDOWN = 10;
+const DECADE_HARD_COOLDOWN = 7;
+const CENTURY_HARD_COOLDOWN = 4;
+const MIN_CANDIDATE_DAYS = 10;
+const MIN_DISTINCT_MONTHS = 4;
+const MIN_DISTINCT_MONTH_DAYS = 8;
+const FINAL_EXACT_DAY_POOL_MAX = 36;
 
 type OwnerKind = "user" | "visitor";
 
@@ -33,11 +37,12 @@ type CacheDayRow = {
   updatedAt: Date;
 };
 
-type BucketOption<T extends string | number> = {
-  value: T;
-  usage: number;
-  isRecent: boolean;
-  baseWeight?: number;
+type SurprisePool = {
+  days: string[];
+  size: number;
+  signature: string;
+  monthFrequency: Map<number, number>;
+  monthDayFrequency: Map<string, number>;
 };
 
 type HistoryState = {
@@ -56,17 +61,9 @@ type HistoryState = {
   recentMonthDays: Set<string>;
 };
 
-type SurprisePool = {
-  days: string[];
-  size: number;
-  signature: string;
-};
-
-type BucketTarget = {
-  century: number | null;
-  decade: number | null;
-  month: number | null;
-  monthDay: string | null;
+type WeightedValue<T> = {
+  value: T;
+  weight: number;
 };
 
 function isValidDayString(value?: string | null): value is string {
@@ -101,6 +98,10 @@ function randomUnit() {
   return Math.random();
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function shuffleArray<T>(items: T[]): T[] {
   const arr = [...items];
 
@@ -112,49 +113,29 @@ function shuffleArray<T>(items: T[]): T[] {
   return arr;
 }
 
-function pickWeightedOption<T extends string | number>(
-  options: BucketOption<T>[],
-  config?: {
-    usagePower?: number;
-    recentPenalty?: number;
-  }
-): T | null {
-  if (options.length === 0) return null;
+function pickWeightedValue<T>(items: WeightedValue<T>[]): T | null {
+  if (items.length === 0) return null;
 
-  const usagePower = config?.usagePower ?? 1.35;
-  const recentPenalty = config?.recentPenalty ?? 0.22;
-
-  const weighted = options.map((option) => {
-    const usageWeight = 1 / Math.pow(option.usage + 1, usagePower);
-    const recencyWeight = option.isRecent ? recentPenalty : 1;
-    const baseWeight = option.baseWeight ?? 1;
-
-    return {
-      value: option.value,
-      weight: Math.max(0.0001, usageWeight * recencyWeight * baseWeight),
-    };
-  });
-
-  const totalWeight = weighted.reduce(
-    (sum: number, option: { value: T; weight: number }) => sum + option.weight,
+  const totalWeight = items.reduce(
+    (sum: number, item: WeightedValue<T>) => sum + Math.max(0, item.weight),
     0
   );
 
   if (totalWeight <= 0) {
-    return shuffleArray(options)[0]?.value ?? null;
+    return shuffleArray(items)[0]?.value ?? null;
   }
 
   let roll = randomUnit() * totalWeight;
 
-  for (const option of weighted) {
-    roll -= option.weight;
+  for (const item of items) {
+    roll -= Math.max(0, item.weight);
 
     if (roll <= 0) {
-      return option.value;
+      return item.value;
     }
   }
 
-  return weighted[weighted.length - 1]?.value ?? null;
+  return items[items.length - 1]?.value ?? null;
 }
 
 function normalizeStoredDays(value: unknown): string[] {
@@ -174,7 +155,43 @@ function incrementMapCount<K>(map: Map<K, number>, key: K) {
   map.set(key, (map.get(key) ?? 0) + 1);
 }
 
-function buildHistoryState(historyDays: string[]): HistoryState {
+function countValues<T extends string | number>(values: T[]) {
+  const counts = new Map<T, number>();
+
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
+function uniqueSortedNumbers(values: number[]) {
+  return Array.from(new Set(values)).sort((a, b) => a - b);
+}
+
+function uniqueSortedStrings(values: string[]) {
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
+
+function countDistinctMonths(days: string[]) {
+  return new Set(days.map(parseMonth)).size;
+}
+
+function countDistinctMonthDays(days: string[]) {
+  return new Set(days.map(parseMonthDay)).size;
+}
+
+function getExactDayCooldown(poolSize: number) {
+  if (poolSize <= 1) return 0;
+
+  return clamp(
+    Math.floor(poolSize * EXACT_DAY_COOLDOWN_POOL_RATIO),
+    EXACT_DAY_COOLDOWN_MIN,
+    EXACT_DAY_COOLDOWN_MAX
+  );
+}
+
+function buildHistoryState(historyDays: string[], poolSize: number): HistoryState {
   const dayUsage = new Map<string, number>();
   const monthUsage = new Map<number, number>();
   const yearUsage = new Map<number, number>();
@@ -212,7 +229,7 @@ function buildHistoryState(historyDays: string[]): HistoryState {
     centuryUsage,
     monthDayUsage,
     dayOfMonthUsage,
-    recentExactDays: new Set(validHistory.slice(0, EXACT_DAY_HARD_COOLDOWN)),
+    recentExactDays: new Set(validHistory.slice(0, getExactDayCooldown(poolSize))),
     recentMonths: new Set(validHistory.map(parseMonth).slice(0, MONTH_HARD_COOLDOWN)),
     recentYears: new Set(validHistory.map(parseYear).slice(0, YEAR_HARD_COOLDOWN)),
     recentDecades: new Set(
@@ -263,33 +280,18 @@ function mergeHistories(
   return merged;
 }
 
-function uniqueSortedNumbers(values: number[]) {
-  return Array.from(new Set(values)).sort((a, b) => a - b);
-}
-
-function uniqueSortedStrings(values: string[]) {
-  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
-}
-
 function filterDays(
   days: string[],
   filters: {
-    century?: number | null;
-    decade?: number | null;
     month?: number | null;
     monthDay?: string | null;
+    year?: number | null;
+    decade?: number | null;
+    century?: number | null;
   }
 ) {
   return days.filter((day) => {
     const year = parseYear(day);
-
-    if (filters.century !== undefined && filters.century !== null) {
-      if (getCentury(year) !== filters.century) return false;
-    }
-
-    if (filters.decade !== undefined && filters.decade !== null) {
-      if (getDecade(year) !== filters.decade) return false;
-    }
 
     if (filters.month !== undefined && filters.month !== null) {
       if (parseMonth(day) !== filters.month) return false;
@@ -299,244 +301,210 @@ function filterDays(
       if (parseMonthDay(day) !== filters.monthDay) return false;
     }
 
+    if (filters.year !== undefined && filters.year !== null) {
+      if (year !== filters.year) return false;
+    }
+
+    if (filters.decade !== undefined && filters.decade !== null) {
+      if (getDecade(year) !== filters.decade) return false;
+    }
+
+    if (filters.century !== undefined && filters.century !== null) {
+      if (getCentury(year) !== filters.century) return false;
+    }
+
     return true;
   });
 }
 
-function buildBucketOptions<T extends string | number>(
-  values: T[],
-  usageMap: Map<T, number>,
-  recentSet: Set<T>,
-  baseWeights?: Map<T, number>
-): BucketOption<T>[] {
-  return values.map((value) => ({
-    value,
-    usage: usageMap.get(value) ?? 0,
-    isRecent: recentSet.has(value),
-    baseWeight: baseWeights?.get(value),
-  }));
-}
+function preferWithoutRecentExact(days: string[], state: HistoryState) {
+  const filtered = days.filter((day) => !state.recentExactDays.has(day));
 
-function countValues<T extends string | number>(values: T[]) {
-  const counts = new Map<T, number>();
-
-  for (const value of values) {
-    counts.set(value, (counts.get(value) ?? 0) + 1);
-  }
-
-  return counts;
-}
-
-function chooseCentury(poolDays: string[], state: HistoryState) {
-  const centuries = uniqueSortedNumbers(
-    poolDays.map((day) => getCentury(parseYear(day)))
-  );
-
-  return pickWeightedOption(
-    buildBucketOptions(centuries, state.centuryUsage, state.recentCenturies),
-    { usagePower: 1.25, recentPenalty: 0.45 }
-  );
-}
-
-function chooseDecade(poolDays: string[], state: HistoryState, century: number | null) {
-  const scopedDays = century === null ? poolDays : filterDays(poolDays, { century });
-  const decades = uniqueSortedNumbers(
-    scopedDays.map((day) => getDecade(parseYear(day)))
-  );
-
-  return pickWeightedOption(
-    buildBucketOptions(decades, state.decadeUsage, state.recentDecades),
-    { usagePower: 1.3, recentPenalty: 0.35 }
-  );
-}
-
-function chooseMonth(
-  poolDays: string[],
-  state: HistoryState,
-  scope: { century: number | null; decade: number | null }
-) {
-  const scopedDays = filterDays(poolDays, scope);
-  const months = uniqueSortedNumbers(scopedDays.map(parseMonth));
-  const monthFrequency = countValues(scopedDays.map(parseMonth));
-  const baseWeights = new Map<number, number>();
-
-  for (const month of months) {
-    const frequency = monthFrequency.get(month) ?? 1;
-    baseWeights.set(month, 1 / Math.sqrt(frequency));
-  }
-
-  return pickWeightedOption(
-    buildBucketOptions(months, state.monthUsage, state.recentMonths, baseWeights),
-    { usagePower: 1.35, recentPenalty: 0.3 }
-  );
-}
-
-function chooseMonthDay(
-  poolDays: string[],
-  state: HistoryState,
-  scope: { century: number | null; decade: number | null; month: number | null }
-) {
-  const scopedDays = filterDays(poolDays, scope);
-  const monthDays = uniqueSortedStrings(scopedDays.map(parseMonthDay));
-  const monthDayFrequency = countValues(scopedDays.map(parseMonthDay));
-  const baseWeights = new Map<string, number>();
-
-  for (const monthDay of monthDays) {
-    const frequency = monthDayFrequency.get(monthDay) ?? 1;
-    baseWeights.set(monthDay, 1 / Math.sqrt(frequency));
-  }
-
-  return pickWeightedOption(
-    buildBucketOptions(
-      monthDays,
-      state.monthDayUsage,
-      state.recentMonthDays,
-      baseWeights
-    ),
-    { usagePower: 1.55, recentPenalty: 0.12 }
-  );
-}
-
-function chooseBucketTarget(poolDays: string[], state: HistoryState): BucketTarget {
-  const century = chooseCentury(poolDays, state);
-  const decade = chooseDecade(poolDays, state, century);
-  const month = chooseMonth(poolDays, state, { century, decade });
-  const monthDay = chooseMonthDay(poolDays, state, { century, decade, month });
-
-  return {
-    century,
-    decade,
-    month,
-    monthDay,
-  };
-}
-
-function scoreCandidate(day: string, state: HistoryState) {
-  const year = parseYear(day);
-  const month = parseMonth(day);
-  const dayOfMonth = parseDayOfMonth(day);
-  const monthDay = parseMonthDay(day);
-  const decade = getDecade(year);
-  const century = getCentury(year);
-
-  let score =
-    (state.dayUsage.get(day) ?? 0) * 1500 +
-    (state.monthDayUsage.get(monthDay) ?? 0) * 95 +
-    (state.monthUsage.get(month) ?? 0) * 24 +
-    (state.dayOfMonthUsage.get(dayOfMonth) ?? 0) * 3 +
-    (state.yearUsage.get(year) ?? 0) * 90 +
-    (state.decadeUsage.get(decade) ?? 0) * 34 +
-    (state.centuryUsage.get(century) ?? 0) * 18;
-
-  if (state.recentExactDays.has(day)) score += 10000;
-  if (state.recentMonthDays.has(monthDay)) score += 900;
-  if (state.recentYears.has(year)) score += 380;
-  if (state.recentDecades.has(decade)) score += 130;
-  if (state.recentCenturies.has(century)) score += 40;
-  if (state.recentMonths.has(month)) score += 85;
-
-  return score;
-}
-
-function applyExactCooldown(days: string[], state: HistoryState) {
-  const withoutRecentExact = days.filter((day) => !state.recentExactDays.has(day));
-
-  if (withoutRecentExact.length >= MIN_EXACT_FILTER_SIZE) {
-    return withoutRecentExact;
+  if (filtered.length >= MIN_CANDIDATE_DAYS) {
+    return filtered;
   }
 
   return days;
 }
 
-function buildCandidateSet(
-  poolDays: string[],
-  state: HistoryState,
-  target: BucketTarget
-) {
-  const attempts = [
-    filterDays(poolDays, {
-      century: target.century,
-      decade: target.decade,
-      month: target.month,
-      monthDay: target.monthDay,
-    }),
-    filterDays(poolDays, {
-      century: target.century,
-      decade: target.decade,
-      monthDay: target.monthDay,
-    }),
-    filterDays(poolDays, {
-      monthDay: target.monthDay,
-    }),
-    filterDays(poolDays, {
-      century: target.century,
-      decade: target.decade,
-      month: target.month,
-    }),
-    filterDays(poolDays, {
-      century: target.century,
-      decade: target.decade,
-    }),
-    filterDays(poolDays, {
-      century: target.century,
-    }),
-    poolDays,
-  ];
+function preferWithoutRecentMonthDays(days: string[], state: HistoryState) {
+  const filtered = days.filter((day) => !state.recentMonthDays.has(parseMonthDay(day)));
 
-  for (const attempt of attempts) {
-    const unique = uniqueSortedStrings(attempt);
-
-    if (unique.length >= MIN_BUCKET_CANDIDATES) {
-      return applyExactCooldown(unique, state);
-    }
+  if (
+    filtered.length >= MIN_CANDIDATE_DAYS &&
+    countDistinctMonthDays(filtered) >= Math.min(MIN_DISTINCT_MONTH_DAYS, filtered.length)
+  ) {
+    return filtered;
   }
 
-  return [];
+  return days;
 }
 
-function pickRealtimeBalancedDay(poolDays: string[], historyDays: string[]) {
-  const uniqueDays = uniqueSortedStrings(poolDays.filter(isValidDayString));
+function preferWithoutRecentMonths(days: string[], state: HistoryState) {
+  const filtered = days.filter((day) => !state.recentMonths.has(parseMonth(day)));
+
+  if (
+    filtered.length >= MIN_CANDIDATE_DAYS &&
+    countDistinctMonths(filtered) >= MIN_DISTINCT_MONTHS
+  ) {
+    return filtered;
+  }
+
+  return days;
+}
+
+function buildSelectionPool(days: string[], state: HistoryState) {
+  const withoutRecentExact = preferWithoutRecentExact(days, state);
+  const withoutRecentMonthDays = preferWithoutRecentMonthDays(withoutRecentExact, state);
+
+  return preferWithoutRecentMonths(withoutRecentMonthDays, state);
+}
+
+function buildMonthOptions(
+  days: string[],
+  state: HistoryState,
+  monthFrequency: Map<number, number>
+): WeightedValue<number>[] {
+  const months = uniqueSortedNumbers(days.map(parseMonth));
+
+  return months.map((month) => {
+    const usage = state.monthUsage.get(month) ?? 0;
+    const poolCount = monthFrequency.get(month) ?? 1;
+    const localCount = days.filter((day) => parseMonth(day) === month).length;
+
+    const usageWeight = 1 / Math.pow(usage + 1, 2.15);
+    const recentWeight = state.recentMonths.has(month) ? 0.12 : 1;
+    const poolDominanceWeight = 1 / Math.pow(Math.max(1, poolCount), 0.32);
+    const localAvailabilityWeight = Math.pow(Math.max(1, localCount), 0.18);
+
+    return {
+      value: month,
+      weight: Math.max(
+        0.000001,
+        usageWeight * recentWeight * poolDominanceWeight * localAvailabilityWeight
+      ),
+    };
+  });
+}
+
+function buildMonthDayOptions(
+  days: string[],
+  state: HistoryState,
+  monthDayFrequency: Map<string, number>
+): WeightedValue<string>[] {
+  const monthDays = uniqueSortedStrings(days.map(parseMonthDay));
+
+  return monthDays.map((monthDay) => {
+    const usage = state.monthDayUsage.get(monthDay) ?? 0;
+    const poolCount = monthDayFrequency.get(monthDay) ?? 1;
+    const localCount = days.filter((day) => parseMonthDay(day) === monthDay).length;
+
+    const usageWeight = 1 / Math.pow(usage + 1, 2.85);
+    const recentWeight = state.recentMonthDays.has(monthDay) ? 0.01 : 1;
+    const poolDominanceWeight = 1 / Math.pow(Math.max(1, poolCount), 1.35);
+    const localAvailabilityWeight = Math.pow(Math.max(1, localCount), 0.08);
+
+    return {
+      value: monthDay,
+      weight: Math.max(
+        0.000001,
+        usageWeight * recentWeight * poolDominanceWeight * localAvailabilityWeight
+      ),
+    };
+  });
+}
+
+function scoreExactDay(day: string, state: HistoryState) {
+  const year = parseYear(day);
+  const dayOfMonth = parseDayOfMonth(day);
+  const decade = getDecade(year);
+  const century = getCentury(year);
+
+  let score =
+    (state.dayUsage.get(day) ?? 0) * 10000 +
+    (state.yearUsage.get(year) ?? 0) * 95 +
+    (state.decadeUsage.get(decade) ?? 0) * 36 +
+    (state.centuryUsage.get(century) ?? 0) * 20 +
+    (state.dayOfMonthUsage.get(dayOfMonth) ?? 0) * 3;
+
+  if (state.recentExactDays.has(day)) score += 50000;
+  if (state.recentYears.has(year)) score += 420;
+  if (state.recentDecades.has(decade)) score += 140;
+  if (state.recentCenturies.has(century)) score += 45;
+
+  return score + randomUnit() * 75;
+}
+
+function pickExactDay(days: string[], state: HistoryState) {
+  if (days.length === 0) return null;
+  if (days.length === 1) return days[0];
+
+  const scored = days.map((day) => ({
+    day,
+    score: scoreExactDay(day, state),
+  }));
+
+  scored.sort((a, b) => a.score - b.score || a.day.localeCompare(b.day));
+
+  const bestScore = scored[0]?.score ?? 0;
+  const window = scored
+    .filter((item) => item.score <= bestScore + 380)
+    .slice(0, FINAL_EXACT_DAY_POOL_MAX);
+  const windowBestScore = window[0]?.score ?? bestScore;
+
+  return pickWeightedValue(
+    window.map((item) => ({
+      value: item.day,
+      weight: 1 / Math.pow(Math.max(1, item.score - windowBestScore + 1), 1.2),
+    }))
+  );
+}
+
+function pickRealtimeBalancedDay(pool: SurprisePool, historyDays: string[]) {
+  const uniqueDays = uniqueSortedStrings(pool.days.filter(isValidDayString));
 
   if (uniqueDays.length === 0) return null;
   if (uniqueDays.length === 1) return uniqueDays[0];
 
-  const state = buildHistoryState(historyDays);
-  const target = chooseBucketTarget(uniqueDays, state);
-  const candidates = buildCandidateSet(uniqueDays, state, target);
-  const safeCandidates = candidates.length > 0 ? candidates : uniqueDays;
+  const state = buildHistoryState(historyDays, uniqueDays.length);
+  const selectionPool = buildSelectionPool(uniqueDays, state);
+  const safeSelectionPool = selectionPool.length > 0 ? selectionPool : uniqueDays;
 
-  const scored = safeCandidates.map((day) => ({
-    day,
-    score: scoreCandidate(day, state) + randomUnit() * 140,
-  }));
-
-  scored.sort((a, b) => a.score - b.score);
-
-  const bestScore = scored[0]?.score ?? 0;
-  const softWindow = scored.filter((item) => item.score <= bestScore + 180);
-  const choicePool = softWindow.slice(0, Math.min(36, softWindow.length || 1));
-
-  const weightedChoices = choicePool.map((item) => ({
-    value: item.day,
-    weight: 1 / Math.pow(Math.max(1, item.score - bestScore + 1), 1.18),
-  }));
-
-  const totalWeight = weightedChoices.reduce(
-    (sum: number, item: { value: string; weight: number }) => sum + item.weight,
-    0
+  const selectedMonth = pickWeightedValue(
+    buildMonthOptions(safeSelectionPool, state, pool.monthFrequency)
   );
 
-  let roll = randomUnit() * totalWeight;
+  const monthScopedDays = selectedMonth
+    ? filterDays(safeSelectionPool, { month: selectedMonth })
+    : safeSelectionPool;
+  const safeMonthScopedDays =
+    monthScopedDays.length > 0 ? monthScopedDays : safeSelectionPool;
 
-  for (const item of weightedChoices) {
-    roll -= item.weight;
+  const selectedMonthDay = pickWeightedValue(
+    buildMonthDayOptions(safeMonthScopedDays, state, pool.monthDayFrequency)
+  );
 
-    if (roll <= 0) {
-      return item.value;
-    }
+  const monthDayScopedDays = selectedMonthDay
+    ? filterDays(safeMonthScopedDays, { monthDay: selectedMonthDay })
+    : safeMonthScopedDays;
+  const safeMonthDayScopedDays =
+    monthDayScopedDays.length > 0 ? monthDayScopedDays : safeMonthScopedDays;
+
+  const day = pickExactDay(safeMonthDayScopedDays, state);
+
+  if (isValidDayString(day)) {
+    return day;
   }
 
-  return choicePool[choicePool.length - 1]?.day ?? scored[0]?.day ?? null;
+  return pickExactDay(safeSelectionPool, state);
+}
+
+function buildMonthFrequency(days: string[]) {
+  return countValues(days.map(parseMonth));
+}
+
+function buildMonthDayFrequency(days: string[]) {
+  return countValues(days.map(parseMonthDay));
 }
 
 async function getSurprisePool(): Promise<SurprisePool> {
@@ -567,6 +535,8 @@ async function getSurprisePool(): Promise<SurprisePool> {
     days,
     size: days.length,
     signature: `${SURPRISE_ENGINE_VERSION}:${days.length}:${lastUpdatedAt}`,
+    monthFrequency: buildMonthFrequency(days),
+    monthDayFrequency: buildMonthDayFrequency(days),
   };
 }
 
@@ -686,7 +656,7 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
 
   const poolSet = new Set(pool.days);
   const recentHistory = getRecentHistory(row, poolSet);
-  const day = pickRealtimeBalancedDay(pool.days, recentHistory);
+  const day = pickRealtimeBalancedDay(pool, recentHistory);
 
   if (!isValidDayString(day)) {
     return null;
@@ -710,5 +680,31 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
     source: "realtime-balanced" as const,
     remaining: Math.max(0, pool.days.length - new Set(nextHistory).size),
     total: pool.size,
+  };
+}
+
+export async function simulateSurpriseDays(count: number) {
+  const pool = await getSurprisePool();
+  const days: string[] = [];
+  let history: string[] = [];
+
+  for (let i = 0; i < count; i += 1) {
+    const day = pickRealtimeBalancedDay(pool, history);
+
+    if (!isValidDayString(day)) {
+      break;
+    }
+
+    days.push(day);
+    history = [day, ...history.filter((item) => item !== day)].slice(
+      0,
+      SURPRISE_HISTORY_MAX
+    );
+  }
+
+  return {
+    days,
+    total: pool.size,
+    poolSignature: pool.signature,
   };
 }
