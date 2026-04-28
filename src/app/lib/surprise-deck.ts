@@ -1,14 +1,18 @@
 import { prisma } from "@/app/lib/prisma";
 import { getOrCreateVisitorId, getVisitorId } from "@/app/lib/visitor-id";
 
-const SURPRISE_DECK_VERSION = "v12-seeded-fresh-start-balanced";
-const MONTH_COOLDOWN = 4;
-const YEAR_COOLDOWN = 6;
-const DECADE_COOLDOWN = 4;
-const MONTH_DAY_COOLDOWN = 12;
-const ERA_COOLDOWN = 2;
+const SURPRISE_ENGINE_VERSION = "v17-realtime-balanced";
+const SURPRISE_HISTORY_MAX = 120;
+const EXACT_DAY_HARD_COOLDOWN = 72;
+const MONTH_HARD_COOLDOWN = 3;
+const YEAR_HARD_COOLDOWN = 8;
+const DECADE_HARD_COOLDOWN = 5;
+const CENTURY_HARD_COOLDOWN = 3;
+const MONTH_DAY_HARD_COOLDOWN = 18;
+const MIN_EXACT_FILTER_SIZE = 2;
+const MIN_BUCKET_CANDIDATES = 1;
 
-type EraBucket = "nineteenth" | "twentieth" | "twentyFirst";
+type OwnerKind = "user" | "visitor";
 
 type DeckRowLike = {
   deck: unknown;
@@ -29,29 +33,40 @@ type CacheDayRow = {
   updatedAt: Date;
 };
 
+type BucketOption<T extends string | number> = {
+  value: T;
+  usage: number;
+  isRecent: boolean;
+  baseWeight?: number;
+};
+
 type HistoryState = {
+  dayUsage: Map<string, number>;
   monthUsage: Map<number, number>;
   yearUsage: Map<number, number>;
   decadeUsage: Map<number, number>;
-  eraUsage: Map<EraBucket, number>;
+  centuryUsage: Map<number, number>;
   monthDayUsage: Map<string, number>;
   dayOfMonthUsage: Map<number, number>;
-  recentMonths: number[];
-  recentYears: number[];
-  recentDecades: number[];
-  recentMonthDays: string[];
-  recentEras: EraBucket[];
-};
-
-type DeckBuildResult = {
-  deck: string[];
-  cursor: number;
+  recentExactDays: Set<string>;
+  recentMonths: Set<number>;
+  recentYears: Set<number>;
+  recentDecades: Set<number>;
+  recentCenturies: Set<number>;
+  recentMonthDays: Set<string>;
 };
 
 type SurprisePool = {
   days: string[];
   size: number;
   signature: string;
+};
+
+type BucketTarget = {
+  century: number | null;
+  decade: number | null;
+  month: number | null;
+  monthDay: string | null;
 };
 
 function isValidDayString(value?: string | null): value is string {
@@ -78,31 +93,71 @@ function getDecade(year: number) {
   return Math.floor(year / 10) * 10;
 }
 
-function getEraBucket(day: string): EraBucket {
-  const year = parseYear(day);
+function getCentury(year: number) {
+  return Math.floor(year / 100) * 100;
+}
 
-  if (year >= 1800 && year <= 1899) return "nineteenth";
-  if (year >= 2000) return "twentyFirst";
-  return "twentieth";
+function randomUnit() {
+  return Math.random();
 }
 
 function shuffleArray<T>(items: T[]): T[] {
   const arr = [...items];
 
   for (let i = arr.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(randomUnit() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
 
   return arr;
 }
 
-function pickRandom<T>(items: T[]): T | null {
-  if (items.length === 0) return null;
-  return items[Math.floor(Math.random() * items.length)] ?? null;
+function pickWeightedOption<T extends string | number>(
+  options: BucketOption<T>[],
+  config?: {
+    usagePower?: number;
+    recentPenalty?: number;
+  }
+): T | null {
+  if (options.length === 0) return null;
+
+  const usagePower = config?.usagePower ?? 1.35;
+  const recentPenalty = config?.recentPenalty ?? 0.22;
+
+  const weighted = options.map((option) => {
+    const usageWeight = 1 / Math.pow(option.usage + 1, usagePower);
+    const recencyWeight = option.isRecent ? recentPenalty : 1;
+    const baseWeight = option.baseWeight ?? 1;
+
+    return {
+      value: option.value,
+      weight: Math.max(0.0001, usageWeight * recencyWeight * baseWeight),
+    };
+  });
+
+  const totalWeight = weighted.reduce(
+    (sum: number, option: { value: T; weight: number }) => sum + option.weight,
+    0
+  );
+
+  if (totalWeight <= 0) {
+    return shuffleArray(options)[0]?.value ?? null;
+  }
+
+  let roll = randomUnit() * totalWeight;
+
+  for (const option of weighted) {
+    roll -= option.weight;
+
+    if (roll <= 0) {
+      return option.value;
+    }
+  }
+
+  return weighted[weighted.length - 1]?.value ?? null;
 }
 
-function normalizeStoredDeck(value: unknown): string[] {
+function normalizeStoredDays(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
 
   return Array.from(
@@ -115,402 +170,373 @@ function normalizeStoredDeck(value: unknown): string[] {
   );
 }
 
-function getSeenDays(row?: DeckRowLike | null): string[] {
-  if (!row) return [];
-
-  const deck = normalizeStoredDeck(row.deck);
-  const safeCursor = Math.max(0, Math.min(row.cursor ?? 0, deck.length));
-
-  return deck.slice(0, safeCursor);
-}
-
 function incrementMapCount<K>(map: Map<K, number>, key: K) {
   map.set(key, (map.get(key) ?? 0) + 1);
 }
 
 function buildHistoryState(historyDays: string[]): HistoryState {
+  const dayUsage = new Map<string, number>();
   const monthUsage = new Map<number, number>();
   const yearUsage = new Map<number, number>();
   const decadeUsage = new Map<number, number>();
-  const eraUsage = new Map<EraBucket, number>();
+  const centuryUsage = new Map<number, number>();
   const monthDayUsage = new Map<string, number>();
   const dayOfMonthUsage = new Map<number, number>();
 
-  const validHistory = historyDays.filter(isValidDayString);
+  const validHistory = historyDays
+    .filter(isValidDayString)
+    .slice(0, SURPRISE_HISTORY_MAX);
 
   for (const day of validHistory) {
     const year = parseYear(day);
     const month = parseMonth(day);
     const decade = getDecade(year);
-    const era = getEraBucket(day);
+    const century = getCentury(year);
     const monthDay = parseMonthDay(day);
     const dayOfMonth = parseDayOfMonth(day);
 
+    incrementMapCount(dayUsage, day);
     incrementMapCount(monthUsage, month);
     incrementMapCount(yearUsage, year);
     incrementMapCount(decadeUsage, decade);
-    incrementMapCount(eraUsage, era);
+    incrementMapCount(centuryUsage, century);
     incrementMapCount(monthDayUsage, monthDay);
     incrementMapCount(dayOfMonthUsage, dayOfMonth);
   }
 
   return {
+    dayUsage,
     monthUsage,
     yearUsage,
     decadeUsage,
-    eraUsage,
+    centuryUsage,
     monthDayUsage,
     dayOfMonthUsage,
-    recentMonths: validHistory.map(parseMonth).slice(-MONTH_COOLDOWN),
-    recentYears: validHistory.map(parseYear).slice(-YEAR_COOLDOWN),
-    recentDecades: validHistory
-      .map((day) => getDecade(parseYear(day)))
-      .slice(-DECADE_COOLDOWN),
-    recentMonthDays: validHistory.map(parseMonthDay).slice(-MONTH_DAY_COOLDOWN),
-    recentEras: validHistory.map(getEraBucket).slice(-ERA_COOLDOWN),
+    recentExactDays: new Set(validHistory.slice(0, EXACT_DAY_HARD_COOLDOWN)),
+    recentMonths: new Set(validHistory.map(parseMonth).slice(0, MONTH_HARD_COOLDOWN)),
+    recentYears: new Set(validHistory.map(parseYear).slice(0, YEAR_HARD_COOLDOWN)),
+    recentDecades: new Set(
+      validHistory
+        .map((day) => getDecade(parseYear(day)))
+        .slice(0, DECADE_HARD_COOLDOWN)
+    ),
+    recentCenturies: new Set(
+      validHistory
+        .map((day) => getCentury(parseYear(day)))
+        .slice(0, CENTURY_HARD_COOLDOWN)
+    ),
+    recentMonthDays: new Set(
+      validHistory.map(parseMonthDay).slice(0, MONTH_DAY_HARD_COOLDOWN)
+    ),
   };
 }
 
-function updateHistoryState(state: HistoryState, day: string) {
-  const year = parseYear(day);
-  const month = parseMonth(day);
-  const decade = getDecade(year);
-  const era = getEraBucket(day);
-  const monthDay = parseMonthDay(day);
-  const dayOfMonth = parseDayOfMonth(day);
+function getRecentHistory(row?: DeckRowLike | null, poolSet?: Set<string>) {
+  const history = normalizeStoredDays(row?.deck).slice(0, SURPRISE_HISTORY_MAX);
 
-  incrementMapCount(state.monthUsage, month);
-  incrementMapCount(state.yearUsage, year);
-  incrementMapCount(state.decadeUsage, decade);
-  incrementMapCount(state.eraUsage, era);
-  incrementMapCount(state.monthDayUsage, monthDay);
-  incrementMapCount(state.dayOfMonthUsage, dayOfMonth);
-
-  state.recentMonths.push(month);
-  if (state.recentMonths.length > MONTH_COOLDOWN) state.recentMonths.shift();
-
-  state.recentYears.push(year);
-  if (state.recentYears.length > YEAR_COOLDOWN) state.recentYears.shift();
-
-  state.recentDecades.push(decade);
-  if (state.recentDecades.length > DECADE_COOLDOWN) state.recentDecades.shift();
-
-  state.recentMonthDays.push(monthDay);
-  if (state.recentMonthDays.length > MONTH_DAY_COOLDOWN) {
-    state.recentMonthDays.shift();
+  if (!poolSet) {
+    return history;
   }
 
-  state.recentEras.push(era);
-  if (state.recentEras.length > ERA_COOLDOWN) {
-    state.recentEras.shift();
-  }
+  return history.filter((day) => poolSet.has(day));
 }
 
-function getMonthPriorityOrder(
-  buckets: Map<number, string[]>,
+function mergeHistories(
+  primary: string[],
+  secondary: string[],
+  poolSet: Set<string>
+) {
+  const merged: string[] = [];
+  const seen = new Set<string>();
+
+  for (const day of [...primary, ...secondary]) {
+    if (!poolSet.has(day) || seen.has(day) || !isValidDayString(day)) continue;
+
+    merged.push(day);
+    seen.add(day);
+
+    if (merged.length >= SURPRISE_HISTORY_MAX) {
+      break;
+    }
+  }
+
+  return merged;
+}
+
+function uniqueSortedNumbers(values: number[]) {
+  return Array.from(new Set(values)).sort((a, b) => a - b);
+}
+
+function uniqueSortedStrings(values: string[]) {
+  return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b));
+}
+
+function filterDays(
+  days: string[],
+  filters: {
+    century?: number | null;
+    decade?: number | null;
+    month?: number | null;
+    monthDay?: string | null;
+  }
+) {
+  return days.filter((day) => {
+    const year = parseYear(day);
+
+    if (filters.century !== undefined && filters.century !== null) {
+      if (getCentury(year) !== filters.century) return false;
+    }
+
+    if (filters.decade !== undefined && filters.decade !== null) {
+      if (getDecade(year) !== filters.decade) return false;
+    }
+
+    if (filters.month !== undefined && filters.month !== null) {
+      if (parseMonth(day) !== filters.month) return false;
+    }
+
+    if (filters.monthDay !== undefined && filters.monthDay !== null) {
+      if (parseMonthDay(day) !== filters.monthDay) return false;
+    }
+
+    return true;
+  });
+}
+
+function buildBucketOptions<T extends string | number>(
+  values: T[],
+  usageMap: Map<T, number>,
+  recentSet: Set<T>,
+  baseWeights?: Map<T, number>
+): BucketOption<T>[] {
+  return values.map((value) => ({
+    value,
+    usage: usageMap.get(value) ?? 0,
+    isRecent: recentSet.has(value),
+    baseWeight: baseWeights?.get(value),
+  }));
+}
+
+function countValues<T extends string | number>(values: T[]) {
+  const counts = new Map<T, number>();
+
+  for (const value of values) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
+function chooseCentury(poolDays: string[], state: HistoryState) {
+  const centuries = uniqueSortedNumbers(
+    poolDays.map((day) => getCentury(parseYear(day)))
+  );
+
+  return pickWeightedOption(
+    buildBucketOptions(centuries, state.centuryUsage, state.recentCenturies),
+    { usagePower: 1.25, recentPenalty: 0.45 }
+  );
+}
+
+function chooseDecade(poolDays: string[], state: HistoryState, century: number | null) {
+  const scopedDays = century === null ? poolDays : filterDays(poolDays, { century });
+  const decades = uniqueSortedNumbers(
+    scopedDays.map((day) => getDecade(parseYear(day)))
+  );
+
+  return pickWeightedOption(
+    buildBucketOptions(decades, state.decadeUsage, state.recentDecades),
+    { usagePower: 1.3, recentPenalty: 0.35 }
+  );
+}
+
+function chooseMonth(
+  poolDays: string[],
   state: HistoryState,
-  targetEra?: EraBucket
-): number[] {
-  const availableMonths = [...buckets.entries()]
-    .filter(([, days]) => {
-      if (days.length === 0) return false;
-      if (!targetEra) return true;
-      return days.some((day) => getEraBucket(day) === targetEra);
-    })
-    .map(([month]) => month);
+  scope: { century: number | null; decade: number | null }
+) {
+  const scopedDays = filterDays(poolDays, scope);
+  const months = uniqueSortedNumbers(scopedDays.map(parseMonth));
+  const monthFrequency = countValues(scopedDays.map(parseMonth));
+  const baseWeights = new Map<number, number>();
 
-  if (availableMonths.length === 0) return [];
+  for (const month of months) {
+    const frequency = monthFrequency.get(month) ?? 1;
+    baseWeights.set(month, 1 / Math.sqrt(frequency));
+  }
 
-  const nonRecentMonths = availableMonths.filter(
-    (month) => !state.recentMonths.includes(month)
+  return pickWeightedOption(
+    buildBucketOptions(months, state.monthUsage, state.recentMonths, baseWeights),
+    { usagePower: 1.35, recentPenalty: 0.3 }
   );
-  const candidateMonths =
-    nonRecentMonths.length > 0 ? nonRecentMonths : availableMonths;
-
-  const ranked = candidateMonths.map((month) => {
-    const rawDays = buckets.get(month) ?? [];
-    const days = targetEra
-      ? rawDays.filter((day) => getEraBucket(day) === targetEra)
-      : rawDays;
-
-    const usage = state.monthUsage.get(month) ?? 0;
-    const yearSpread = new Set(days.map((day) => parseYear(day))).size;
-    const decadeSpread = new Set(
-      days.map((day) => getDecade(parseYear(day)))
-    ).size;
-
-    return {
-      month,
-      usage,
-      yearSpread,
-      decadeSpread,
-      count: days.length,
-    };
-  });
-
-  ranked.sort((a, b) => {
-    if (a.usage !== b.usage) return a.usage - b.usage;
-    if (a.yearSpread !== b.yearSpread) return b.yearSpread - a.yearSpread;
-    if (a.decadeSpread !== b.decadeSpread) return b.decadeSpread - a.decadeSpread;
-    if (a.count !== b.count) return b.count - a.count;
-    return a.month - b.month;
-  });
-
-  const bestUsage = ranked[0]?.usage ?? 0;
-  const best = ranked.filter((item) => item.usage === bestUsage);
-
-  return shuffleArray(best.map((item) => item.month));
 }
 
-function getEraPriorityOrder(
-  buckets: Map<number, string[]>,
-  state: HistoryState
-): EraBucket[] {
-  const availableEras = Array.from(
-    new Set(
-      [...buckets.values()]
-        .flat()
-        .filter(isValidDayString)
-        .map((day) => getEraBucket(day))
-    )
-  ) as EraBucket[];
+function chooseMonthDay(
+  poolDays: string[],
+  state: HistoryState,
+  scope: { century: number | null; decade: number | null; month: number | null }
+) {
+  const scopedDays = filterDays(poolDays, scope);
+  const monthDays = uniqueSortedStrings(scopedDays.map(parseMonthDay));
+  const monthDayFrequency = countValues(scopedDays.map(parseMonthDay));
+  const baseWeights = new Map<string, number>();
 
-  if (availableEras.length === 0) return [];
+  for (const monthDay of monthDays) {
+    const frequency = monthDayFrequency.get(monthDay) ?? 1;
+    baseWeights.set(monthDay, 1 / Math.sqrt(frequency));
+  }
 
-  const nonRecentEras = availableEras.filter(
-    (era) => !state.recentEras.includes(era)
+  return pickWeightedOption(
+    buildBucketOptions(
+      monthDays,
+      state.monthDayUsage,
+      state.recentMonthDays,
+      baseWeights
+    ),
+    { usagePower: 1.55, recentPenalty: 0.12 }
   );
-  const candidateEras =
-    nonRecentEras.length > 0 ? nonRecentEras : availableEras;
+}
 
-  const ranked = candidateEras.map((era) => {
-    const count = [...buckets.values()]
-      .flat()
-      .filter((day) => getEraBucket(day) === era).length;
+function chooseBucketTarget(poolDays: string[], state: HistoryState): BucketTarget {
+  const century = chooseCentury(poolDays, state);
+  const decade = chooseDecade(poolDays, state, century);
+  const month = chooseMonth(poolDays, state, { century, decade });
+  const monthDay = chooseMonthDay(poolDays, state, { century, decade, month });
 
-    return {
-      era,
-      usage: state.eraUsage.get(era) ?? 0,
-      count,
-    };
-  });
-
-  ranked.sort((a, b) => {
-    if (a.usage !== b.usage) return a.usage - b.usage;
-    if (a.count !== b.count) return b.count - a.count;
-    return a.era.localeCompare(b.era);
-  });
-
-  const bestUsage = ranked[0]?.usage ?? 0;
-  const best = ranked.filter((item) => item.usage === bestUsage);
-
-  return shuffleArray(best.map((item) => item.era));
+  return {
+    century,
+    decade,
+    month,
+    monthDay,
+  };
 }
 
 function scoreCandidate(day: string, state: HistoryState) {
   const year = parseYear(day);
-  const decade = getDecade(year);
-  const era = getEraBucket(day);
-  const monthDay = parseMonthDay(day);
+  const month = parseMonth(day);
   const dayOfMonth = parseDayOfMonth(day);
+  const monthDay = parseMonthDay(day);
+  const decade = getDecade(year);
+  const century = getCentury(year);
 
   let score =
-    (state.yearUsage.get(year) ?? 0) * 14 +
-    (state.decadeUsage.get(decade) ?? 0) * 5.5 +
-    (state.eraUsage.get(era) ?? 0) * 1.2 +
-    (state.monthDayUsage.get(monthDay) ?? 0) * 18 +
-    (state.dayOfMonthUsage.get(dayOfMonth) ?? 0) * 0.5;
+    (state.dayUsage.get(day) ?? 0) * 1500 +
+    (state.monthDayUsage.get(monthDay) ?? 0) * 95 +
+    (state.monthUsage.get(month) ?? 0) * 24 +
+    (state.dayOfMonthUsage.get(dayOfMonth) ?? 0) * 3 +
+    (state.yearUsage.get(year) ?? 0) * 90 +
+    (state.decadeUsage.get(decade) ?? 0) * 34 +
+    (state.centuryUsage.get(century) ?? 0) * 18;
 
-  if (state.recentYears.includes(year)) score += 120;
-  if (state.recentDecades.includes(decade)) score += 36;
-  if (state.recentMonthDays.includes(monthDay)) score += 220;
+  if (state.recentExactDays.has(day)) score += 10000;
+  if (state.recentMonthDays.has(monthDay)) score += 900;
+  if (state.recentYears.has(year)) score += 380;
+  if (state.recentDecades.has(decade)) score += 130;
+  if (state.recentCenturies.has(century)) score += 40;
+  if (state.recentMonths.has(month)) score += 85;
 
   return score;
 }
 
-function pickBestCandidate(days: string[], state: HistoryState): string | null {
-  if (days.length === 0) return null;
+function applyExactCooldown(days: string[], state: HistoryState) {
+  const withoutRecentExact = days.filter((day) => !state.recentExactDays.has(day));
 
-  const scored = days.map((day) => ({
+  if (withoutRecentExact.length >= MIN_EXACT_FILTER_SIZE) {
+    return withoutRecentExact;
+  }
+
+  return days;
+}
+
+function buildCandidateSet(
+  poolDays: string[],
+  state: HistoryState,
+  target: BucketTarget
+) {
+  const attempts = [
+    filterDays(poolDays, {
+      century: target.century,
+      decade: target.decade,
+      month: target.month,
+      monthDay: target.monthDay,
+    }),
+    filterDays(poolDays, {
+      century: target.century,
+      decade: target.decade,
+      monthDay: target.monthDay,
+    }),
+    filterDays(poolDays, {
+      monthDay: target.monthDay,
+    }),
+    filterDays(poolDays, {
+      century: target.century,
+      decade: target.decade,
+      month: target.month,
+    }),
+    filterDays(poolDays, {
+      century: target.century,
+      decade: target.decade,
+    }),
+    filterDays(poolDays, {
+      century: target.century,
+    }),
+    poolDays,
+  ];
+
+  for (const attempt of attempts) {
+    const unique = uniqueSortedStrings(attempt);
+
+    if (unique.length >= MIN_BUCKET_CANDIDATES) {
+      return applyExactCooldown(unique, state);
+    }
+  }
+
+  return [];
+}
+
+function pickRealtimeBalancedDay(poolDays: string[], historyDays: string[]) {
+  const uniqueDays = uniqueSortedStrings(poolDays.filter(isValidDayString));
+
+  if (uniqueDays.length === 0) return null;
+  if (uniqueDays.length === 1) return uniqueDays[0];
+
+  const state = buildHistoryState(historyDays);
+  const target = chooseBucketTarget(uniqueDays, state);
+  const candidates = buildCandidateSet(uniqueDays, state, target);
+  const safeCandidates = candidates.length > 0 ? candidates : uniqueDays;
+
+  const scored = safeCandidates.map((day) => ({
     day,
-    score: scoreCandidate(day, state),
+    score: scoreCandidate(day, state) + randomUnit() * 140,
   }));
 
   scored.sort((a, b) => a.score - b.score);
 
   const bestScore = scored[0]?.score ?? 0;
-  const nearBest = scored.filter((item) => item.score <= bestScore + 3);
-  const choicePool = nearBest.slice(0, 10);
+  const softWindow = scored.filter((item) => item.score <= bestScore + 180);
+  const choicePool = softWindow.slice(0, Math.min(36, softWindow.length || 1));
 
-  return shuffleArray(choicePool)[0]?.day ?? scored[0]?.day ?? null;
-}
+  const weightedChoices = choicePool.map((item) => ({
+    value: item.day,
+    weight: 1 / Math.pow(Math.max(1, item.score - bestScore + 1), 1.18),
+  }));
 
-function buildBalancedDeck(days: string[], historyDays: string[] = []): string[] {
-  const uniqueDays = Array.from(
-    new Set(days.filter((day): day is string => isValidDayString(day)))
+  const totalWeight = weightedChoices.reduce(
+    (sum: number, item: { value: string; weight: number }) => sum + item.weight,
+    0
   );
 
-  const buckets = new Map<number, string[]>();
-  for (const day of shuffleArray(uniqueDays)) {
-    const month = parseMonth(day);
-    const current = buckets.get(month) ?? [];
-    current.push(day);
-    buckets.set(month, current);
+  let roll = randomUnit() * totalWeight;
+
+  for (const item of weightedChoices) {
+    roll -= item.weight;
+
+    if (roll <= 0) {
+      return item.value;
+    }
   }
 
-  const state = buildHistoryState(historyDays);
-  const result: string[] = [];
-
-  while (result.length < uniqueDays.length) {
-    let selectedDay: string | null = null;
-    let selectedMonth: number | null = null;
-
-    const eraOrder = getEraPriorityOrder(buckets, state);
-
-    for (const era of eraOrder) {
-      const monthOrder = getMonthPriorityOrder(buckets, state, era);
-
-      for (const month of monthOrder) {
-        const bucket = buckets.get(month) ?? [];
-        const eraDays = bucket.filter((day) => getEraBucket(day) === era);
-        const candidate = pickBestCandidate(eraDays, state);
-
-        if (candidate) {
-          selectedDay = candidate;
-          selectedMonth = month;
-          break;
-        }
-      }
-
-      if (selectedDay) {
-        break;
-      }
-    }
-
-    if (!selectedDay || selectedMonth === null) {
-      const monthOrder = getMonthPriorityOrder(buckets, state);
-
-      for (const month of monthOrder) {
-        const bucket = buckets.get(month) ?? [];
-        const candidate = pickBestCandidate(bucket, state);
-
-        if (candidate) {
-          selectedDay = candidate;
-          selectedMonth = month;
-          break;
-        }
-      }
-    }
-
-    if (!selectedDay || selectedMonth === null) {
-      break;
-    }
-
-    const nextBucket = (buckets.get(selectedMonth) ?? []).filter(
-      (day) => day !== selectedDay
-    );
-    buckets.set(selectedMonth, nextBucket);
-
-    result.push(selectedDay);
-    updateHistoryState(state, selectedDay);
-  }
-
-  return result;
-}
-
-function pickFreshSeedDay(poolDays: string[]): string | null {
-  const uniqueDays = Array.from(
-    new Set(poolDays.filter((day): day is string => isValidDayString(day)))
-  );
-
-  if (uniqueDays.length === 0) return null;
-
-  const grouped = new Map<EraBucket, Map<number, Map<string, string[]>>>();
-
-  for (const day of uniqueDays) {
-    const era = getEraBucket(day);
-    const month = parseMonth(day);
-    const monthDay = parseMonthDay(day);
-
-    if (!grouped.has(era)) {
-      grouped.set(era, new Map());
-    }
-
-    const months = grouped.get(era)!;
-
-    if (!months.has(month)) {
-      months.set(month, new Map());
-    }
-
-    const monthDays = months.get(month)!;
-    const current = monthDays.get(monthDay) ?? [];
-    current.push(day);
-    monthDays.set(monthDay, current);
-  }
-
-  const era = pickRandom([...grouped.keys()]);
-  if (!era) return null;
-
-  const monthMap = grouped.get(era);
-  if (!monthMap || monthMap.size === 0) return null;
-
-  const month = pickRandom([...monthMap.keys()]);
-  if (month === null) return null;
-
-  const monthDayMap = monthMap.get(month);
-  if (!monthDayMap || monthDayMap.size === 0) return null;
-
-  const monthDay = pickRandom([...monthDayMap.keys()]);
-  if (!monthDay) return null;
-
-  const candidates = monthDayMap.get(monthDay) ?? [];
-  return pickRandom(candidates);
-}
-
-function buildFreshDeck(poolDays: string[]): DeckBuildResult {
-  const uniqueDays = Array.from(
-    new Set(poolDays.filter((day): day is string => isValidDayString(day)))
-  );
-
-  const seedDay = pickFreshSeedDay(uniqueDays);
-
-  if (!seedDay) {
-    return {
-      deck: buildBalancedDeck(uniqueDays),
-      cursor: 0,
-    };
-  }
-
-  const remainingPool = uniqueDays.filter((day) => day !== seedDay);
-  const remainingDeck = buildBalancedDeck(remainingPool, [seedDay]);
-
-  return {
-    deck: [seedDay, ...remainingDeck],
-    cursor: 0,
-  };
-}
-
-function buildDeckFromSeenDays(
-  poolDays: string[],
-  seenDays: string[]
-): DeckBuildResult {
-  const poolSet = new Set(poolDays);
-  const uniqueSeen: string[] = [];
-  const seenSet = new Set<string>();
-
-  for (const day of seenDays) {
-    if (!poolSet.has(day) || seenSet.has(day)) continue;
-    uniqueSeen.push(day);
-    seenSet.add(day);
-  }
-
-  const remainingPool = poolDays.filter((day) => !seenSet.has(day));
-  const remainingDeck = buildBalancedDeck(remainingPool, uniqueSeen);
-
-  return {
-    deck: [...uniqueSeen, ...remainingDeck],
-    cursor: uniqueSeen.length,
-  };
+  return choicePool[choicePool.length - 1]?.day ?? scored[0]?.day ?? null;
 }
 
 async function getSurprisePool(): Promise<SurprisePool> {
@@ -524,62 +550,57 @@ async function getSurprisePool(): Promise<SurprisePool> {
       day: true,
       updatedAt: true,
     },
-    orderBy: {
-      day: "asc",
-    },
   });
 
-  const days = Array.from(
-    new Set(
-      rows
-        .map((row: CacheDayRow) => row.day)
-        .filter(isValidDayString)
-    )
+  const days = uniqueSortedStrings(
+    rows
+      .map((row: CacheDayRow) => row.day)
+      .filter((day): day is string => isValidDayString(day))
   );
 
-  const lastUpdatedAt = rows.reduce(
-    (max: number, row: CacheDayRow) => {
-      const time = row.updatedAt.getTime();
-      return time > max ? time : max;
-    },
-    0
-  );
+  const lastUpdatedAt = rows.reduce((max: number, row: CacheDayRow) => {
+    const time = row.updatedAt.getTime();
+    return time > max ? time : max;
+  }, 0);
 
   return {
     days,
     size: days.length,
-    signature: `${SURPRISE_DECK_VERSION}:${days.length}:${lastUpdatedAt}`,
+    signature: `${SURPRISE_ENGINE_VERSION}:${days.length}:${lastUpdatedAt}`,
   };
 }
 
-async function upsertDeck(args: {
+async function upsertState(args: {
   ownerKey: string;
   userId?: string | null;
-  deck: string[];
-  cursor: number;
+  recentHistory: string[];
   poolSize: number;
   poolSignature: string;
 }) {
-  const { ownerKey, userId, deck, cursor, poolSize, poolSignature } = args;
+  const { ownerKey, userId, recentHistory, poolSize, poolSignature } = args;
 
   return prisma.surpriseDeck.upsert({
     where: { ownerKey },
     update: {
       userId: userId ?? null,
-      deck,
-      cursor,
+      deck: recentHistory,
+      cursor: 0,
       poolSize,
       poolSignature,
     },
     create: {
       ownerKey,
       userId: userId ?? null,
-      deck,
-      cursor,
+      deck: recentHistory,
+      cursor: 0,
       poolSize,
       poolSignature,
     },
   });
+}
+
+function buildOwnerKey(kind: OwnerKind, id: string) {
+  return `${kind}:${id}`;
 }
 
 export async function claimVisitorDeckToUser(userId: string) {
@@ -587,14 +608,16 @@ export async function claimVisitorDeckToUser(userId: string) {
 
   if (!visitorId) return;
 
-  const visitorOwnerKey = `visitor:${visitorId}`;
-  const userOwnerKey = `user:${userId}`;
+  const visitorOwnerKey = buildOwnerKey("visitor", visitorId);
+  const userOwnerKey = buildOwnerKey("user", userId);
 
   if (visitorOwnerKey === userOwnerKey) return;
 
   const pool = await getSurprisePool();
 
   if (pool.days.length === 0) return;
+
+  const poolSet = new Set(pool.days);
 
   const [visitorDeck, userDeck]: [SurpriseDeckRow | null, SurpriseDeckRow | null] =
     await Promise.all([
@@ -608,24 +631,27 @@ export async function claimVisitorDeckToUser(userId: string) {
 
   if (!visitorDeck) return;
 
-  const mergedSeenDays = [...getSeenDays(userDeck), ...getSeenDays(visitorDeck)];
-  const merged = buildDeckFromSeenDays(pool.days, mergedSeenDays);
+  const mergedHistory = mergeHistories(
+    getRecentHistory(visitorDeck, poolSet),
+    getRecentHistory(userDeck, poolSet),
+    poolSet
+  );
 
   await prisma.$transaction([
     prisma.surpriseDeck.upsert({
       where: { ownerKey: userOwnerKey },
       update: {
         userId,
-        deck: merged.deck,
-        cursor: merged.cursor,
+        deck: mergedHistory,
+        cursor: 0,
         poolSize: pool.size,
         poolSignature: pool.signature,
       },
       create: {
         ownerKey: userOwnerKey,
         userId,
-        deck: merged.deck,
-        cursor: merged.cursor,
+        deck: mergedHistory,
+        cursor: 0,
         poolSize: pool.size,
         poolSignature: pool.signature,
       },
@@ -650,113 +676,39 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
     return null;
   }
 
-  const ownerKey = userId ? `user:${userId}` : `visitor:${visitorId}`;
+  const ownerKey = userId
+    ? buildOwnerKey("user", userId)
+    : buildOwnerKey("visitor", visitorId);
 
-  let row: SurpriseDeckRow | null = await prisma.surpriseDeck.findUnique({
+  const row: SurpriseDeckRow | null = await prisma.surpriseDeck.findUnique({
     where: { ownerKey },
   });
 
-  let deck: string[] = [];
-  let cursor = 0;
-
-  if (!row) {
-    const fresh = buildFreshDeck(pool.days);
-    await upsertDeck({
-      ownerKey,
-      userId,
-      deck: fresh.deck,
-      cursor: fresh.cursor,
-      poolSize: pool.size,
-      poolSignature: pool.signature,
-    });
-
-    deck = fresh.deck;
-    cursor = fresh.cursor;
-  } else {
-    const storedDeck = normalizeStoredDeck(row.deck);
-    const seenDays = getSeenDays(row);
-
-    if (
-      row.poolSignature !== pool.signature ||
-      storedDeck.length !== pool.days.length
-    ) {
-      const rebuilt = buildDeckFromSeenDays(pool.days, seenDays);
-
-      await upsertDeck({
-        ownerKey,
-        userId,
-        deck: rebuilt.deck,
-        cursor: rebuilt.cursor,
-        poolSize: pool.size,
-        poolSignature: pool.signature,
-      });
-
-      deck = rebuilt.deck;
-      cursor = rebuilt.cursor;
-    } else {
-      deck = storedDeck;
-      cursor = Math.max(0, Math.min(row.cursor ?? 0, storedDeck.length));
-    }
-  }
-
-  if (deck.length === 0) {
-    return null;
-  }
-
-  if (cursor >= deck.length) {
-    const fresh = buildFreshDeck(pool.days);
-
-    await upsertDeck({
-      ownerKey,
-      userId,
-      deck: fresh.deck,
-      cursor: fresh.cursor,
-      poolSize: pool.size,
-      poolSignature: pool.signature,
-    });
-
-    deck = fresh.deck;
-    cursor = fresh.cursor;
-  }
-
-  let day = deck[cursor];
-
-  if (!isValidDayString(day)) {
-    const fresh = buildFreshDeck(pool.days);
-
-    await upsertDeck({
-      ownerKey,
-      userId,
-      deck: fresh.deck,
-      cursor: fresh.cursor,
-      poolSize: pool.size,
-      poolSignature: pool.signature,
-    });
-
-    deck = fresh.deck;
-    cursor = fresh.cursor;
-    day = deck[cursor];
-  }
+  const poolSet = new Set(pool.days);
+  const recentHistory = getRecentHistory(row, poolSet);
+  const day = pickRealtimeBalancedDay(pool.days, recentHistory);
 
   if (!isValidDayString(day)) {
     return null;
   }
 
-  await prisma.surpriseDeck.update({
-    where: { ownerKey },
-    data: {
-      cursor: cursor + 1,
-      deck,
-      poolSize: pool.size,
-      poolSignature: pool.signature,
-      userId,
-    },
+  const nextHistory = [day, ...recentHistory.filter((item) => item !== day)].slice(
+    0,
+    SURPRISE_HISTORY_MAX
+  );
+
+  await upsertState({
+    ownerKey,
+    userId,
+    recentHistory: nextHistory,
+    poolSize: pool.size,
+    poolSignature: pool.signature,
   });
 
   return {
     day,
-    source: "deck" as const,
-    remaining: Math.max(0, deck.length - (cursor + 1)),
-    total: deck.length,
+    source: "realtime-balanced" as const,
+    remaining: Math.max(0, pool.days.length - new Set(nextHistory).size),
+    total: pool.size,
   };
 }

@@ -121,7 +121,7 @@ export type FavoriteDayResponse = {
 
 export type SurpriseResponse = {
   day: string;
-  source?: "cache" | "generated";
+  source?: "cache" | "generated" | "realtime-balanced" | "live-balanced-random";
   dayData: DayResponse;
   highlightData: HighlightResponse;
 };
