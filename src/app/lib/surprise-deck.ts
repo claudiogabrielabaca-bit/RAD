@@ -1,8 +1,11 @@
 import { prisma } from "@/app/lib/prisma";
 import { getOrCreateVisitorId, getVisitorId } from "@/app/lib/visitor-id";
 
-const SURPRISE_ENGINE_VERSION = "v19-monthday-first-balanced";
+const SURPRISE_ENGINE_VERSION = "v20-global-cooldown-balanced";
 const SURPRISE_HISTORY_MAX = 360;
+const GLOBAL_OWNER_KEY = "global:surprise-recent";
+const GLOBAL_HISTORY_MAX = 240;
+
 const EXACT_DAY_COOLDOWN_MIN = 48;
 const EXACT_DAY_COOLDOWN_MAX = 120;
 const EXACT_DAY_COOLDOWN_POOL_RATIO = 0.45;
@@ -202,7 +205,7 @@ function buildHistoryState(historyDays: string[], poolSize: number): HistoryStat
 
   const validHistory = historyDays
     .filter(isValidDayString)
-    .slice(0, SURPRISE_HISTORY_MAX);
+    .slice(0, SURPRISE_HISTORY_MAX + GLOBAL_HISTORY_MAX);
 
   for (const day of validHistory) {
     const year = parseYear(day);
@@ -256,6 +259,25 @@ function getRecentHistory(row?: DeckRowLike | null, poolSet?: Set<string>) {
   }
 
   return history.filter((day) => poolSet.has(day));
+}
+
+function getGlobalRecentHistory(row?: DeckRowLike | null, poolSet?: Set<string>) {
+  const history = normalizeStoredDays(row?.deck).slice(0, GLOBAL_HISTORY_MAX);
+
+  if (!poolSet) {
+    return history;
+  }
+
+  return history.filter((day) => poolSet.has(day));
+}
+
+function buildSelectionHistory(ownerHistory: string[], globalHistory: string[]) {
+  return [
+    ...ownerHistory.slice(0, 80),
+    ...globalHistory.slice(0, 180),
+    ...ownerHistory.slice(80),
+    ...globalHistory.slice(180),
+  ];
 }
 
 function mergeHistories(
@@ -650,35 +672,80 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
     ? buildOwnerKey("user", userId)
     : buildOwnerKey("visitor", visitorId);
 
-  const row: SurpriseDeckRow | null = await prisma.surpriseDeck.findUnique({
-    where: { ownerKey },
-  });
-
   const poolSet = new Set(pool.days);
-  const recentHistory = getRecentHistory(row, poolSet);
-  const day = pickRealtimeBalancedDay(pool, recentHistory);
+
+  const [ownerRow, globalRow]: [SurpriseDeckRow | null, SurpriseDeckRow | null] =
+    await Promise.all([
+      prisma.surpriseDeck.findUnique({
+        where: { ownerKey },
+      }),
+      prisma.surpriseDeck.findUnique({
+        where: { ownerKey: GLOBAL_OWNER_KEY },
+      }),
+    ]);
+
+  const ownerHistory = getRecentHistory(ownerRow, poolSet);
+  const globalHistory = getGlobalRecentHistory(globalRow, poolSet);
+  const selectionHistory = buildSelectionHistory(ownerHistory, globalHistory);
+  const day = pickRealtimeBalancedDay(pool, selectionHistory);
 
   if (!isValidDayString(day)) {
     return null;
   }
 
-  const nextHistory = [day, ...recentHistory.filter((item) => item !== day)].slice(
-    0,
-    SURPRISE_HISTORY_MAX
-  );
+  const nextOwnerHistory = [
+    day,
+    ...ownerHistory.filter((item) => item !== day),
+  ].slice(0, SURPRISE_HISTORY_MAX);
 
-  await upsertState({
-    ownerKey,
-    userId,
-    recentHistory: nextHistory,
-    poolSize: pool.size,
-    poolSignature: pool.signature,
-  });
+  const nextGlobalHistory = [
+    day,
+    ...globalHistory.filter((item) => item !== day),
+  ].slice(0, GLOBAL_HISTORY_MAX);
+
+  await prisma.$transaction([
+    prisma.surpriseDeck.upsert({
+      where: { ownerKey },
+      update: {
+        userId,
+        deck: nextOwnerHistory,
+        cursor: 0,
+        poolSize: pool.size,
+        poolSignature: pool.signature,
+      },
+      create: {
+        ownerKey,
+        userId,
+        deck: nextOwnerHistory,
+        cursor: 0,
+        poolSize: pool.size,
+        poolSignature: pool.signature,
+      },
+    }),
+    prisma.surpriseDeck.upsert({
+      where: { ownerKey: GLOBAL_OWNER_KEY },
+      update: {
+        userId: null,
+        deck: nextGlobalHistory,
+        cursor: 0,
+        poolSize: pool.size,
+        poolSignature: pool.signature,
+      },
+      create: {
+        ownerKey: GLOBAL_OWNER_KEY,
+        userId: null,
+        deck: nextGlobalHistory,
+        cursor: 0,
+        poolSize: pool.size,
+        poolSignature: pool.signature,
+      },
+    }),
+  ]);
 
   return {
     day,
     source: "realtime-balanced" as const,
-    remaining: Math.max(0, pool.days.length - new Set(nextHistory).size),
+    remaining: Math.max(0, pool.days.length - new Set(nextOwnerHistory).size),
     total: pool.size,
   };
 }
