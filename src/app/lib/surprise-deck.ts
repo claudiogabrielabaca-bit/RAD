@@ -1,7 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { getOrCreateVisitorId, getVisitorId } from "@/app/lib/visitor-id";
 
-const SURPRISE_ENGINE_VERSION = "v20-global-cooldown-balanced";
+const SURPRISE_ENGINE_VERSION = "v21-effective-pool-capped-low-views";
 const SURPRISE_HISTORY_MAX = 360;
 const GLOBAL_OWNER_KEY = "global:surprise-recent";
 const GLOBAL_HISTORY_MAX = 240;
@@ -18,6 +18,15 @@ const MIN_CANDIDATE_DAYS = 10;
 const MIN_DISTINCT_MONTHS = 4;
 const MIN_DISTINCT_MONTH_DAYS = 8;
 const FINAL_EXACT_DAY_POOL_MAX = 36;
+
+const EFFECTIVE_POOL_MIN_SIZE = 120;
+const DEFAULT_MONTH_DAY_CAP = 5;
+const APRIL_MONTH_DAY_CAP = 3;
+const APRIL_HOT_MONTH_DAY_CAP = 2;
+const MONTH_CAP_MIN = 24;
+const MONTH_CAP_MAX = 90;
+const MONTH_CAP_FACTOR = 1.15;
+const APRIL_MONTH_CAP_FACTOR = 0.7;
 
 type OwnerKind = "user" | "visitor";
 
@@ -38,6 +47,17 @@ type SurpriseDeckRow = {
 type CacheDayRow = {
   day: string;
   updatedAt: Date;
+};
+
+type DayStatsRow = {
+  day: string;
+  views: number;
+};
+
+type EffectiveCandidate = {
+  day: string;
+  updatedAt: Date;
+  views: number;
 };
 
 type SurprisePool = {
@@ -103,6 +123,16 @@ function randomUnit() {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function stableHash(value: string) {
+  let hash = 0;
+
+  for (let i = 0; i < value.length; i += 1) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+
+  return hash;
 }
 
 function shuffleArray<T>(items: T[]): T[] {
@@ -529,6 +559,160 @@ function buildMonthDayFrequency(days: string[]) {
   return countValues(days.map(parseMonthDay));
 }
 
+function getMonthDayCap(monthDay: string) {
+  if (monthDay === "04-27" || monthDay === "04-28" || monthDay === "04-29") {
+    return APRIL_HOT_MONTH_DAY_CAP;
+  }
+
+  if (monthDay.startsWith("04-")) {
+    return APRIL_MONTH_DAY_CAP;
+  }
+
+  return DEFAULT_MONTH_DAY_CAP;
+}
+
+function getMonthCap(month: number, rawTotal: number) {
+  const base = clamp(
+    Math.ceil((rawTotal / 12) * MONTH_CAP_FACTOR),
+    MONTH_CAP_MIN,
+    MONTH_CAP_MAX
+  );
+
+  if (month === 4) {
+    return clamp(Math.floor(base * APRIL_MONTH_CAP_FACTOR), 18, base);
+  }
+
+  return base;
+}
+
+function rankEffectiveCandidate(candidate: EffectiveCandidate) {
+  const year = parseYear(candidate.day);
+  const decade = getDecade(year);
+  const century = getCentury(year);
+
+  return (
+    candidate.views * 1000 +
+    Math.max(0, 2026 - year) * 0.35 +
+    Math.abs(decade - 1950) * 0.05 +
+    Math.abs(century - 1900) * 0.02 +
+    stableHash(candidate.day) / 1_000_000
+  );
+}
+
+function selectDiverseCandidates(candidates: EffectiveCandidate[], max: number) {
+  if (candidates.length <= max) return [...candidates];
+
+  const remaining = [...candidates];
+  const selected: EffectiveCandidate[] = [];
+  const decadeUsage = new Map<number, number>();
+  const centuryUsage = new Map<number, number>();
+
+  while (remaining.length > 0 && selected.length < max) {
+    remaining.sort((a, b) => {
+      const aYear = parseYear(a.day);
+      const bYear = parseYear(b.day);
+
+      const aDecade = getDecade(aYear);
+      const bDecade = getDecade(bYear);
+
+      const aCentury = getCentury(aYear);
+      const bCentury = getCentury(bYear);
+
+      const aScore =
+        rankEffectiveCandidate(a) +
+        (decadeUsage.get(aDecade) ?? 0) * 160 +
+        (centuryUsage.get(aCentury) ?? 0) * 55;
+
+      const bScore =
+        rankEffectiveCandidate(b) +
+        (decadeUsage.get(bDecade) ?? 0) * 160 +
+        (centuryUsage.get(bCentury) ?? 0) * 55;
+
+      return aScore - bScore || a.day.localeCompare(b.day);
+    });
+
+    const picked = remaining.shift();
+
+    if (!picked) break;
+
+    selected.push(picked);
+
+    const pickedYear = parseYear(picked.day);
+    incrementMapCount(decadeUsage, getDecade(pickedYear));
+    incrementMapCount(centuryUsage, getCentury(pickedYear));
+  }
+
+  return selected;
+}
+
+function buildEffectiveSurpriseDays(
+  rawRows: CacheDayRow[],
+  viewsByDay: Map<string, number>
+) {
+  const uniqueRowsByDay = new Map<string, EffectiveCandidate>();
+
+  for (const row of rawRows) {
+    if (!isValidDayString(row.day)) continue;
+
+    uniqueRowsByDay.set(row.day, {
+      day: row.day,
+      updatedAt: row.updatedAt,
+      views: viewsByDay.get(row.day) ?? 0,
+    });
+  }
+
+  const rawCandidates = Array.from(uniqueRowsByDay.values());
+  const byMonthDay = new Map<string, EffectiveCandidate[]>();
+
+  for (const candidate of rawCandidates) {
+    const monthDay = parseMonthDay(candidate.day);
+    const group = byMonthDay.get(monthDay) ?? [];
+    group.push(candidate);
+    byMonthDay.set(monthDay, group);
+  }
+
+  const cappedMonthDayCandidates: EffectiveCandidate[] = [];
+
+  for (const [monthDay, group] of byMonthDay.entries()) {
+    const cap = getMonthDayCap(monthDay);
+    cappedMonthDayCandidates.push(...selectDiverseCandidates(group, cap));
+  }
+
+  const byMonth = new Map<number, EffectiveCandidate[]>();
+
+  for (const candidate of cappedMonthDayCandidates) {
+    const month = parseMonth(candidate.day);
+    const group = byMonth.get(month) ?? [];
+    group.push(candidate);
+    byMonth.set(month, group);
+  }
+
+  const effective = new Map<string, EffectiveCandidate>();
+
+  for (let month = 1; month <= 12; month += 1) {
+    const group = byMonth.get(month) ?? [];
+    const cap = getMonthCap(month, rawCandidates.length);
+    const selected = selectDiverseCandidates(group, cap);
+
+    for (const candidate of selected) {
+      effective.set(candidate.day, candidate);
+    }
+  }
+
+  if (effective.size < Math.min(EFFECTIVE_POOL_MIN_SIZE, rawCandidates.length)) {
+    const fallbackCandidates = selectDiverseCandidates(
+      rawCandidates.filter((candidate) => !effective.has(candidate.day)),
+      Math.min(EFFECTIVE_POOL_MIN_SIZE, rawCandidates.length) - effective.size
+    );
+
+    for (const candidate of fallbackCandidates) {
+      effective.set(candidate.day, candidate);
+    }
+  }
+
+  return uniqueSortedStrings(Array.from(effective.keys()));
+}
+
 async function getSurprisePool(): Promise<SurprisePool> {
   const rows: CacheDayRow[] = await prisma.dayHighlightCache.findMany({
     where: {
@@ -542,11 +726,32 @@ async function getSurprisePool(): Promise<SurprisePool> {
     },
   });
 
-  const days = uniqueSortedStrings(
+  const rawDays = uniqueSortedStrings(
     rows
       .map((row: CacheDayRow) => row.day)
       .filter((day): day is string => isValidDayString(day))
   );
+
+  const statsRows: DayStatsRow[] =
+    rawDays.length > 0
+      ? await prisma.dayStats.findMany({
+          where: {
+            day: {
+              in: rawDays,
+            },
+          },
+          select: {
+            day: true,
+            views: true,
+          },
+        })
+      : [];
+
+  const viewsByDay = new Map(
+    statsRows.map((row: DayStatsRow) => [row.day, row.views])
+  );
+
+  const days = buildEffectiveSurpriseDays(rows, viewsByDay);
 
   const lastUpdatedAt = rows.reduce((max: number, row: CacheDayRow) => {
     const time = row.updatedAt.getTime();
@@ -556,7 +761,7 @@ async function getSurprisePool(): Promise<SurprisePool> {
   return {
     days,
     size: days.length,
-    signature: `${SURPRISE_ENGINE_VERSION}:${days.length}:${lastUpdatedAt}`,
+    signature: `${SURPRISE_ENGINE_VERSION}:raw-${rawDays.length}:effective-${days.length}:${lastUpdatedAt}`,
     monthFrequency: buildMonthFrequency(days),
     monthDayFrequency: buildMonthDayFrequency(days),
   };
