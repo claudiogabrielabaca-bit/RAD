@@ -1,8 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { getOrCreateVisitorId, getVisitorId } from "@/app/lib/visitor-id";
 
-const SURPRISE_ENGINE_VERSION = "v21-effective-pool-capped-low-views";
-const SURPRISE_HISTORY_MAX = 360;
+const SURPRISE_ENGINE_VERSION = "v22-hard-no-repeat-effective-pool-random";
 const GLOBAL_OWNER_KEY = "global:surprise-recent";
 const GLOBAL_HISTORY_MAX = 240;
 
@@ -87,6 +86,11 @@ type HistoryState = {
 type WeightedValue<T> = {
   value: T;
   weight: number;
+};
+
+type PickResult = {
+  day: string;
+  resetCycle: boolean;
 };
 
 function isValidDayString(value?: string | null): value is string {
@@ -233,9 +237,7 @@ function buildHistoryState(historyDays: string[], poolSize: number): HistoryStat
   const monthDayUsage = new Map<string, number>();
   const dayOfMonthUsage = new Map<number, number>();
 
-  const validHistory = historyDays
-    .filter(isValidDayString)
-    .slice(0, SURPRISE_HISTORY_MAX + GLOBAL_HISTORY_MAX);
+  const validHistory = historyDays.filter(isValidDayString);
 
   for (const day of validHistory) {
     const year = parseYear(day);
@@ -281,8 +283,8 @@ function buildHistoryState(historyDays: string[], poolSize: number): HistoryStat
   };
 }
 
-function getRecentHistory(row?: DeckRowLike | null, poolSet?: Set<string>) {
-  const history = normalizeStoredDays(row?.deck).slice(0, SURPRISE_HISTORY_MAX);
+function getOwnerCycleHistory(row?: DeckRowLike | null, poolSet?: Set<string>) {
+  const history = normalizeStoredDays(row?.deck);
 
   if (!poolSet) {
     return history;
@@ -303,9 +305,8 @@ function getGlobalRecentHistory(row?: DeckRowLike | null, poolSet?: Set<string>)
 
 function buildSelectionHistory(ownerHistory: string[], globalHistory: string[]) {
   return [
-    ...ownerHistory.slice(0, 80),
+    ...ownerHistory,
     ...globalHistory.slice(0, 180),
-    ...ownerHistory.slice(80),
     ...globalHistory.slice(180),
   ];
 }
@@ -324,7 +325,7 @@ function mergeHistories(
     merged.push(day);
     seen.add(day);
 
-    if (merged.length >= SURPRISE_HISTORY_MAX) {
+    if (merged.length >= poolSet.size) {
       break;
     }
   }
@@ -512,15 +513,19 @@ function pickExactDay(days: string[], state: HistoryState) {
   );
 }
 
-function pickRealtimeBalancedDay(pool: SurprisePool, historyDays: string[]) {
-  const uniqueDays = uniqueSortedStrings(pool.days.filter(isValidDayString));
+function pickFromCandidateDays(
+  pool: SurprisePool,
+  candidateDays: string[],
+  balanceHistory: string[]
+) {
+  const safeCandidates = uniqueSortedStrings(candidateDays.filter(isValidDayString));
 
-  if (uniqueDays.length === 0) return null;
-  if (uniqueDays.length === 1) return uniqueDays[0];
+  if (safeCandidates.length === 0) return null;
+  if (safeCandidates.length === 1) return safeCandidates[0];
 
-  const state = buildHistoryState(historyDays, uniqueDays.length);
-  const selectionPool = buildSelectionPool(uniqueDays, state);
-  const safeSelectionPool = selectionPool.length > 0 ? selectionPool : uniqueDays;
+  const state = buildHistoryState(balanceHistory, pool.days.length);
+  const selectionPool = buildSelectionPool(safeCandidates, state);
+  const safeSelectionPool = selectionPool.length > 0 ? selectionPool : safeCandidates;
 
   const selectedMonth = pickWeightedValue(
     buildMonthOptions(safeSelectionPool, state, pool.monthFrequency)
@@ -549,6 +554,40 @@ function pickRealtimeBalancedDay(pool: SurprisePool, historyDays: string[]) {
   }
 
   return pickExactDay(safeSelectionPool, state);
+}
+
+function pickRealtimeBalancedDay(
+  pool: SurprisePool,
+  ownerHistory: string[],
+  globalHistory: string[]
+): PickResult | null {
+  const uniqueDays = uniqueSortedStrings(pool.days.filter(isValidDayString));
+
+  if (uniqueDays.length === 0) return null;
+
+  const ownerSeen = new Set(ownerHistory.filter((day) => uniqueDays.includes(day)));
+  let candidateDays = uniqueDays.filter((day) => !ownerSeen.has(day));
+  let resetCycle = false;
+
+  if (candidateDays.length === 0) {
+    candidateDays = uniqueDays;
+    resetCycle = true;
+  }
+
+  const balanceHistory = resetCycle
+    ? globalHistory
+    : buildSelectionHistory(ownerHistory, globalHistory);
+
+  const day = pickFromCandidateDays(pool, candidateDays, balanceHistory);
+
+  if (!isValidDayString(day)) {
+    return null;
+  }
+
+  return {
+    day,
+    resetCycle,
+  };
 }
 
 function buildMonthFrequency(days: string[]) {
@@ -767,35 +806,6 @@ async function getSurprisePool(): Promise<SurprisePool> {
   };
 }
 
-async function upsertState(args: {
-  ownerKey: string;
-  userId?: string | null;
-  recentHistory: string[];
-  poolSize: number;
-  poolSignature: string;
-}) {
-  const { ownerKey, userId, recentHistory, poolSize, poolSignature } = args;
-
-  return prisma.surpriseDeck.upsert({
-    where: { ownerKey },
-    update: {
-      userId: userId ?? null,
-      deck: recentHistory,
-      cursor: 0,
-      poolSize,
-      poolSignature,
-    },
-    create: {
-      ownerKey,
-      userId: userId ?? null,
-      deck: recentHistory,
-      cursor: 0,
-      poolSize,
-      poolSignature,
-    },
-  });
-}
-
 function buildOwnerKey(kind: OwnerKind, id: string) {
   return `${kind}:${id}`;
 }
@@ -829,8 +839,8 @@ export async function claimVisitorDeckToUser(userId: string) {
   if (!visitorDeck) return;
 
   const mergedHistory = mergeHistories(
-    getRecentHistory(visitorDeck, poolSet),
-    getRecentHistory(userDeck, poolSet),
+    getOwnerCycleHistory(visitorDeck, poolSet),
+    getOwnerCycleHistory(userDeck, poolSet),
     poolSet
   );
 
@@ -889,19 +899,24 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
       }),
     ]);
 
-  const ownerHistory = getRecentHistory(ownerRow, poolSet);
+  let ownerHistory = getOwnerCycleHistory(ownerRow, poolSet);
   const globalHistory = getGlobalRecentHistory(globalRow, poolSet);
-  const selectionHistory = buildSelectionHistory(ownerHistory, globalHistory);
-  const day = pickRealtimeBalancedDay(pool, selectionHistory);
+  const pick = pickRealtimeBalancedDay(pool, ownerHistory, globalHistory);
 
-  if (!isValidDayString(day)) {
+  if (!pick || !isValidDayString(pick.day)) {
     return null;
   }
+
+  if (pick.resetCycle) {
+    ownerHistory = [];
+  }
+
+  const day = pick.day;
 
   const nextOwnerHistory = [
     day,
     ...ownerHistory.filter((item) => item !== day),
-  ].slice(0, SURPRISE_HISTORY_MAX);
+  ].slice(0, pool.size);
 
   const nextGlobalHistory = [
     day,
@@ -958,19 +973,32 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
 export async function simulateSurpriseDays(count: number) {
   const pool = await getSurprisePool();
   const days: string[] = [];
-  let history: string[] = [];
+  let ownerHistory: string[] = [];
+  let globalHistory: string[] = [];
 
   for (let i = 0; i < count; i += 1) {
-    const day = pickRealtimeBalancedDay(pool, history);
+    const pick = pickRealtimeBalancedDay(pool, ownerHistory, globalHistory);
 
-    if (!isValidDayString(day)) {
+    if (!pick || !isValidDayString(pick.day)) {
       break;
     }
 
+    if (pick.resetCycle) {
+      ownerHistory = [];
+    }
+
+    const day = pick.day;
+
     days.push(day);
-    history = [day, ...history.filter((item) => item !== day)].slice(
+
+    ownerHistory = [day, ...ownerHistory.filter((item) => item !== day)].slice(
       0,
-      SURPRISE_HISTORY_MAX
+      pool.size
+    );
+
+    globalHistory = [day, ...globalHistory.filter((item) => item !== day)].slice(
+      0,
+      GLOBAL_HISTORY_MAX
     );
   }
 
