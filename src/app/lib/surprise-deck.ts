@@ -19,6 +19,8 @@ const MIN_DISTINCT_MONTH_DAYS = 8;
 const FINAL_EXACT_DAY_POOL_MAX = 36;
 
 const EFFECTIVE_POOL_MIN_SIZE = 120;
+const DEDICATED_POOL_MIN_ACTIVE_DAYS = EFFECTIVE_POOL_MIN_SIZE;
+
 const DEFAULT_MONTH_DAY_CAP = 5;
 const APRIL_MONTH_DAY_CAP = 3;
 const APRIL_HOT_MONTH_DAY_CAP = 2;
@@ -44,6 +46,11 @@ type SurpriseDeckRow = {
 };
 
 type CacheDayRow = {
+  day: string;
+  updatedAt: Date;
+};
+
+type DedicatedSurprisePoolDayRow = {
   day: string;
   updatedAt: Date;
 };
@@ -752,7 +759,47 @@ function buildEffectiveSurpriseDays(
   return uniqueSortedStrings(Array.from(effective.keys()));
 }
 
-async function getSurprisePool(): Promise<SurprisePool> {
+function getLastUpdatedAt(rows: Array<{ updatedAt: Date }>) {
+  return rows.reduce((max: number, row) => {
+    const time = row.updatedAt.getTime();
+    return time > max ? time : max;
+  }, 0);
+}
+
+async function getDedicatedSurprisePool(): Promise<SurprisePool | null> {
+  const rows: DedicatedSurprisePoolDayRow[] =
+    await prisma.surprisePoolDay.findMany({
+      where: {
+        active: true,
+      },
+      select: {
+        day: true,
+        updatedAt: true,
+      },
+    });
+
+  const days = uniqueSortedStrings(
+    rows
+      .map((row) => row.day)
+      .filter((day): day is string => isValidDayString(day))
+  );
+
+  if (days.length < DEDICATED_POOL_MIN_ACTIVE_DAYS) {
+    return null;
+  }
+
+  const lastUpdatedAt = getLastUpdatedAt(rows);
+
+  return {
+    days,
+    size: days.length,
+    signature: `${SURPRISE_ENGINE_VERSION}:source-surprise-pool-day:active-${days.length}:${lastUpdatedAt}`,
+    monthFrequency: buildMonthFrequency(days),
+    monthDayFrequency: buildMonthDayFrequency(days),
+  };
+}
+
+async function getFallbackSurprisePoolFromHighlightCache(): Promise<SurprisePool> {
   const rows: CacheDayRow[] = await prisma.dayHighlightCache.findMany({
     where: {
       type: { not: "none" },
@@ -791,19 +838,25 @@ async function getSurprisePool(): Promise<SurprisePool> {
   );
 
   const days = buildEffectiveSurpriseDays(rows, viewsByDay);
-
-  const lastUpdatedAt = rows.reduce((max: number, row: CacheDayRow) => {
-    const time = row.updatedAt.getTime();
-    return time > max ? time : max;
-  }, 0);
+  const lastUpdatedAt = getLastUpdatedAt(rows);
 
   return {
     days,
     size: days.length,
-    signature: `${SURPRISE_ENGINE_VERSION}:raw-${rawDays.length}:effective-${days.length}:${lastUpdatedAt}`,
+    signature: `${SURPRISE_ENGINE_VERSION}:source-day-highlight-cache-fallback:raw-${rawDays.length}:effective-${days.length}:${lastUpdatedAt}`,
     monthFrequency: buildMonthFrequency(days),
     monthDayFrequency: buildMonthDayFrequency(days),
   };
+}
+
+async function getSurprisePool(): Promise<SurprisePool> {
+  const dedicatedPool = await getDedicatedSurprisePool();
+
+  if (dedicatedPool) {
+    return dedicatedPool;
+  }
+
+  return getFallbackSurprisePoolFromHighlightCache();
 }
 
 function buildOwnerKey(kind: OwnerKind, id: string) {
