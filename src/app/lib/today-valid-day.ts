@@ -14,6 +14,7 @@ type TodayValidDayResult = {
 type CachedHighlightRow = {
   day: string;
   type: string;
+  title: string | null;
   text: string;
 };
 
@@ -50,6 +51,7 @@ function parseMonthDay(monthDay?: string | null) {
   }
 
   const now = new Date();
+
   return {
     month: now.getMonth() + 1,
     day: now.getDate(),
@@ -125,6 +127,8 @@ function isUsableHighlight(result: EnsureHighlightResult) {
   return !!(
     primary &&
     primary.type !== "none" &&
+    primary.title &&
+    primary.title.trim().length > 0 &&
     primary.text &&
     primary.text.trim().length > 0 &&
     primary.text.trim() !== EMPTY_FALLBACK_TEXT
@@ -134,6 +138,7 @@ function isUsableHighlight(result: EnsureHighlightResult) {
 function isUsableCachedRow(row: CachedHighlightRow) {
   return (
     row.type !== "none" &&
+    !!row.title?.trim() &&
     !!row.text?.trim() &&
     row.text.trim() !== EMPTY_FALLBACK_TEXT
   );
@@ -170,6 +175,7 @@ async function getCachedStateForMonthDay(
     select: {
       day: true,
       type: true,
+      title: true,
       text: true,
     },
     orderBy: {
@@ -231,6 +237,7 @@ async function discoverUntilNextAvailable(
     const results = await Promise.allSettled(
       batch.map(async (candidate: string) => {
         const result = await ensureHighlightsForDay(candidate);
+
         return {
           candidate,
           usable: isUsableHighlight(result),
@@ -243,6 +250,7 @@ async function discoverUntilNextAvailable(
       if (!result.value.usable) continue;
 
       const candidate = result.value.candidate;
+
       discoveredValidDays.push(candidate);
 
       if (!selectedDay && !excludedSet.has(candidate)) {
@@ -274,28 +282,69 @@ export async function getTodayValidDay(options?: {
 
   const allCandidateDays = getValidYearsForMonthDay(month, day);
 
-  const storedPool: string[] = options?.fresh
+  const rawStoredPool: string[] = options?.fresh
     ? []
     : await getPoolDaysForMonthDay(monthStr, dayStr);
 
   const cachedState = await getCachedStateForMonthDay(monthStr, dayStr);
 
+  const cachedValidSet = new Set(cachedState.validDays);
+  const testedSet = new Set<string>(cachedState.testedDays);
+
+  /*
+   * Conservative fix:
+   *
+   * TodayHistoryPool can contain three kinds of days:
+   * 1. confirmed valid days:
+   *    - already in DayHighlightCache
+   *    - usable highlight
+   *
+   * 2. confirmed bad days:
+   *    - already in DayHighlightCache
+   *    - type none / empty title / fallback text
+   *
+   * 3. unknown days:
+   *    - stored in TodayHistoryPool
+   *    - not tested in DayHighlightCache yet
+   *
+   * We keep unknown days in the pool so we do not destroy the large Today pool.
+   * But we never return unknown days directly. They must be validated first.
+   */
+  const confirmedBadDays = cachedState.testedDays.filter(
+    (testedDay: string) => !cachedValidSet.has(testedDay)
+  );
+  const confirmedBadSet = new Set(confirmedBadDays);
+
   let pooledDays: string[] = Array.from(
-    new Set<string>([...storedPool, ...cachedState.validDays])
+    new Set<string>([
+      ...rawStoredPool.filter(
+        (candidate: string) => !confirmedBadSet.has(candidate)
+      ),
+      ...cachedState.validDays,
+    ])
   ).sort();
 
-  const storedPoolSet = new Set<string>(storedPool);
+  const rawStoredPoolSet = new Set<string>(rawStoredPool);
   const poolChanged =
-    pooledDays.length !== storedPool.length ||
-    pooledDays.some((dayValue: string) => !storedPoolSet.has(dayValue));
+    pooledDays.length !== rawStoredPool.length ||
+    pooledDays.some((dayValue: string) => !rawStoredPoolSet.has(dayValue));
 
   if (poolChanged) {
     pooledDays = await savePoolDays(monthStr, dayStr, pooledDays);
   }
 
-  const pooledPick = pickFromPool(pooledDays, excludedSet);
+  /*
+   * Critical rule:
+   * Only confirmed usable days can be picked from cache.
+   * Unknown days stay stored, but they are not shown until ensureHighlightsForDay()
+   * confirms they have a real usable highlight.
+   */
+  const confirmedUsablePool = pooledDays.filter((candidate: string) =>
+    cachedValidSet.has(candidate)
+  );
 
-  const testedSet = new Set<string>(cachedState.testedDays);
+  const pooledPick = pickFromPool(confirmedUsablePool, excludedSet);
+
   const rawUntestedCandidates = shuffleArray(
     allCandidateDays.filter((candidate: string) => !testedSet.has(candidate))
   );
@@ -306,7 +355,7 @@ export async function getTodayValidDay(options?: {
   );
 
   const shouldBackfill =
-    options?.fresh === true || pooledDays.length < TARGET_POOL_MIN;
+    options?.fresh === true || confirmedUsablePool.length < TARGET_POOL_MIN;
 
   const untestedCandidates = shouldBackfill
     ? rawUntestedCandidates.slice(0, maxAttempts)
@@ -328,6 +377,14 @@ export async function getTodayValidDay(options?: {
     generatedSelectedDay = selectedDay;
   }
 
+  if (options?.fresh === true && generatedSelectedDay) {
+    return {
+      day: generatedSelectedDay,
+      source: "generated",
+      restartedRound: false,
+    };
+  }
+
   if (pooledPick) {
     return pooledPick;
   }
@@ -340,8 +397,13 @@ export async function getTodayValidDay(options?: {
     };
   }
 
-  if (pooledDays.length > 0) {
-    const shuffled = shuffleArray(pooledDays);
+  /*
+   * If all confirmed usable days were excluded, restart the round.
+   * Still only use confirmed usable days. Do not fall back to pooledDays,
+   * because pooledDays may contain unknown untested days.
+   */
+  if (confirmedUsablePool.length > 0) {
+    const shuffled = shuffleArray(confirmedUsablePool);
 
     return {
       day: shuffled[0],
