@@ -198,7 +198,33 @@ model DayHighlightCache {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 }
+model SurprisePoolDay {
+  id           String   @id @default(cuid())
+  day          String   @unique
+  year         Int
+  month        Int
+  dayOfMonth   Int
+  monthDay     String
+  decade       Int
+  century      Int
+  type         String
+  title        String
+  text         String
+  image        String?
+  articleUrl   String?
+  source       String   @default("day_highlight_cache")
+  qualityScore Int      @default(0)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
+  @@index([active])
+  @@index([active, month])
+  @@index([active, monthDay])
+  @@index([active, decade])
+  @@index([active, century])
+  @@index([active, type])
+}
 model DayStats {
   id        String   @id @default(cuid())
   day       String   @unique
