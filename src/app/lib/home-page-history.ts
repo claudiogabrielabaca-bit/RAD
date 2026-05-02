@@ -5,7 +5,7 @@ import {
 } from "@/app/lib/day";
 
 export const SURPRISE_HISTORY_STORAGE_KEY = "rad:surprise-history";
-export const SURPRISE_HISTORY_MAX = 120;
+export const SURPRISE_HISTORY_MAX = 1000;
 export const TODAY_HISTORY_STORAGE_KEY_PREFIX = "rad:today-history:";
 export const TODAY_HISTORY_MAX = 160;
 export const DAY_BACK_HISTORY_STORAGE_KEY = "rad:day-back-history";
@@ -176,9 +176,15 @@ export function buildRandomRequestUrl({
     params.set("fresh", "1");
   }
 
+  const historyDays = getRecentSurpriseHistory();
+
   const uniqueExcludeDays = Array.from(
-    new Set(excludeDays.filter((item) => isValidDayString(item)))
-  ).slice(0, 30);
+    new Set(
+      [...historyDays, ...excludeDays].filter((item) =>
+        isValidDayString(item)
+      )
+    )
+  ).slice(0, SURPRISE_HISTORY_MAX);
 
   if (uniqueExcludeDays.length > 0) {
     params.set("excludeDays", uniqueExcludeDays.join(","));

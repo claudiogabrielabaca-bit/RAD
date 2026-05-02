@@ -1,4 +1,5 @@
 "use client";
+
 import { useHomeDeleteActions } from "@/app/hooks/use-home-delete-actions";
 import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
@@ -35,7 +36,8 @@ import type {
 } from "@/app/lib/rad-types";
 import {
   DAY_BACK_HISTORY_MAX,
-  setRecentSurpriseHistory,
+  SURPRISE_HISTORY_MAX,
+  getRecentSurpriseHistory,
   rememberSurpriseDay,
   getTodayHistoryMonthDay,
   rememberTodayHistoryDay,
@@ -230,7 +232,9 @@ export default function Page({
     Number(selectedMonth)
   );
 
-  const DAYS = Array.from({ length: daysInSelectedMonth }, (_, i) => pad2(i + 1));
+  const DAYS = Array.from({ length: daysInSelectedMonth }, (_, i) =>
+    pad2(i + 1)
+  );
 
   function openAuthModal(view: AuthView = "login", nextEmail = "") {
     setAuthView(view);
@@ -452,13 +456,29 @@ export default function Page({
 
   function buildSurpriseRequestUrl({
     fresh = false,
+    excludeDays = [],
   }: {
     fresh?: boolean;
+    excludeDays?: string[];
   } = {}) {
     const params = new URLSearchParams();
 
     if (fresh) {
       params.set("fresh", "1");
+    }
+
+    const historyDays = getRecentSurpriseHistory();
+
+    const uniqueExcludeDays = Array.from(
+      new Set(
+        [...historyDays, ...excludeDays, day].filter((item) =>
+          isValidDayString(item)
+        )
+      )
+    ).slice(0, SURPRISE_HISTORY_MAX);
+
+    if (uniqueExcludeDays.length > 0) {
+      params.set("excludeDays", uniqueExcludeDays.join(","));
     }
 
     const query = params.toString();
@@ -539,7 +559,6 @@ export default function Page({
   const resetUserScopedNavigationState = useCallback(() => {
     dayBundleCacheRef.current.clear();
     prefetchingDaysRef.current.clear();
-    setRecentSurpriseHistory([]);
     setTodayHistoryNotice("");
   }, [dayBundleCacheRef, prefetchingDaysRef]);
 
@@ -2167,97 +2186,90 @@ export default function Page({
       </div>
 
       {showSuggestModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-md">
-          <div className="w-full max-w-xl rounded-[28px] border border-white/8 bg-[#111111]/95 p-6 shadow-[0_30px_100px_rgba(0,0,0,0.55)] backdrop-blur-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#111] p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h2 className="text-xl font-semibold text-white">
-                  Suggest a historical event
-                </h2>
-                <p className="mt-1 text-sm text-zinc-400">
-                  {formatDisplayDate(day)}
-                </p>
+                <div className="text-lg font-semibold text-white">
+                  Suggest an event
+                </div>
+                <div className="mt-1 text-sm text-zinc-400">
+                  Help improve this day with a reliable source.
+                </div>
               </div>
 
               <button
                 type="button"
-                onClick={() => {
-                  setShowSuggestModal(false);
-                  setSuggestToast("");
-                }}
-                className="rounded-lg border border-white/8 px-3 py-1 text-sm text-zinc-300 transition hover:bg-white/[0.06]"
+                onClick={() => setShowSuggestModal(false)}
+                className="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-zinc-300 transition hover:bg-white/5"
               >
                 Close
               </button>
             </div>
 
-            <div className="mt-5 space-y-4">
-              <div>
-                <label className="mb-2 block text-sm text-zinc-300">
-                  Event
-                </label>
+            <div className="mt-5 space-y-3">
+              <label className="block">
+                <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Event title
+                </span>
                 <input
                   value={suggestEvent}
-                  onChange={(e) => setSuggestEvent(e.target.value)}
-                  placeholder="Example: Boxer Protocol signed in Beijing"
-                  className="w-full rounded-xl border border-white/8 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/10"
+                  onChange={(event) => setSuggestEvent(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-white/20"
+                  placeholder="Example: Important historical event"
                 />
-              </div>
+              </label>
 
-              <div>
-                <label className="mb-2 block text-sm text-zinc-300">
+              <label className="block">
+                <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
                   Description
-                </label>
+                </span>
                 <textarea
                   value={suggestDescription}
-                  onChange={(e) => setSuggestDescription(e.target.value)}
-                  placeholder="Write a short description of what happened..."
-                  className="h-32 w-full resize-none rounded-xl border border-white/8 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/10"
+                  onChange={(event) => setSuggestDescription(event.target.value)}
+                  className="mt-1 min-h-[110px] w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-white/20"
+                  placeholder="What happened?"
                 />
-              </div>
+              </label>
 
-              <div>
-                <label className="mb-2 block text-sm text-zinc-300">
-                  Source *
-                </label>
+              <label className="block">
+                <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Source URL
+                </span>
                 <input
                   value={suggestSource}
-                  onChange={(e) => setSuggestSource(e.target.value)}
-                  placeholder="Paste a public URL (Wikipedia, article, archive, etc.)"
-                  className="w-full rounded-xl border border-white/8 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/10"
-                  required
+                  onChange={(event) => setSuggestSource(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-white/20"
+                  placeholder="https://..."
                 />
-                <p className="mt-2 text-xs text-zinc-500">
-                  A public source URL is required.
-                </p>
-              </div>
+              </label>
 
-              <div>
-                <label className="mb-2 block text-sm text-zinc-300">
-                  Your email (optional)
-                </label>
+              <label className="block">
+                <span className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+                  Your email, optional
+                </span>
                 <input
                   value={suggestEmail}
-                  onChange={(e) => setSuggestEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  className="w-full rounded-xl border border-white/8 bg-black/25 px-4 py-3 text-sm text-white outline-none focus:ring-2 focus:ring-white/10"
+                  onChange={(event) => setSuggestEmail(event.target.value)}
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-zinc-600 focus:border-white/20"
+                  placeholder="you@example.com"
                 />
-              </div>
+              </label>
 
               {suggestToast ? (
-                <div className="text-sm text-zinc-300">{suggestToast}</div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-zinc-200">
+                  {suggestToast}
+                </div>
               ) : null}
 
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={submitSuggestion}
-                  disabled={suggestSending}
-                  className="rounded-xl bg-white px-5 py-2 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
-                >
-                  {suggestSending ? "Sending..." : "Send suggestion"}
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={submitSuggestion}
+                disabled={suggestSending}
+                className="w-full rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {suggestSending ? "Sending..." : "Send suggestion"}
+              </button>
             </div>
           </div>
         </div>
@@ -2330,8 +2342,9 @@ export default function Page({
         view={authView}
         initialEmail={authEmail}
         onClose={closeAuthModal}
-        onChangeView={(view, nextEmail) => {
+        onChangeView={(view: AuthView, nextEmail?: string) => {
           setAuthView(view);
+
           if (typeof nextEmail === "string") {
             setAuthEmail(nextEmail);
           }
