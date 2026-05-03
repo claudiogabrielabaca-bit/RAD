@@ -485,6 +485,69 @@ export default function Page({
     return query ? `/api/surprise?${query}` : "/api/surprise";
   }
 
+  async function fetchPickDateBundle(targetDay: string) {
+    const res = await fetch(
+      `/api/pick-date-bundle?day=${encodeURIComponent(targetDay)}`,
+      {
+        cache: "no-store",
+      }
+    );
+
+    const json = (await res.json().catch(() => null)) as
+      | SurpriseResponse
+      | null;
+
+    if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
+      throw new Error("Failed to load pick date bundle");
+    }
+
+    return json;
+  }
+
+  async function openPickDate(
+    nextDay: string,
+    options?: { scrollToHighlight?: boolean }
+  ) {
+    const shouldScrollToHighlight = !!options?.scrollToHighlight;
+
+    const shouldRecordHistory =
+      nextDay !== day &&
+      hasPickedInitialDay &&
+      isValidDayString(day) &&
+      !isGoingBackRef.current;
+
+    beginDayTransition();
+    const transitionId = transitionIdRef.current;
+    pendingScrollToHighlightRef.current = shouldScrollToHighlight;
+
+    try {
+      const payload = await fetchPickDateBundle(nextDay);
+
+      if (transitionIdRef.current !== transitionId) return;
+
+      if (shouldRecordHistory) {
+        pushCurrentDayToBackHistory(day, payload.day);
+      }
+
+      /*
+       * Pick a Date must load dayData + highlightData together from
+       * /api/pick-date-bundle. This intentionally skips the automatic
+       * /api/day-bundle reload that normally runs when `day` changes.
+       */
+      skipNextAutoDayLoadRef.current = true;
+      applyBundlePayload(payload);
+      setDay(payload.day);
+
+      if (payload.day === day) {
+        finishDayTransition(transitionId);
+      }
+    } catch {
+      if (transitionIdRef.current !== transitionId) return;
+      showToast("Could not load this date.");
+      finishDayTransition(transitionId);
+    }
+  }
+
   const preloadImage = useCallback((src?: string | null) => {
     const normalizedSrc = src?.trim();
 
@@ -1152,7 +1215,7 @@ export default function Page({
 
   function goToManualDay() {
     const nextDay = `${selectedYear}-${selectedMonth}-${selectedDay}`;
-    void openDay(nextDay, { scrollToHighlight: true });
+    void openPickDate(nextDay, { scrollToHighlight: true });
   }
 
   function goToToday() {
