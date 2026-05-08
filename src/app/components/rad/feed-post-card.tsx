@@ -72,6 +72,10 @@ function renderStars(stars: number) {
   return `${"★".repeat(safeStars)}${"☆".repeat(5 - safeStars)}`;
 }
 
+function cleanText(value?: string | null) {
+  return value?.replace(/\s+/g, " ").trim() || "";
+}
+
 function formatTimestamp(value: string) {
   try {
     return new Intl.DateTimeFormat("es-AR", {
@@ -137,103 +141,122 @@ function getFeedBadges(item: FeedPostItem): FeedBadgeKey[] {
 export default function FeedPostCard({ item }: { item: FeedPostItem }) {
   const router = useRouter();
   const badges = getFeedBadges(item);
+  const reviewText = cleanText(item.review);
+  const highlightTitle = cleanText(item.highlightTitle) || item.displayDate;
+  const highlightText = cleanText(item.highlightText);
+
+  function openDay() {
+    router.push(`/?day=${encodeURIComponent(item.day)}`);
+  }
 
   return (
     <article
       role="button"
       tabIndex={0}
-      onClick={() => router.push(`/?day=${encodeURIComponent(item.day)}`)}
+      onClick={openDay}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          router.push(`/?day=${encodeURIComponent(item.day)}`);
+          openDay();
         }
       }}
-      className="group relative overflow-hidden rounded-[26px] border border-white/8 bg-[#121212]/88 p-4 text-left shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition hover:border-white/12 hover:bg-[#151515] sm:p-5"
+      className="group relative border-b border-white/8 px-1 py-8 text-left transition last:border-b-0 sm:px-2 sm:py-9"
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.06),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.04),transparent_24%)]" />
-
-      <div className="relative flex min-w-0 flex-col gap-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="text-sm font-semibold text-white">
-                @{item.username}
-              </span>
-
-              <span className="text-xs text-zinc-500">•</span>
-
-              <span className="text-[13px] tracking-[0.04em] text-yellow-400">
-                {renderStars(item.stars)}
-              </span>
-
-              <span className="text-xs text-zinc-500">•</span>
-
-              <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
-                <span className="text-zinc-400">♥</span>
-                <span>{item.likesCount}</span>
-              </span>
+      <div className="grid gap-5 sm:grid-cols-[64px_minmax(0,1fr)]">
+        <div className="hidden sm:block">
+          <div className="sticky top-24 flex flex-col items-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-lg font-semibold text-zinc-400 transition group-hover:border-white/16 group-hover:text-zinc-200">
+              @
             </div>
 
-            <div className="mt-2 text-xs text-zinc-500">
-              {formatTimestamp(item.updatedAt)}
-            </div>
-          </div>
-
-          <div className="shrink-0 rounded-full border border-white/8 bg-white/[0.04] px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em] text-zinc-300">
-            {item.day}
+            <div className="mt-4 h-full min-h-[150px] w-px bg-white/8" />
           </div>
         </div>
 
-        <div className="min-w-0 overflow-hidden rounded-[22px] border border-white/8 bg-white/[0.035] p-4">
-          <p className="break-all text-[15px] leading-7 text-zinc-100 [overflow-wrap:anywhere] sm:text-base">
-            {item.review}
-          </p>
-        </div>
+        <div className="min-w-0">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="text-sm font-semibold text-white">
+                  @{item.username}
+                </span>
 
-        <div className="flex min-w-0 items-stretch gap-3 overflow-hidden rounded-[22px] border border-white/8 bg-black/25 p-3">
-          <div className="h-[88px] w-[88px] shrink-0 overflow-hidden rounded-[18px] border border-white/8 bg-black/40">
-            {item.highlightImage ? (
-              <img
-                src={item.highlightImage}
-                alt={item.highlightTitle ?? item.displayDate}
-                className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
-                draggable={false}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#1b1b1b_0%,#0e0e0e_100%)] text-[10px] uppercase tracking-[0.14em] text-zinc-500">
-                No image
+                <span className="text-xs text-zinc-500">•</span>
+
+                <span className="text-[13px] tracking-[0.04em] text-yellow-400">
+                  {renderStars(item.stars)}
+                </span>
+
+                <span className="text-xs text-zinc-500">•</span>
+
+                <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
+                  <span>♥</span>
+                  <span>{item.likesCount}</span>
+                </span>
               </div>
-            )}
+
+              <div className="mt-2 text-xs text-zinc-500">
+                {formatTimestamp(item.updatedAt)}
+              </div>
+            </div>
+
+            <div className="shrink-0 rounded-full border border-white/8 bg-white/[0.035] px-3 py-1.5 text-[11px] font-medium tracking-[0.14em] text-zinc-300">
+              {item.day}
+            </div>
           </div>
 
-          <div className="min-w-0 flex-1 overflow-hidden">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-zinc-500">
-              On this day
-            </div>
+          <div className="mt-7">
+            <p className="break-words text-xl font-semibold uppercase tracking-[0.05em] text-zinc-50 [overflow-wrap:anywhere] sm:text-2xl">
+              {reviewText || "No written review"}
+            </p>
+          </div>
 
-            <div className="mt-1 line-clamp-2 break-words text-base font-semibold leading-tight text-white [overflow-wrap:anywhere]">
-              {item.highlightTitle ?? item.displayDate}
-            </div>
-
-            {item.highlightText ? (
-              <p className="mt-2 line-clamp-3 break-words text-sm leading-6 text-zinc-400 [overflow-wrap:anywhere]">
-                {item.highlightText}
-              </p>
-            ) : null}
-
-            {badges.length > 0 ? (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {badges.map((badge) => (
-                  <span
-                    key={badge}
-                    className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${BADGE_CLASSES[badge]}`}
-                  >
-                    {BADGE_LABELS[badge]}
-                  </span>
-                ))}
+          <div className="mt-7 border-l border-white/12 pl-5 sm:pl-7">
+            <div className="grid gap-5 sm:grid-cols-[132px_minmax(0,1fr)] sm:items-start">
+              <div className="h-[96px] w-full max-w-[150px] overflow-hidden rounded-2xl border border-white/8 bg-black/40 sm:h-[104px]">
+                {item.highlightImage ? (
+                  <img
+                    src={item.highlightImage}
+                    alt={highlightTitle}
+                    className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                    draggable={false}
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#1b1b1b_0%,#0e0e0e_100%)] text-[10px] uppercase tracking-[0.14em] text-zinc-500">
+                    No image
+                  </div>
+                )}
               </div>
-            ) : null}
+
+              <div className="min-w-0">
+                <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-500">
+                  On this day
+                </div>
+
+                <div className="mt-2 line-clamp-2 break-words text-lg font-semibold leading-6 text-white [overflow-wrap:anywhere]">
+                  {highlightTitle}
+                </div>
+
+                {highlightText ? (
+                  <p className="mt-3 line-clamp-3 break-words text-sm leading-6 text-zinc-400 [overflow-wrap:anywhere] sm:text-[15px]">
+                    {highlightText}
+                  </p>
+                ) : null}
+
+                {badges.length > 0 ? (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {badges.map((badge) => (
+                      <span
+                        key={badge}
+                        className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${BADGE_CLASSES[badge]}`}
+                      >
+                        {BADGE_LABELS[badge]}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            </div>
           </div>
         </div>
       </div>

@@ -195,7 +195,9 @@ function normalizeWikiHighlightItem(item: unknown): HighlightItem | null {
       typeof record.articleUrl === "string" ? record.articleUrl : null,
     year: typeof record.year === "number" ? record.year : null,
     type: legacyType,
-    secondaryType: rawSecondaryType ? mapTypeToLegacyType(rawSecondaryType) : null,
+    secondaryType: rawSecondaryType
+      ? mapTypeToLegacyType(rawSecondaryType)
+      : null,
     kind,
     category,
   };
@@ -330,8 +332,8 @@ function buildFeaturedEntry(day: string): PickDateCacheEntry | null {
   const highlight: HighlightItem = {
     title: item.title,
     text: item.text,
-    image: item.image,
-    articleUrl: item.articleUrl,
+    image: item.image ?? null,
+    articleUrl: item.articleUrl ?? null,
     year: Number(item.day.slice(0, 4)) || null,
     type: item.type,
     secondaryType: item.secondaryType

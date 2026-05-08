@@ -1860,7 +1860,7 @@ export default function Page({
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/8 bg-black/20 p-4 sm:p-5 backdrop-blur-xl">
+              <div className="mt-2 border-t border-white/8 pt-5 sm:pt-6">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                   <div className="flex flex-col gap-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -1873,7 +1873,7 @@ export default function Page({
                       <button
                         type="button"
                         onClick={() => goToSurpriseDay(false)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/16 hover:bg-white/[0.075]"
                       >
                         <span
                           aria-hidden="true"
@@ -1893,7 +1893,7 @@ export default function Page({
                       <button
                         type="button"
                         onClick={() => goToTodayInHistory(false)}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08]"
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/16 hover:bg-white/[0.075]"
                       >
                         <span
                           aria-hidden="true"
@@ -1922,7 +1922,7 @@ export default function Page({
                         type="button"
                         onClick={goBackToLastViewed}
                         disabled={!canGoBack}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.05] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/12 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-40"
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/16 hover:bg-white/[0.075] disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         <span
                           aria-hidden="true"
@@ -1964,7 +1964,7 @@ export default function Page({
                         type="button"
                         onClick={goToPreviousYear}
                         disabled={isAtMinYear}
-                        className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-2 text-sm text-zinc-200 transition hover:border-white/16 hover:bg-white/[0.065] disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         «
                       </button>
@@ -1973,7 +1973,7 @@ export default function Page({
                         type="button"
                         onClick={goToPreviousDay}
                         disabled={isAtMinDay}
-                        className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-2 text-sm text-zinc-200 transition hover:border-white/16 hover:bg-white/[0.065] disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         ‹
                       </button>
@@ -1982,7 +1982,7 @@ export default function Page({
                         type="button"
                         onClick={goToNextDay}
                         disabled={isAtToday}
-                        className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-2 text-sm text-zinc-200 transition hover:border-white/16 hover:bg-white/[0.065] disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         ›
                       </button>
@@ -1991,7 +1991,7 @@ export default function Page({
                         type="button"
                         onClick={goToNextYear}
                         disabled={isAtMaxYear}
-                        className="rounded-xl border border-white/8 bg-black/20 px-3.5 py-2 text-sm text-zinc-200 transition hover:bg-black/30 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="rounded-xl border border-white/10 bg-white/[0.035] px-3.5 py-2 text-sm text-zinc-200 transition hover:border-white/16 hover:bg-white/[0.065] disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         »
                       </button>
@@ -2100,11 +2100,7 @@ export default function Page({
                     </div>
                   </div>
 
-                  <div
-                    className={`rounded-2xl border border-white/8 bg-black/20 p-4 backdrop-blur-xl ${
-                      highlights.length > 1 ? "" : "inline-block"
-                    }`}
-                  >
+                  <div className={highlights.length > 1 ? "pt-1" : "inline-block pt-1"}>
                     <div
                       className={`grid gap-4 ${
                         highlights.length > 1
@@ -2118,7 +2114,7 @@ export default function Page({
                             href={highlight.articleUrl}
                             target="_blank"
                             rel="noreferrer"
-                            className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/[0.08] px-4 text-sm font-medium text-white transition hover:bg-white/[0.12]"
+                            className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.055] px-4 text-sm font-medium text-white transition hover:border-white/16 hover:bg-white/[0.085]"
                           >
                             <span
                               aria-hidden="true"
@@ -2133,7 +2129,7 @@ export default function Page({
                         <button
                           type="button"
                           onClick={() => setShowSuggestModal(true)}
-                          className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/[0.08] px-4 text-sm font-medium text-white transition hover:bg-white/[0.12]"
+                          className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.055] px-4 text-sm font-medium text-white transition hover:border-white/16 hover:bg-white/[0.085]"
                         >
                           <span
                             aria-hidden="true"
@@ -2179,7 +2175,7 @@ export default function Page({
                             <button
                               type="button"
                               onClick={goToPrevHighlight}
-                              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-white/[0.08] text-sm text-white transition hover:bg-white/[0.12]"
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.055] text-sm text-white transition hover:border-white/16 hover:bg-white/[0.085]"
                             >
                               ←
                             </button>
@@ -2187,7 +2183,7 @@ export default function Page({
                             <button
                               type="button"
                               onClick={goToNextHighlight}
-                              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/15 bg-white/[0.08] text-sm text-white transition hover:bg-white/[0.12]"
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.055] text-sm text-white transition hover:border-white/16 hover:bg-white/[0.085]"
                             >
                               →
                             </button>

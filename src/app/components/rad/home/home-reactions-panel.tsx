@@ -125,9 +125,12 @@ export default function HomeReactionsPanel({
     const compact = !hasReviewText(item.review);
 
     return (
-      <div key={item.id} className="pt-5 first:pt-0">
+      <div
+        key={item.id}
+        className="border-t border-white/8 py-5 first:border-t-0 first:pt-0 last:pb-0"
+      >
         {showSectionLabel ? (
-          <div className="mb-3 text-sm font-medium text-zinc-200">
+          <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.16em] text-zinc-500">
             {showSectionLabel}
           </div>
         ) : null}
@@ -194,7 +197,7 @@ export default function HomeReactionsPanel({
           {!compact ? (
             <div>
               <div
-                className={`text-sm leading-7 text-zinc-200 break-all [overflow-wrap:anywhere] ${
+                className={`break-all text-sm leading-7 text-zinc-200 [overflow-wrap:anywhere] ${
                   expandedReviews[item.id] ? "" : "line-clamp-3"
                 }`}
               >
@@ -281,198 +284,177 @@ export default function HomeReactionsPanel({
   }
 
   return (
-    <>
-      <div
-        ref={rateBoxRef}
-        className="relative z-20 mt-6 scroll-mt-24 overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl"
-      >
-        <div className="relative">
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.05),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.03),transparent_28%)]" />
+    <section
+      ref={rateBoxRef}
+      className="relative z-20 mt-6 scroll-mt-24 overflow-hidden rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.045),rgba(255,255,255,0.018))] px-6 pb-6 pt-5 shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl"
+    >
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.04),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.025),transparent_28%)]" />
 
-          <div className="relative p-5 sm:p-6">
-            <div>
-              <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
-                Your reaction
-              </div>
-
-              <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
-                <div className="max-w-2xl">
-                  <h3 className="text-xl font-semibold text-white">
-                    Rate this day
-                  </h3>
-                  <p className="mt-1 text-sm leading-6 text-zinc-400">
-                    Share your take on this moment in history.
-                  </p>
-                </div>
-
-                {myReview ? (
-                  <div className="rounded-2xl border border-emerald-400/18 bg-emerald-500/10 px-4 py-2 text-right backdrop-blur-xl">
-                    <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-300/90">
-                      Your current rating
-                    </div>
-                    <div className="mt-1 text-lg font-semibold text-white">
-                      ★ {myReview.stars}.0
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-[24px] border border-white/8 bg-white/[0.03] p-5 backdrop-blur-2xl">
-              {myReview ? (
-                <div className="mb-5 rounded-2xl border border-emerald-400/18 bg-emerald-500/8 px-4 py-3 backdrop-blur-xl">
-                  <div className="text-sm font-medium text-emerald-300">
-                    You already rated this day.
-                  </div>
-                  <div className="mt-1 text-xs text-emerald-200/80">
-                    You can update your review below whenever you want.
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div className="flex flex-wrap items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    {Array.from({ length: 5 }).map((_, i) => {
-                      const v = i + 1;
-                      return (
-                        <Star
-                          key={v}
-                          filled={v <= shownStars}
-                          title={`${v} star${v > 1 ? "s" : ""}`}
-                          onMouseEnter={() => onSetHoverStars(v)}
-                          onMouseLeave={() => onSetHoverStars(0)}
-                          onClick={() => onSetStars(v)}
-                        />
-                      );
-                    })}
-                  </div>
-
-                  <div className="min-w-[56px] text-2xl font-semibold tracking-tight text-white">
-                    {shownStars ? `${shownStars}/5` : "—/5"}
-                  </div>
-                </div>
-
-                <div className="text-sm text-zinc-400 md:text-right">
-                  {shownStars
-                    ? "Choose how this day feels to you"
-                    : "Select a rating from 1 to 5 stars"}
-                </div>
-              </div>
-
-              <div className="mt-6">
-                <div className="mb-2 text-sm font-medium text-zinc-200">
-                  Review
-                </div>
-                <textarea
-                  value={review}
-                  onChange={(e) =>
-                    onSetReview(e.target.value.slice(0, reviewMaxLength))
-                  }
-                  maxLength={reviewMaxLength}
-                  placeholder="Add a short review, reaction, or opinion about this day..."
-                  className="h-28 w-full resize-none rounded-[20px] border border-white/8 bg-[#101010]/90 px-4 py-4 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-white/14 focus:ring-2 focus:ring-white/10"
-                />
-                <div className="mt-2 flex justify-end">
-                  <div
-                    className={`text-xs ${
-                      review.length >= reviewMaxLength
-                        ? "text-red-400"
-                        : review.length >= reviewMaxLength - 40
-                          ? "text-amber-300"
-                          : "text-zinc-500"
-                    }`}
-                  >
-                    {review.length} / {reviewMaxLength}
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-6 flex flex-wrap items-center gap-3">
-                <button
-                  onClick={onSubmit}
-                  disabled={saving}
-                  className="rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
-                >
-                  {saving
-                    ? "Saving..."
-                    : myReview
-                      ? "Update your review"
-                      : "Rate this day"}
-                </button>
-
-                {toast ? (
-                  <div className="text-sm text-zinc-300">{toast}</div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 rounded-[30px] border border-white/8 bg-[linear-gradient(135deg,rgba(255,255,255,0.05),rgba(255,255,255,0.02))] p-6 shadow-[0_18px_50px_rgba(0,0,0,0.28)] backdrop-blur-2xl">
-        <div className="flex items-center justify-between gap-3">
+      <div className="relative">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="text-lg font-semibold text-zinc-100">
-              Community reactions
+            <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
+              Your review
             </div>
-            <div className="mt-1 text-sm text-zinc-400">
-              See what people rated this day
+
+            <h3 className="mt-2 text-xl font-semibold text-white">
+              Rate this day
+            </h3>
+
+            <p className="mt-1 text-sm leading-6 text-zinc-400">
+              Share your take on this moment in history.
+            </p>
+          </div>
+
+          {myReview ? (
+            <div className="w-fit rounded-xl border border-emerald-400/18 bg-emerald-500/10 px-3.5 py-2 text-left lg:text-right">
+              <div className="text-[11px] font-medium uppercase tracking-[0.16em] text-emerald-300/90">
+                Current rating
+              </div>
+              <div className="mt-1 text-sm font-semibold text-white">
+                ★ {myReview.stars}.0
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {myReview ? (
+          <div className="mt-4 text-sm text-emerald-300/90">
+            You already rated this day. You can update your review below.
+          </div>
+        ) : null}
+
+        <div className="mt-5 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-2">
+              {Array.from({ length: 5 }).map((_, i) => {
+                const v = i + 1;
+                return (
+                  <Star
+                    key={v}
+                    filled={v <= shownStars}
+                    title={`${v} star${v > 1 ? "s" : ""}`}
+                    onMouseEnter={() => onSetHoverStars(v)}
+                    onMouseLeave={() => onSetHoverStars(0)}
+                    onClick={() => onSetStars(v)}
+                  />
+                );
+              })}
+            </div>
+
+            <div className="min-w-[56px] text-2xl font-semibold tracking-tight text-white">
+              {shownStars ? `${shownStars}/5` : "—/5"}
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onSetReviewsSort("helpful")}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                reviewsSort === "helpful"
-                  ? "border border-white/8 bg-white/[0.08] text-white"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              Most helpful
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onSetReviewsSort("newest")}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                reviewsSort === "newest"
-                  ? "border border-white/8 bg-white/[0.08] text-white"
-                  : "text-zinc-400 hover:text-zinc-200"
-              }`}
-            >
-              Newest
-            </button>
+          <div className="text-sm text-zinc-400 md:text-right">
+            {shownStars
+              ? "Choose how this day feels to you"
+              : "Select a rating from 1 to 5 stars"}
           </div>
         </div>
 
-        <div className="mt-6">
-          {myReview
-            ? renderReviewRow(myReview, {
+        <div className="mt-5">
+          <div className="mb-2 text-sm font-medium text-zinc-200">Review</div>
+
+          <textarea
+            value={review}
+            onChange={(e) =>
+              onSetReview(e.target.value.slice(0, reviewMaxLength))
+            }
+            maxLength={reviewMaxLength}
+            placeholder="Add a short review, reaction, or opinion about this day..."
+            className="h-28 w-full resize-none rounded-[18px] border border-white/8 bg-black/30 px-4 py-4 text-sm text-zinc-100 outline-none transition placeholder:text-zinc-500 focus:border-white/14 focus:ring-2 focus:ring-white/10"
+          />
+
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            {toast ? (
+              <div className="text-sm text-zinc-300">{toast}</div>
+            ) : null}
+
+            <div className="ml-auto flex items-center gap-5">
+              <div
+                className={`text-sm ${
+                  review.length >= reviewMaxLength
+                    ? "text-red-400"
+                    : review.length >= reviewMaxLength - 40
+                      ? "text-amber-300"
+                      : "text-zinc-400"
+                }`}
+              >
+                {review.length} / {reviewMaxLength}
+              </div>
+
+              <button
+                onClick={onSubmit}
+                disabled={saving}
+                className="h-10 rounded-xl bg-white px-4 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {saving
+                  ? "Saving..."
+                  : myReview
+                    ? "Update your review"
+                    : "Rate this day"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8 border-t border-white/8 pt-6">
+          {myReview ? (
+            <div>
+              {renderReviewRow(myReview, {
                 mine: true,
                 showSectionLabel: "Your rating",
-              })
-            : null}
-
-          <div className={`${myReview ? "mt-8" : ""}`}>
-            <div className="mb-3 text-sm font-medium text-zinc-200">
-              Latest reviews ({otherReviews.length})
+              })}
             </div>
+          ) : null}
 
-            <div className="space-y-0">
-              {visibleOtherReviews.map((item) => renderReviewRow(item))}
-            </div>
+          <div className={myReview ? "mt-6 border-t border-white/8 pt-6" : ""}>
+            <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="text-sm font-medium text-zinc-200">
+                  Latest reviews ({otherReviews.length})
+                </div>
 
-            {otherReviews.length === 0 && !myReview ? (
-              <div className="rounded-xl border border-white/8 bg-black/15 p-4 text-sm text-zinc-400">
-                No reviews yet. Be the first.
+                {otherReviews.length === 0 ? (
+                  <div className="mt-2 text-sm text-zinc-500">
+                    No reviews yet. Be the first.
+                  </div>
+                ) : null}
               </div>
-            ) : null}
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onSetReviewsSort("helpful")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                    reviewsSort === "helpful"
+                      ? "border border-white/8 bg-white/[0.08] text-white"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  Most helpful
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => onSetReviewsSort("newest")}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                    reviewsSort === "newest"
+                      ? "border border-white/8 bg-white/[0.08] text-white"
+                      : "text-zinc-400 hover:text-zinc-200"
+                  }`}
+                >
+                  Newest
+                </button>
+              </div>
+            </div>
+
+            <div>{visibleOtherReviews.map((item) => renderReviewRow(item))}</div>
           </div>
         </div>
       </div>
-    </>
+    </section>
   );
 }

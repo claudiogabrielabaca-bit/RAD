@@ -87,6 +87,13 @@ export type TopItem = {
   avg: number;
   count: number;
   title?: string | null;
+  text?: string | null;
+  image?: string | null;
+  articleUrl?: string | null;
+  type?: LegacyHighlightType | null;
+  secondaryType?: LegacyHighlightType | null;
+  kind?: HighlightKind | null;
+  category?: HighlightCategory | null;
 };
 
 export type DiscoverCard = {

@@ -91,7 +91,19 @@ function formatDayLabel(day: string) {
 
 function renderStars(stars: number) {
   const safeStars = Math.max(0, Math.min(5, stars));
-  return `${"★".repeat(safeStars)}${"☆".repeat(5 - safeStars)}`;
+
+  return (
+    <span className="inline-flex items-center gap-0.5" aria-label={`${safeStars} out of 5 stars`}>
+      {Array.from({ length: 5 }).map((_, index) => (
+        <span
+          key={index}
+          className={index < safeStars ? "text-yellow-400" : "text-zinc-700"}
+        >
+          ★
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function fallbackFavoriteTitle(day: string) {
@@ -321,94 +333,96 @@ export default function ProfilePageClient() {
             </h1>
           </div>
 
-          <section className="relative overflow-hidden rounded-[36px] border border-white/10 bg-white/[0.045] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.04),transparent_24%)]" />
+          <section className="relative overflow-hidden rounded-[36px] border border-white/10 bg-white/[0.035] px-6 py-7 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-xl sm:px-7 lg:px-8">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.07),transparent_28%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.035),transparent_24%)]" />
 
-            <div className="relative grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-              <div className="flex flex-col gap-5 lg:flex-row">
-                <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/10 text-5xl font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
-                  {getInitial(user.username)}
+            <div className="relative grid gap-8 xl:grid-cols-[1.08fr_0.92fr] xl:items-start">
+              <div className="min-w-0">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
+                  <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/10 text-5xl font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+                    {getInitial(user.username)}
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                      RAD profile
+                    </div>
+
+                    <div className="mt-2 break-all text-5xl font-semibold tracking-tight text-white">
+                      @{user.username}
+                    </div>
+
+                    <div className="mt-2 break-all text-sm text-zinc-400">
+                      {user.email}
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-zinc-300">
+                        Joined {formatDateOnly(user.createdAt)}
+                      </span>
+
+                      {user.emailVerified ? (
+                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-300">
+                          Verified account
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs text-amber-300">
+                          Email not verified
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="min-w-0">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
-                    RAD profile
-                  </div>
+                <div className="mt-7 flex max-w-2xl items-start gap-3">
+                  <p className="min-w-0 text-base leading-7 text-zinc-300">
+                    {getDisplayedBio()}
+                  </p>
 
-                  <div className="mt-2 text-5xl font-semibold tracking-tight text-white">
-                    @{user.username}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={openBioModal}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.035] text-zinc-300 transition hover:border-white/16 hover:bg-white/[0.06] hover:text-white"
+                    aria-label="Edit bio"
+                    title="Edit bio"
+                  >
+                    <PencilIcon />
+                  </button>
+                </div>
 
-                  <div className="mt-2 text-sm text-zinc-400">{user.email}</div>
-
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-white/10 px-3 py-1 text-xs text-zinc-300">
-                      Joined {formatDateOnly(user.createdAt)}
-                    </span>
-
-                    {user.emailVerified ? (
-                      <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs text-emerald-300">
-                        Verified account
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs text-amber-300">
-                        Email not verified
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-5 inline-flex max-w-2xl items-center gap-3 align-middle">
-                    <p className="max-w-[720px] text-base leading-7 text-zinc-300">
-                      {getDisplayedBio()}
-                    </p>
-
-                    <button
-                      type="button"
-                      onClick={openBioModal}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-black/20 text-zinc-300 transition hover:bg-black/30 hover:text-white"
-                      aria-label="Edit bio"
-                      title="Edit bio"
-                    >
-                      <PencilIcon />
-                    </button>
-                  </div>
-
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:max-w-2xl xl:grid-cols-3">
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <div className="text-xs font-medium text-zinc-200">
-                        Identity
-                      </div>
-                      <div className="mt-2 text-sm leading-6 text-zinc-400">
-                        A private RAD profile shaped by saved moments and
-                        ratings.
-                      </div>
+                <div className="mt-7 grid max-w-2xl gap-4 border-t border-white/8 pt-5 sm:grid-cols-3">
+                  <div>
+                    <div className="text-xs font-medium text-zinc-200">
+                      Identity
                     </div>
-
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                      <div className="text-xs font-medium text-zinc-200">
-                        Favorite focus
-                      </div>
-                      <div className="mt-2 text-sm leading-6 text-zinc-400">
-                        Curated dates with personal meaning and replay value.
-                      </div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-400">
+                      A private RAD profile shaped by saved moments and ratings.
                     </div>
+                  </div>
 
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:col-span-2 xl:col-span-1">
-                      <div className="text-xs font-medium text-zinc-200">
-                        Profile pulse
-                      </div>
-                      <div className="mt-2 text-sm leading-6 text-zinc-400">
-                        A visual history of what you save, rate and revisit
-                        most.
-                      </div>
+                  <div>
+                    <div className="text-xs font-medium text-zinc-200">
+                      Favorite focus
+                    </div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-400">
+                      Curated dates with personal meaning and replay value.
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-medium text-zinc-200">
+                      Profile pulse
+                    </div>
+                    <div className="mt-2 text-sm leading-6 text-zinc-400">
+                      A visual history of what you save, rate and revisit most.
                     </div>
                   </div>
                 </div>
               </div>
 
-              <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="rounded-[24px] border border-white/10 bg-black/25 p-4 text-center">
+              <div className="min-w-0 xl:border-l xl:border-white/8 xl:pl-8">
+                <div className="grid grid-cols-3 divide-x divide-white/10 border-b border-white/8 pb-6">
+                  <div className="px-2 text-center first:pl-0">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
                       Ratings
                     </div>
@@ -417,7 +431,7 @@ export default function ProfilePageClient() {
                     </div>
                   </div>
 
-                  <div className="rounded-[24px] border border-white/10 bg-black/25 p-4 text-center">
+                  <div className="px-2 text-center">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
                       Favorites
                     </div>
@@ -426,30 +440,30 @@ export default function ProfilePageClient() {
                     </div>
                   </div>
 
-                  <div className="rounded-[24px] border border-white/10 bg-black/25 p-4 text-center">
+                  <div className="px-2 text-center last:pr-0">
                     <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">
                       Avg rating
                     </div>
                     <div className="mt-3 text-4xl font-semibold text-white">
-                      ★ {stats.averageRating.toFixed(1)}
+                      <span className="text-yellow-400">★</span>{" "}
+                      {stats.averageRating.toFixed(1)}
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-[24px] border border-white/10 bg-black/25 p-4">
-                  <RatingDistribution
-                    compact
-                    avg={stats.averageRating.toFixed(1)}
-                    ratingsCount={stats.ratingsCount}
-                    starDistribution={stats.starDistribution}
-                  />
-                </div>
+                <RatingDistribution
+                  compact
+                  avg={stats.averageRating.toFixed(1)}
+                  ratingsCount={stats.ratingsCount}
+                  starDistribution={stats.starDistribution}
+                />
               </div>
             </div>
           </section>
 
-          <section className="mt-8 rounded-[30px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl">
-            <div className="mb-5">
+          <section className="mt-8">
+            <div className="mx-auto max-w-[980px]">
+              <div className="mb-5">
               <h2 className="text-2xl font-semibold text-white">
                 Favorite days
               </h2>
@@ -458,13 +472,13 @@ export default function ProfilePageClient() {
               </p>
             </div>
 
-            {favoriteDays.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
+              {favoriteDays.length === 0 ? (
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
                 You have not saved favorite days yet.
-              </div>
-            ) : (
-              <div className="flex gap-5 overflow-x-auto pb-2">
-                {favoriteDays.map((favorite) => {
+                </div>
+              ) : (
+                <div className="flex flex-wrap justify-center gap-5">
+                  {favoriteDays.slice(0, 3).map((favorite) => {
                   const title =
                     favorite.preview?.title?.trim() ||
                     fallbackFavoriteTitle(favorite.day);
@@ -583,12 +597,13 @@ export default function ProfilePageClient() {
                     </article>
                   );
                 })}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </section>
 
-          <section className="mt-8 rounded-[28px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl">
-            <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <section className="mt-8 overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.03] px-6 py-6 shadow-[0_20px_60px_rgba(0,0,0,0.28)] backdrop-blur-xl">
+            <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-2xl font-semibold text-white">
                   {showAllRatings ? "Full archive" : "Latest reviews"}
@@ -604,7 +619,7 @@ export default function ProfilePageClient() {
                 <button
                   type="button"
                   onClick={() => setShowAllRatings((prev) => !prev)}
-                  className="rounded-xl border border-white/10 bg-black/20 px-4 py-2 text-sm text-zinc-200 transition hover:bg-black/30"
+                  className="rounded-2xl border border-white/10 bg-black/20 px-5 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-white/16 hover:bg-white/[0.055] hover:text-white"
                 >
                   {showAllRatings ? "Hide full archive" : "Show full archive"}
                 </button>
@@ -612,50 +627,69 @@ export default function ProfilePageClient() {
             </div>
 
             {displayedRatings.length === 0 ? (
-              <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
+              <div className="border-t border-white/8 py-6 text-sm text-zinc-500">
                 You have not rated any day yet.
               </div>
             ) : (
-              <div className="space-y-4">
-                {displayedRatings.map((rating) => (
-                  <article
-                    key={rating.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={() =>
-                      router.push(`/?day=${encodeURIComponent(rating.day)}`)
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        router.push(`/?day=${encodeURIComponent(rating.day)}`);
+              <div className="divide-y divide-white/8 border-t border-white/8">
+                {displayedRatings.map((rating) => {
+                  const hasWrittenReview = !!rating.review?.trim();
+
+                  return (
+                    <article
+                      key={rating.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() =>
+                        router.push(`/?day=${encodeURIComponent(rating.day)}`)
                       }
-                    }}
-                    className="min-w-0 overflow-hidden cursor-pointer rounded-2xl border border-white/10 bg-black/20 p-4"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          router.push(`/?day=${encodeURIComponent(rating.day)}`);
+                        }
+                      }}
+                      className="group grid cursor-pointer gap-4 py-5 transition hover:bg-white/[0.025] sm:grid-cols-[minmax(190px,0.95fr)_minmax(0,1.35fr)_auto] sm:items-center sm:px-2"
+                    >
                       <div className="min-w-0">
-                        <div className="text-base font-semibold text-white">
+                        <div className="text-xl font-semibold tracking-tight text-white">
                           {rating.day}
                         </div>
-                        <div className="mt-1 text-xs text-zinc-500">
-                          {renderStars(rating.stars)} • Updated{" "}
-                          {formatDateTime(rating.updatedAt)}
+
+                        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-zinc-500">
+                          {renderStars(rating.stars)}
+                          <span>
+                            Updated {formatDateTime(rating.updatedAt)}
+                          </span>
                         </div>
                       </div>
-                    </div>
 
-                    <p className="mt-4 break-all text-sm leading-6 text-zinc-300 [overflow-wrap:anywhere]">
-                      {rating.review?.trim()
-                        ? rating.review
-                        : "No written review for this rating."}
-                    </p>
-                  </article>
-                ))}
+                      <div className="min-w-0 border-white/8 sm:border-l sm:pl-7">
+                        <p
+                          className={`break-words text-sm leading-6 [overflow-wrap:anywhere] ${
+                            hasWrittenReview ? "text-zinc-200" : "text-zinc-500"
+                          }`}
+                        >
+                          {hasWrittenReview
+                            ? rating.review.trim()
+                            : "No written review"}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center justify-start gap-3 sm:justify-end">
+                        <span className="text-sm font-medium text-zinc-400 transition group-hover:text-zinc-200">
+                          Open day
+                        </span>
+                        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/14 bg-black/20 text-lg text-zinc-300 transition group-hover:border-white/22 group-hover:bg-white/[0.06] group-hover:text-white">
+                          →
+                        </span>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             )}
-          </section>
-        </div>
+          </section>        </div>
       </main>
 
       {bioModalOpen ? (
@@ -740,4 +774,4 @@ export default function ProfilePageClient() {
       ) : null}
     </>
   );
-}
+} 

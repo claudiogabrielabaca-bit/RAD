@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
       day: item.day,
       title: item.title,
       text: item.text,
-      image: item.image,
+      image: item.image ?? null,
       avg: statsMap.get(item.day)?.avg ?? 0,
       count: statsMap.get(item.day)?.count ?? 0,
       views: viewsMap.get(item.day) ?? 0,
