@@ -201,20 +201,10 @@ async function getCachedStateForMonthDay(
   };
 }
 
-async function isUsableDay(candidate: string) {
-  try {
-    const result = await ensureHighlightsForDay(candidate);
-    return isUsableHighlight(result);
-  } catch {
-    return false;
-  }
-}
-
-async function pickValidatedFromPool(
+function pickFromPool(
   pooledDays: string[],
-  excludedSet: Set<string>,
-  restartedRound: boolean
-): Promise<TodayValidDayResult | null> {
+  excludedSet: Set<string>
+): TodayValidDayResult | null {
   if (pooledDays.length === 0) return null;
 
   const remainingDays = pooledDays.filter(
@@ -227,19 +217,11 @@ async function pickValidatedFromPool(
 
   const shuffled = shuffleArray(remainingDays);
 
-  for (const candidate of shuffled) {
-    const usable = await isUsableDay(candidate);
-
-    if (usable) {
-      return {
-        day: candidate,
-        source: "cache",
-        restartedRound,
-      };
-    }
-  }
-
-  return null;
+  return {
+    day: shuffled[0],
+    source: "cache",
+    restartedRound: false,
+  };
 }
 
 async function discoverUntilNextAvailable(
@@ -298,28 +280,38 @@ export async function getTodayValidDay(options?: {
   const monthStr = pad2(month);
   const dayStr = pad2(day);
 
-  const allCandidateDays = getValidYearsForMonthDay(month, day);
+  const rawStoredPool = await getPoolDaysForMonthDay(monthStr, dayStr);
 
   /*
-   * TodayHistoryPool.validDays is the persisted Today pool.
-   * Do not throw it away just because those days are not currently present
-   * in DayHighlightCache. That was the old bug that made a larger pool behave
-   * like a much smaller one.
+   * Fast path:
+   * TodayHistoryPool is already the persisted Today pool.
+   * Normal user requests must choose from it immediately.
+   *
+   * Do not scan DayHighlightCache here. That query uses day.endsWith(...)
+   * and can become the real bottleneck even when the pool is already ready.
    */
-  const rawStoredPool = await getPoolDaysForMonthDay(monthStr, dayStr);
+  if (!options?.fresh && rawStoredPool.length > 0) {
+    const pooledPick = pickFromPool(rawStoredPool, excludedSet);
+
+    if (pooledPick) {
+      return pooledPick;
+    }
+
+    const restartedPool = shuffleArray(rawStoredPool);
+
+    return {
+      day: restartedPool[0],
+      source: "cache",
+      restartedRound: true,
+    };
+  }
+
+  const allCandidateDays = getValidYearsForMonthDay(month, day);
 
   const cachedState = await getCachedStateForMonthDay(monthStr, dayStr);
   const cachedValidSet = new Set(cachedState.validDays);
   const testedSet = new Set<string>(cachedState.testedDays);
 
-  /*
-   * Remove only confirmed bad days:
-   * - already tested in DayHighlightCache
-   * - not usable there
-   *
-   * Stored TodayHistoryPool days that are not in DayHighlightCache are kept,
-   * but every selected candidate is validated before being returned.
-   */
   const confirmedBadSet = new Set(
     cachedState.testedDays.filter(
       (testedDay: string) => !cachedValidSet.has(testedDay)
@@ -344,17 +336,7 @@ export async function getTodayValidDay(options?: {
     pooledDays = await savePoolDays(monthStr, dayStr, pooledDays);
   }
 
-  /*
-   * Critical fix:
-   * Do not return a pooled day blindly.
-   * Validate the selected candidate with ensureHighlightsForDay() before
-   * returning it, so Today never shows a "No exact historical match" page.
-   */
-  const pooledPick = await pickValidatedFromPool(
-    pooledDays,
-    excludedSet,
-    false
-  );
+  const pooledPick = pickFromPool(pooledDays, excludedSet);
 
   const pooledSet = new Set<string>(pooledDays);
 
@@ -413,18 +395,14 @@ export async function getTodayValidDay(options?: {
     };
   }
 
-  /*
-   * If all non-excluded stored pool days were exhausted, restart the local
-   * round using the full stored pool, but still validate before returning.
-   */
-  const restartedPick = await pickValidatedFromPool(
-    pooledDays,
-    new Set<string>(),
-    true
-  );
+  if (pooledDays.length > 0) {
+    const shuffled = shuffleArray(pooledDays);
 
-  if (restartedPick) {
-    return restartedPick;
+    return {
+      day: shuffled[0],
+      source: "cache",
+      restartedRound: true,
+    };
   }
 
   return null;
