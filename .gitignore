@@ -69,3 +69,4 @@ next-env.d.ts
 
 # local audit / scratch outputs
 surprise-audit-*.json
+/logs/
