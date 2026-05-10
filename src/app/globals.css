@@ -84,3 +84,46 @@ body {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
+
+/* RAD dark native selects */
+select,
+select option,
+select optgroup {
+  color-scheme: dark;
+  background-color: #0b0b0b;
+  color: #f4f4f5;
+}
+
+select option:checked {
+  background-color: #2563eb;
+  color: #ffffff;
+}
+
+select option:hover {
+  background-color: #1f2937;
+  color: #ffffff;
+}
+
+/* RAD explicit dark selects */
+.rad-dark-select {
+  color-scheme: dark;
+  background-color: rgba(255, 255, 255, 0.035);
+  color: #f4f4f5;
+}
+
+.rad-dark-select option,
+.rad-dark-select optgroup {
+  color-scheme: dark;
+  background-color: #0b0b0b;
+  color: #f4f4f5;
+}
+
+.rad-dark-select option:checked {
+  background-color: #2563eb;
+  color: #ffffff;
+}
+
+.rad-dark-select option:hover {
+  background-color: #1f2937;
+  color: #ffffff;
+}

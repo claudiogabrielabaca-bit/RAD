@@ -113,10 +113,14 @@ export default function HomeExplorePanel({
                 <select
                   value={selectedYear}
                   onChange={(e) => onYearChange(e.target.value)}
-                  className="h-12 rounded-2xl border border-white/10 bg-white/[0.035] px-4 text-base text-zinc-100 outline-none transition hover:border-white/14 hover:bg-white/[0.055] focus:border-white/18 focus:ring-2 focus:ring-white/10"
+                  className="rad-dark-select h-12 rounded-2xl border border-white/10 bg-white/[0.035] px-4 text-base text-zinc-100 outline-none transition hover:border-white/14 hover:bg-white/[0.055] focus:border-white/18 focus:ring-2 focus:ring-white/10"
                 >
                   {years.map((year) => (
-                    <option key={year} value={year}>
+                    <option
+                      className="bg-[#0b0b0b] text-zinc-100"
+                      key={year}
+                      value={year}
+                    >
                       {year}
                     </option>
                   ))}
@@ -125,10 +129,14 @@ export default function HomeExplorePanel({
                 <select
                   value={selectedMonth}
                   onChange={(e) => onMonthChange(e.target.value)}
-                  className="h-12 min-w-[150px] rounded-2xl border border-white/10 bg-white/[0.035] px-4 text-base text-zinc-100 outline-none transition hover:border-white/14 hover:bg-white/[0.055] focus:border-white/18 focus:ring-2 focus:ring-white/10"
+                  className="rad-dark-select h-12 min-w-[150px] rounded-2xl border border-white/10 bg-white/[0.035] px-4 text-base text-zinc-100 outline-none transition hover:border-white/14 hover:bg-white/[0.055] focus:border-white/18 focus:ring-2 focus:ring-white/10"
                 >
                   {months.map((month) => (
-                    <option key={month.value} value={month.value}>
+                    <option
+                      className="bg-[#0b0b0b] text-zinc-100"
+                      key={month.value}
+                      value={month.value}
+                    >
                       {month.label}
                     </option>
                   ))}
@@ -137,10 +145,14 @@ export default function HomeExplorePanel({
                 <select
                   value={selectedDay}
                   onChange={(e) => onDayChange(e.target.value)}
-                  className="h-12 rounded-2xl border border-white/10 bg-white/[0.035] px-4 text-base text-zinc-100 outline-none transition hover:border-white/14 hover:bg-white/[0.055] focus:border-white/18 focus:ring-2 focus:ring-white/10"
+                  className="rad-dark-select h-12 rounded-2xl border border-white/10 bg-white/[0.035] px-4 text-base text-zinc-100 outline-none transition hover:border-white/14 hover:bg-white/[0.055] focus:border-white/18 focus:ring-2 focus:ring-white/10"
                 >
                   {days.map((day) => (
-                    <option key={day} value={day}>
+                    <option
+                      className="bg-[#0b0b0b] text-zinc-100"
+                      key={day}
+                      value={day}
+                    >
                       {day}
                     </option>
                   ))}
