@@ -1,6 +1,7 @@
 import { prisma } from "../src/app/lib/prisma";
 import {
   getFirstPositionalArg,
+  hasScriptFlag,
   requireScriptSafety,
 } from "./lib/script-safety";
 
@@ -20,7 +21,7 @@ function printUsage() {
 }
 
 async function main() {
-  const arg = getFirstPositionalArg();
+  const arg = hasScriptFlag("all") ? "--all" : getFirstPositionalArg();
 
   if (!arg) {
     printUsage();
