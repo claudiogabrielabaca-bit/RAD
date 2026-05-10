@@ -51,7 +51,7 @@ export function requireScriptSafety(options: ScriptSafetyOptions) {
   const allowedProduction = hasScriptFlag("allowProduction");
   const productionLike = isProbablyProductionDatabase();
 
-  if (options.allowDryRunBypass !== false && isDryRun) {
+  if (options.allowDryRunBypass === true && isDryRun) {
     return;
   }
 
@@ -63,7 +63,7 @@ export function requireScriptSafety(options: ScriptSafetyOptions) {
         `Operation: ${options.operation}`,
         "",
         "Run again with:",
-        `  --confirm`,
+        "  --confirm",
         "",
         productionLike
           ? "This also looks like a production/Railway database, so you will also need --allowProduction."
@@ -80,7 +80,7 @@ export function requireScriptSafety(options: ScriptSafetyOptions) {
         `Operation: ${options.operation}`,
         "",
         "Run again only if you really intend this:",
-        `  --confirm --allowProduction`,
+        "  --confirm --allowProduction",
       ].join("\n")
     );
   }

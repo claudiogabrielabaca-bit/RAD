@@ -1,5 +1,6 @@
 import { prisma } from "@/app/lib/prisma";
 import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
+import { requireScriptSafety } from "./lib/script-safety";
 
 const MIN_YEAR = 1800;
 const MAX_YEAR = new Date().getFullYear();
@@ -73,6 +74,7 @@ function isUsableHighlight(
 
 async function wipeExistingData() {
   console.log("Wiping existing highlight cache and surprise decks...");
+  console.log("This operation is destructive.");
 
   const deletedCache = await prisma.dayHighlightCache.deleteMany({});
   const deletedDecks = await prisma.surpriseDeck.deleteMany({});
@@ -222,6 +224,12 @@ async function fillMonthDay(monthDay: string, state: RebuildState) {
 }
 
 async function main() {
+  requireScriptSafety({
+    scriptName: "rebuild-highlight-cache-v4-monthday-target",
+    operation:
+      "delete all DayHighlightCache and SurpriseDeck rows, then rebuild highlight cache with month-day targeting",
+  });
+
   await wipeExistingData();
 
   const state = await getExistingCounts();
