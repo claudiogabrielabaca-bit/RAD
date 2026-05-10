@@ -1,5 +1,6 @@
 import { prisma } from "../src/app/lib/prisma";
 import { getDayHighlights } from "../src/app/lib/wiki";
+import { requireScriptSafety } from "./lib/script-safety";
 
 const START_YEAR = 1800;
 const END_YEAR = new Date().getFullYear();
@@ -115,6 +116,9 @@ async function tryPopulateDate(date: string, state: State) {
 }
 
 async function clearExistingData() {
+  console.log("Wiping existing highlight cache and surprise decks...");
+  console.log("This operation is destructive.");
+
   const [cacheResult, deckResult] = await prisma.$transaction([
     prisma.dayHighlightCache.deleteMany({}),
     prisma.surpriseDeck.deleteMany({}),
@@ -138,12 +142,15 @@ function getYearScore(year: number, monthDay: string, state: State) {
   return yearCount * 100 + decadeCount * 12 + mildYear2000Penalty;
 }
 
-function getOrderedCandidateYears(month: number, day: number, monthDay: string, state: State) {
+function getOrderedCandidateYears(
+  month: number,
+  day: number,
+  monthDay: string,
+  state: State
+) {
   const years = getCandidateYearsForMonthDay(month, day);
 
-  const decades = Array.from(
-    new Set(years.map((year) => getDecade(year)))
-  );
+  const decades = Array.from(new Set(years.map((year) => getDecade(year))));
 
   const orderedDecades = shuffleArray(decades).sort((a, b) => {
     const aCount = state.decadeUsage.get(a) ?? 0;
@@ -156,12 +163,17 @@ function getOrderedCandidateYears(month: number, day: number, monthDay: string, 
   for (const decade of orderedDecades) {
     const yearsInDecade = shuffleArray(
       years.filter((year) => getDecade(year) === decade)
-    ).sort((a, b) => getYearScore(a, monthDay, state) - getYearScore(b, monthDay, state));
+    ).sort(
+      (a, b) =>
+        getYearScore(a, monthDay, state) - getYearScore(b, monthDay, state)
+    );
 
     ordered.push(...yearsInDecade);
   }
 
-  return ordered.filter((year) => Number.isFinite(getYearScore(year, monthDay, state)));
+  return ordered.filter((year) =>
+    Number.isFinite(getYearScore(year, monthDay, state))
+  );
 }
 
 async function seedOnePassForAllMonthDays(state: State) {
@@ -303,7 +315,12 @@ async function backfillMissingOrWeakMonths(state: State) {
 }
 
 async function main() {
-  console.log("Wiping existing highlight cache and surprise decks...");
+  requireScriptSafety({
+    scriptName: "rebuild-highlight-cache-v3-hard-caps",
+    operation:
+      "delete all DayHighlightCache and SurpriseDeck rows, then rebuild highlight cache with hard year/decade caps",
+  });
+
   await clearExistingData();
 
   const state = buildInitialState();

@@ -1,5 +1,6 @@
 import { prisma } from "../src/app/lib/prisma";
 import { getDayHighlights } from "../src/app/lib/wiki";
+import { requireScriptSafety } from "./lib/script-safety";
 
 const START_YEAR = 1800;
 const END_YEAR = new Date().getFullYear();
@@ -122,6 +123,9 @@ async function tryPopulateDate(date: string, state: State) {
 }
 
 async function clearExistingData() {
+  console.log("Wiping existing highlight cache and surprise decks...");
+  console.log("This operation is destructive.");
+
   const [cacheResult, deckResult] = await prisma.$transaction([
     prisma.dayHighlightCache.deleteMany({}),
     prisma.surpriseDeck.deleteMany({}),
@@ -261,7 +265,12 @@ async function backfillMissingOrWeakMonths(state: State) {
 }
 
 async function main() {
-  console.log("Wiping existing highlight cache and surprise decks...");
+  requireScriptSafety({
+    scriptName: "rebuild-highlight-cache-v2-no-year2000-bias",
+    operation:
+      "delete all DayHighlightCache and SurpriseDeck rows, then rebuild highlight cache with reduced year-2000 bias",
+  });
+
   await clearExistingData();
 
   const state = buildInitialState();
