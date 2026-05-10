@@ -2,6 +2,10 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { Prisma } from "@prisma/client";
 import { prisma } from "../src/app/lib/prisma";
+import {
+  getFirstPositionalArg,
+  requireScriptSafety,
+} from "./lib/script-safety";
 
 type JsonLike =
   | string
@@ -80,8 +84,14 @@ function toCreateManyInput(
 }
 
 async function main() {
+  requireScriptSafety({
+    scriptName: "import-day-highlight-cache",
+    operation:
+      "delete all DayHighlightCache and SurpriseDeck rows, then import highlight cache rows from JSON",
+  });
+
   const inputPath = resolve(
-    process.argv[2] ?? "scripts/day-highlight-cache-export.json"
+    getFirstPositionalArg() ?? "scripts/day-highlight-cache-export.json"
   );
 
   const raw = JSON.parse(readFileSync(inputPath, "utf8")) as CacheRow[];
@@ -96,6 +106,9 @@ async function main() {
   );
 
   console.log(`Importing ${rows.length} cache rows from ${inputPath}...`);
+  console.log(
+    "This will delete existing DayHighlightCache and SurpriseDeck rows first."
+  );
 
   await prisma.$transaction([
     prisma.dayHighlightCache.deleteMany({}),
