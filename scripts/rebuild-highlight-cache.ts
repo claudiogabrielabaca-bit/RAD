@@ -1,5 +1,6 @@
 import { prisma } from "../src/app/lib/prisma";
 import { getDayHighlights } from "../src/app/lib/wiki";
+import { requireScriptSafety } from "./lib/script-safety";
 
 const START_YEAR = 1800;
 const END_YEAR = new Date().getFullYear();
@@ -46,6 +47,9 @@ function buildMonthDaySeedDates() {
 }
 
 async function wipeExistingData() {
+  console.log("Wiping existing highlight cache and surprise decks...");
+  console.log("This operation is destructive.");
+
   await prisma.$transaction([
     prisma.surpriseDeck.deleteMany({}),
     prisma.dayHighlightCache.deleteMany({}),
@@ -62,7 +66,9 @@ async function seedMonthDayCoverage() {
       processed += 1;
 
       if (processed % BATCH_LOG_EVERY === 0) {
-        console.log(`[seed] processed ${processed}/${seedDates.length} - ${date}`);
+        console.log(
+          `[seed] processed ${processed}/${seedDates.length} - ${date}`
+        );
       }
     } catch (error) {
       console.error(`[seed] failed ${date}`, error);
@@ -187,7 +193,12 @@ async function backfillBalancedYears() {
 }
 
 async function main() {
-  console.log("Wiping existing highlight cache and surprise decks...");
+  requireScriptSafety({
+    scriptName: "rebuild-highlight-cache",
+    operation:
+      "delete all DayHighlightCache and SurpriseDeck rows, then rebuild highlight cache with balanced month-day/year coverage",
+  });
+
   await wipeExistingData();
 
   console.log("Seeding one pass for all month-days...");
