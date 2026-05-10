@@ -2,11 +2,18 @@
   "name": "rate-my-day",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20 <25"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "prisma:validate": "prisma validate",
+    "scripts:check": "tsc -p tsconfig.scripts.json --noEmit",
+    "check": "npm run lint && npm run prisma:validate && npm run build",
+    "check:full": "npm run lint && npm run prisma:validate && npm run build && npm run scripts:check"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",

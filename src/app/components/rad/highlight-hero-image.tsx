@@ -26,6 +26,7 @@ export default function HighlightHeroImage({
   const [displaySrc, setDisplaySrc] = useState<string | null>(normalizedSrc);
   const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const failSafeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const completeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadAttemptRef = useRef(0);
 
   useEffect(() => {
@@ -42,14 +43,17 @@ export default function HighlightHeroImage({
       failSafeTimerRef.current = null;
     }
 
+    if (completeTimerRef.current) {
+      clearTimeout(completeTimerRef.current);
+      completeTimerRef.current = null;
+    }
+
     if (!normalizedSrc) {
-      setDisplaySrc(null);
       onLoadingChange?.(false);
       return;
     }
 
     if (preferImmediateSwap) {
-      setDisplaySrc(normalizedSrc);
       onLoadingChange?.(false);
       return;
     }
@@ -75,6 +79,11 @@ export default function HighlightHeroImage({
       if (failSafeTimerRef.current) {
         clearTimeout(failSafeTimerRef.current);
         failSafeTimerRef.current = null;
+      }
+
+      if (completeTimerRef.current) {
+        clearTimeout(completeTimerRef.current);
+        completeTimerRef.current = null;
       }
 
       if (nextSrc) {
@@ -111,7 +120,9 @@ export default function HighlightHeroImage({
     img.src = normalizedSrc;
 
     if (img.complete) {
-      handleLoad();
+      completeTimerRef.current = setTimeout(() => {
+        handleLoad();
+      }, 0);
     }
 
     return () => {
@@ -126,6 +137,11 @@ export default function HighlightHeroImage({
       if (failSafeTimerRef.current) {
         clearTimeout(failSafeTimerRef.current);
         failSafeTimerRef.current = null;
+      }
+
+      if (completeTimerRef.current) {
+        clearTimeout(completeTimerRef.current);
+        completeTimerRef.current = null;
       }
     };
   }, [

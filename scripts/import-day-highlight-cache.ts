@@ -1,5 +1,6 @@
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../src/app/lib/prisma";
 
 type JsonLike =
@@ -46,6 +47,38 @@ function isJsonLike(value: unknown): value is JsonLike {
   return false;
 }
 
+function toCreateManyInput(
+  row: CacheRow
+): Prisma.DayHighlightCacheCreateManyInput {
+  const base: Prisma.DayHighlightCacheCreateManyInput = {
+    day: row.day,
+    type: row.type,
+    year: row.year ?? null,
+    title: row.title ?? null,
+    text: row.text,
+    image: row.image ?? null,
+    articleUrl: row.articleUrl ?? null,
+  };
+
+  /*
+   * Important:
+   * Prisma createMany does not accept raw null for nullable JSON fields.
+   * If highlights is null/undefined/invalid, omit it and let the DB default/null apply.
+   */
+  if (
+    row.highlights !== null &&
+    row.highlights !== undefined &&
+    isJsonLike(row.highlights)
+  ) {
+    return {
+      ...base,
+      highlights: row.highlights as Prisma.InputJsonValue,
+    };
+  }
+
+  return base;
+}
+
 async function main() {
   const inputPath = resolve(
     process.argv[2] ?? "scripts/day-highlight-cache-export.json"
@@ -75,16 +108,7 @@ async function main() {
     const batch = rows.slice(i, i + batchSize);
 
     await prisma.dayHighlightCache.createMany({
-      data: batch.map((row: CacheRow) => ({
-        day: row.day,
-        type: row.type,
-        year: row.year ?? null,
-        title: row.title ?? null,
-        text: row.text,
-        image: row.image ?? null,
-        articleUrl: row.articleUrl ?? null,
-        ...(isJsonLike(row.highlights) ? { highlights: row.highlights } : {}),
-      })),
+      data: batch.map(toCreateManyInput),
     });
 
     console.log(

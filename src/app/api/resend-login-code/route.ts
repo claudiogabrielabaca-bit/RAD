@@ -93,7 +93,7 @@ export async function POST(req: Request) {
       },
     });
 
-    let devCode: string | undefined;
+    
 
     if (!user || !user.emailVerified) {
       await clearPendingLoginEmailCookie();
@@ -123,7 +123,7 @@ export async function POST(req: Request) {
 
     await setPendingLoginEmailCookie(user.email);
 
-    devCode = process.env.NODE_ENV !== "production" ? loginCode : undefined;
+    const devCode = process.env.NODE_ENV !== "production" ? loginCode : undefined;
 
     try {
       const mailResult = await sendMail({
