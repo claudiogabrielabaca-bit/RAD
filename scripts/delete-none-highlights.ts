@@ -1,6 +1,15 @@
 import { prisma } from "@/app/lib/prisma";
+import { requireScriptSafety } from "./lib/script-safety";
 
 async function main() {
+  requireScriptSafety({
+    scriptName: "delete-none-highlights",
+    operation: "delete all DayHighlightCache rows where type is 'none'",
+  });
+
+  console.log("Deleting DayHighlightCache rows with type='none'...");
+  console.log("This operation is destructive.");
+
   const result = await prisma.dayHighlightCache.deleteMany({
     where: {
       type: "none",
