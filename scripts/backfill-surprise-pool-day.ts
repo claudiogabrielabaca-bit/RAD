@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { requireScriptSafety } from "./lib/script-safety";
 
 const prisma = new PrismaClient();
 
@@ -292,6 +293,14 @@ function countBy<T>(items: T[], getKey: (item: T) => string) {
 
 async function main() {
   const args = parseArgs();
+
+  requireScriptSafety({
+    scriptName: "backfill-surprise-pool-day",
+    operation: args.replaceActive
+      ? "set all SurprisePoolDay rows inactive, then upsert active surprise pool rows"
+      : "upsert active SurprisePoolDay rows without replacing existing active rows",
+    allowDryRunBypass: true,
+  });
 
   console.log("=== BACKFILL SURPRISE POOL DAY ===");
   console.log("version:", SURPRISE_POOL_BACKFILL_VERSION);
