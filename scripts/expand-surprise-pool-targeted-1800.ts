@@ -1,5 +1,6 @@
 import { prisma } from "../src/app/lib/prisma";
 import { ensureHighlightsForDay } from "../src/app/lib/highlight-service";
+import { requireScriptSafety } from "./lib/script-safety";
 
 type OnThisDayEntry = {
   year?: number;
@@ -66,7 +67,9 @@ function parseArgs(): Args {
     if (key === "delayMs" && value) args.delayMs = Number(value);
     if (key === "fetchDelayMs" && value) args.fetchDelayMs = Number(value);
     if (key === "maxMonthDays" && value) args.maxMonthDays = Number(value);
-    if (key === "offsetMonthDays" && value) args.offsetMonthDays = Number(value);
+    if (key === "offsetMonthDays" && value) {
+      args.offsetMonthDays = Number(value);
+    }
     if (key === "dryRun") args.dryRun = true;
   }
 
@@ -237,7 +240,11 @@ async function fetchOnThisDay(month: number, dayOfMonth: number) {
       continue;
     }
 
-    if (response.status === 502 || response.status === 503 || response.status === 504) {
+    if (
+      response.status === 502 ||
+      response.status === 503 ||
+      response.status === 504
+    ) {
       const waitMs = 5000 * attempt;
 
       console.warn(
@@ -380,6 +387,14 @@ async function printCurrentDistribution() {
 async function main() {
   const args = parseArgs();
 
+  requireScriptSafety({
+    scriptName: "expand-surprise-pool-targeted-1800",
+    operation:
+      `generate/cache 1800s surprise candidate highlights via ensureHighlightsForDay ` +
+      `(minYear ${args.minYear}, maxYear ${args.maxYear}, maxAdded ${args.maxAdded}, maxCandidates ${args.maxCandidates})`,
+    allowDryRunBypass: true,
+  });
+
   console.log("=== EXPAND SURPRISE POOL TARGETED 1800 ===");
   console.log("minYear:", args.minYear);
   console.log("maxYear:", args.maxYear);
@@ -446,7 +461,10 @@ async function main() {
 
     const previous = deduped.get(candidate.day);
 
-    if (!previous || getCandidateWeight(candidate) < getCandidateWeight(previous)) {
+    if (
+      !previous ||
+      getCandidateWeight(candidate) < getCandidateWeight(previous)
+    ) {
       deduped.set(candidate.day, candidate);
     }
   }
