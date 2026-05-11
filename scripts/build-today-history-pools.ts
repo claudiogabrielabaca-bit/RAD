@@ -1,4 +1,9 @@
 import { prisma } from "../src/app/lib/prisma";
+import {
+  getFirstPositionalArg,
+  hasScriptFlag,
+  requireScriptSafety,
+} from "./lib/script-safety";
 
 type FeedType = "selected" | "events" | "births" | "deaths";
 
@@ -220,7 +225,7 @@ function parseYearsFromSectionHtml(html: string) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    const match = trimmed.match(/^(\d{1,4})\s*[—–\-:]\s*(.+)$/);
+    const match = trimmed.match(/^(\d{1,4})\s*[â€”â€“\-:]\s*(.+)$/);
     if (!match) continue;
 
     const year = normalizeYear(Number(match[1]));
@@ -284,7 +289,9 @@ async function buildPoolForMonthDay(monthDay: string) {
     }
   } catch (error) {
     console.log(
-      `[${monthDay}] SKIPPED fetch failure: ${error instanceof Error ? error.message : String(error)}`
+      `[${monthDay}] SKIPPED fetch failure: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
     return;
   }
@@ -338,18 +345,42 @@ async function buildPoolForMonthDay(monthDay: string) {
   );
 }
 
+function printUsage() {
+  console.log("Usage:");
+  console.log(
+    "  npx tsx .\\scripts\\build-today-history-pools.ts 04-10 --confirm"
+  );
+  console.log(
+    "  npx tsx .\\scripts\\build-today-history-pools.ts --all --confirm"
+  );
+  console.log("");
+  console.log("Production/Railway also requires:");
+  console.log("  --allowProduction");
+}
+
 async function main() {
-  const arg = process.argv[2];
+  const arg = hasScriptFlag("all") ? "--all" : getFirstPositionalArg();
 
   if (!arg) {
-    console.log("Usage:");
-    console.log("  npx tsx .\\scripts\\build-today-history-pools.ts 04-10");
-    console.log("  npx tsx .\\scripts\\build-today-history-pools.ts --all");
+    printUsage();
     process.exit(1);
   }
 
   const monthDays =
     arg === "--all" ? getAllMonthDays() : [parseMonthDayArg(arg)];
+
+  requireScriptSafety({
+    scriptName: "build-today-history-pools",
+    operation:
+      arg === "--all"
+        ? "write/upsert all TodayHistoryPool month-day rows"
+        : `write/upsert TodayHistoryPool row for ${arg}`,
+  });
+
+  console.log("=== BUILD TODAY HISTORY POOLS ===");
+  console.log("target:", arg);
+  console.log("month-days:", monthDays.length);
+  console.log("");
 
   for (const monthDay of monthDays) {
     await buildPoolForMonthDay(monthDay);
