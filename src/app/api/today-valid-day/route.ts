@@ -12,6 +12,7 @@ export const revalidate = 0;
 
 const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date.";
 const MAX_BUNDLE_ATTEMPTS = 12;
+const MAX_EXCLUDE_DAYS = 1000;
 
 type DayBundlePayload = Awaited<ReturnType<typeof buildDayBundle>>;
 
@@ -22,7 +23,7 @@ function parseExcludeDays(searchParams: URLSearchParams) {
 
   return Array.from(
     new Set(raw.split(",").map((item) => item.trim()).filter(isValidDayString))
-  ).slice(0, 80);
+  ).slice(0, MAX_EXCLUDE_DAYS);
 }
 
 function normalizePoolDays(raw: unknown): string[] {

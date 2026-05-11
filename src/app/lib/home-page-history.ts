@@ -7,7 +7,7 @@ import {
 export const SURPRISE_HISTORY_STORAGE_KEY = "rad:surprise-history";
 export const SURPRISE_HISTORY_MAX = 1000;
 export const TODAY_HISTORY_STORAGE_KEY_PREFIX = "rad:today-history:";
-export const TODAY_HISTORY_MAX = 160;
+export const TODAY_HISTORY_MAX = 1000;
 export const DAY_BACK_HISTORY_STORAGE_KEY = "rad:day-back-history";
 export const DAY_BACK_HISTORY_MAX = 50;
 
