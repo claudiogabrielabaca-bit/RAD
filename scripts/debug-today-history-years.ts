@@ -1,5 +1,9 @@
 import { prisma } from "../src/app/lib/prisma";
 import { ensureHighlightsForDay } from "../src/app/lib/highlight-service";
+import {
+  getFirstPositionalArg,
+  requireScriptSafety,
+} from "./lib/script-safety";
 
 type CachedRow = {
   day: string;
@@ -56,11 +60,16 @@ function isUsableHighlight(
 }
 
 async function main() {
-  const monthDayArg = process.argv[2] ?? "04-10";
+  const monthDayArg = getFirstPositionalArg() ?? "04-10";
 
   if (!/^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(monthDayArg)) {
     throw new Error("Use MM-DD format, for example: 04-10");
   }
+
+  requireScriptSafety({
+    scriptName: "debug-today-history-years",
+    operation: `generate/check Today in History cache candidates for ${monthDayArg} via ensureHighlightsForDay`,
+  });
 
   const [month, day] = monthDayArg.split("-").map(Number);
   const years = getValidYearsForMonthDay(month, day);
@@ -68,6 +77,7 @@ async function main() {
     (year) => `${year}-${pad2(month)}-${pad2(day)}`
   );
 
+  console.log("=== DEBUG TODAY HISTORY YEARS ===");
   console.log(`Month-day: ${monthDayArg}`);
   console.log(`Candidate years: ${years.length}`);
   console.log("");
@@ -158,7 +168,9 @@ async function main() {
     }
 
     console.log(
-      `Checked ${Math.min(i + BATCH_SIZE, candidateDays.length)}/${candidateDays.length}`
+      `Checked ${Math.min(i + BATCH_SIZE, candidateDays.length)}/${
+        candidateDays.length
+      }`
     );
   }
 
@@ -174,7 +186,9 @@ async function main() {
   console.log("===== USABLE YEARS =====");
   for (const item of usableDays) {
     console.log(
-      `${item.day} | ${item.type ?? "unknown"} | ${item.source} | ${item.title ?? "(no title)"}`
+      `${item.day} | ${item.type ?? "unknown"} | ${item.source} | ${
+        item.title ?? "(no title)"
+      }`
     );
   }
 
