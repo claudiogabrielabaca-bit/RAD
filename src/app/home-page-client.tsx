@@ -133,7 +133,6 @@ export default function Page({
   const skipNextAutoDayLoadRef = useRef(false);
 
   const highlightTransitionRequestRef = useRef(0);
-  const highlightTransitionTimerRef = useRef<number | null>(null);
   const pendingHighlightIndexRef = useRef(0);
 
   const dayBackHistoryRef = useRef<string[]>([]);
@@ -174,7 +173,6 @@ export default function Page({
     useState<HighlightItem[]>(initialHighlightItems);
   const [activeHighlightIndex, setActiveHighlightIndex] = useState(0);
   const [isHighlightPaused, setIsHighlightPaused] = useState(false);
-  const [isHighlightSwitching, setIsHighlightSwitching] = useState(false);
   const [loadingHighlight, setLoadingHighlight] = useState(false);
   const [
     preferImmediateHighlightImageSwap,
@@ -577,7 +575,7 @@ export default function Page({
   }, []);
 
   const transitionToHighlight = useCallback(
-    (nextIndex: number) => {
+    async (nextIndex: number) => {
       if (highlights.length <= 1) return;
       if (nextIndex < 0 || nextIndex >= highlights.length) return;
 
@@ -591,32 +589,19 @@ export default function Page({
       }
 
       pendingHighlightIndexRef.current = nextIndex;
-      highlightTransitionRequestRef.current += 1;
 
-      const requestId = highlightTransitionRequestRef.current;
+      const requestId = highlightTransitionRequestRef.current + 1;
+      highlightTransitionRequestRef.current = requestId;
 
-      if (highlightTransitionTimerRef.current) {
-        window.clearTimeout(highlightTransitionTimerRef.current);
-        highlightTransitionTimerRef.current = null;
-      }
+      const nextItem = highlights[nextIndex];
+      const nextImage = nextItem?.image?.trim() || "";
 
-      setIsHighlightSwitching(true);
-      setHeroImageLoading(false);
-      setPreferImmediateHighlightImageSwap(false);
+      await preloadImage(nextImage);
 
-      highlightTransitionTimerRef.current = window.setTimeout(() => {
-        const indexToApply = pendingHighlightIndexRef.current;
-        const nextItem = highlights[indexToApply];
-        const nextImage = nextItem?.image?.trim() || "";
+      if (highlightTransitionRequestRef.current !== requestId) return;
 
-        void preloadImage(nextImage).then(() => {
-          if (highlightTransitionRequestRef.current !== requestId) return;
-
-          setPreferImmediateHighlightImageSwap(true);
-          setActiveHighlightIndex(indexToApply);
-          setIsHighlightSwitching(false);
-        });
-      }, 220);
+      setPreferImmediateHighlightImageSwap(true);
+      setActiveHighlightIndex(nextIndex);
     },
     [activeHighlightIndex, highlights, preloadImage]
   );
@@ -628,12 +613,6 @@ export default function Page({
   useEffect(() => {
     highlightTransitionRequestRef.current += 1;
     pendingHighlightIndexRef.current = 0;
-    setIsHighlightSwitching(false);
-
-    if (highlightTransitionTimerRef.current) {
-      clearTimeout(highlightTransitionTimerRef.current);
-      highlightTransitionTimerRef.current = null;
-    }
   }, [day, highlights]);
 
   function clearMinTransitionTimer() {
@@ -651,11 +630,6 @@ export default function Page({
 
       if (todayHistoryNoticeTimeoutRef.current) {
         clearTimeout(todayHistoryNoticeTimeoutRef.current);
-      }
-
-      if (highlightTransitionTimerRef.current) {
-        clearTimeout(highlightTransitionTimerRef.current);
-        highlightTransitionTimerRef.current = null;
       }
 
       clearMinTransitionTimer();
@@ -1257,7 +1231,7 @@ export default function Page({
           ? 0
           : activeHighlightIndex + 1;
 
-      transitionToHighlight(nextIndex);
+      void transitionToHighlight(nextIndex);
     }, 6000);
 
     return () => clearInterval(interval);
@@ -1324,7 +1298,7 @@ export default function Page({
     const baseIndex = pendingHighlightIndexRef.current;
     const nextIndex = baseIndex === 0 ? highlights.length - 1 : baseIndex - 1;
 
-    transitionToHighlight(nextIndex);
+    void transitionToHighlight(nextIndex);
   }
 
   function goToNextHighlight() {
@@ -1333,7 +1307,7 @@ export default function Page({
     const baseIndex = pendingHighlightIndexRef.current;
     const nextIndex = baseIndex === highlights.length - 1 ? 0 : baseIndex + 1;
 
-    transitionToHighlight(nextIndex);
+    void transitionToHighlight(nextIndex);
   }
 
   const isAtMinDay = day <= minDay;
@@ -2127,13 +2101,7 @@ export default function Page({
                     <div className="absolute inset-0 z-[1] bg-gradient-to-r from-black/82 via-black/56 to-black/18" />
                     <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/28 via-transparent to-black/62" />
 
-                    {isHighlightSwitching ? (
-                      <div className="rad-fade-in absolute inset-0 z-10 flex items-center justify-center bg-black/58 backdrop-blur-[3px]">
-                        <div className="rounded-full border border-white/10 bg-black/45 px-4 py-2 text-xs font-medium uppercase tracking-[0.18em] text-zinc-300">
-                          Loading selected moment...
-                        </div>
-                      </div>
-                    ) : heroImageLoading ? (
+                    {heroImageLoading ? (
                       <div className="rad-fade-in absolute inset-0 z-10 bg-black/24 backdrop-blur-[2px]" />
                     ) : null}
 
@@ -2236,7 +2204,7 @@ export default function Page({
                               <button
                                 key={index}
                                 type="button"
-                                onClick={() => transitionToHighlight(index)}
+                                onClick={() => void transitionToHighlight(index)}
                                 className={`h-2.5 w-2.5 rounded-full transition ${
                                   index === activeHighlightIndex
                                     ? "bg-white"
