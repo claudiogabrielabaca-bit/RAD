@@ -6,6 +6,7 @@ import {
   PICK_DATE_EMPTY_TEXT,
   type PickDateCacheEntry,
 } from "@/app/lib/pick-date-cache";
+import { requireScriptSafety } from "./lib/script-safety";
 
 type Args = {
   from: string;
@@ -197,7 +198,9 @@ async function generateWithRetries(day: string, args: Args) {
 
       if (attempt < maxAttempts) {
         console.log(
-          `  retry ${attempt}/${args.retries}: ${result.entry.lastError ?? "failed"}`
+          `  retry ${attempt}/${args.retries}: ${
+            result.entry.lastError ?? "failed"
+          }`
         );
 
         if (args.retryDelayMs > 0) {
@@ -233,6 +236,13 @@ async function generateWithRetries(day: string, args: Args) {
 
 async function main() {
   const args = parseArgs();
+
+  requireScriptSafety({
+    scriptName: "backfill-pick-date-cache",
+    operation: `write/upsert PickDateCache rows from ${args.from} to ${args.to}`,
+    allowDryRunBypass: true,
+  });
+
   const days = await getSelectedDays(args);
 
   let ready = 0;
