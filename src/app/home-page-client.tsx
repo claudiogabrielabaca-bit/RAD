@@ -227,7 +227,7 @@ export default function Page({
 
   const [isDayTransitioning, setIsDayTransitioning] = useState(false);
   const [minimumTransitionDone, setMinimumTransitionDone] = useState(true);
-  const [heroImageLoading, setHeroImageLoading] = useState(false);
+  const [, setHeroImageLoading] = useState(false);
   const [todayHistoryNotice, setTodayHistoryNotice] = useState("");
 
   const daysInSelectedMonth = getDaysInMonth(
@@ -574,9 +574,19 @@ export default function Page({
     });
   }, []);
 
+  const isHighlightSwitchLocked =
+    !hasPickedInitialDay ||
+    isDayTransitioning ||
+    !minimumTransitionDone ||
+    loadingDay ||
+    loadingHighlight;
+
+  const canSwitchHighlights =
+    highlights.length > 1 && !isHighlightSwitchLocked;
+
   const transitionToHighlight = useCallback(
     async (nextIndex: number) => {
-      if (highlights.length <= 1) return;
+      if (!canSwitchHighlights) return;
       if (nextIndex < 0 || nextIndex >= highlights.length) return;
 
       const currentPendingIndex = pendingHighlightIndexRef.current;
@@ -599,11 +609,18 @@ export default function Page({
       await preloadImage(nextImage);
 
       if (highlightTransitionRequestRef.current !== requestId) return;
+      if (isHighlightSwitchLocked) return;
 
       setPreferImmediateHighlightImageSwap(true);
       setActiveHighlightIndex(nextIndex);
     },
-    [activeHighlightIndex, highlights, preloadImage]
+    [
+      activeHighlightIndex,
+      canSwitchHighlights,
+      highlights,
+      isHighlightSwitchLocked,
+      preloadImage,
+    ]
   );
 
   useEffect(() => {
@@ -611,9 +628,16 @@ export default function Page({
   }, [activeHighlightIndex]);
 
   useEffect(() => {
+    if (!isHighlightSwitchLocked) return;
+
     highlightTransitionRequestRef.current += 1;
-    pendingHighlightIndexRef.current = 0;
-  }, [day, highlights]);
+    pendingHighlightIndexRef.current = activeHighlightIndex;
+  }, [activeHighlightIndex, isHighlightSwitchLocked]);
+
+  useEffect(() => {
+    highlightTransitionRequestRef.current += 1;
+    pendingHighlightIndexRef.current = activeHighlightIndex;
+  }, [day, highlights, activeHighlightIndex]);
 
   function clearMinTransitionTimer() {
     if (minTransitionTimerRef.current) {
@@ -1223,7 +1247,7 @@ export default function Page({
   }, [loadingHighlight, highlight]);
 
   useEffect(() => {
-    if (highlights.length <= 1 || isHighlightPaused) return;
+    if (!canSwitchHighlights || isHighlightPaused) return;
 
     const interval = setInterval(() => {
       const nextIndex =
@@ -1235,7 +1259,13 @@ export default function Page({
     }, 6000);
 
     return () => clearInterval(interval);
-  }, [highlights, isHighlightPaused, activeHighlightIndex, transitionToHighlight]);
+  }, [
+    canSwitchHighlights,
+    highlights,
+    isHighlightPaused,
+    activeHighlightIndex,
+    transitionToHighlight,
+  ]);
 
   useEffect(() => {
     setHighlight(highlights[activeHighlightIndex] ?? null);
@@ -1293,7 +1323,7 @@ export default function Page({
   }
 
   function goToPrevHighlight() {
-    if (highlights.length <= 1) return;
+    if (!canSwitchHighlights) return;
 
     const baseIndex = pendingHighlightIndexRef.current;
     const nextIndex = baseIndex === 0 ? highlights.length - 1 : baseIndex - 1;
@@ -1302,7 +1332,7 @@ export default function Page({
   }
 
   function goToNextHighlight() {
-    if (highlights.length <= 1) return;
+    if (!canSwitchHighlights) return;
 
     const baseIndex = pendingHighlightIndexRef.current;
     const nextIndex = baseIndex === highlights.length - 1 ? 0 : baseIndex + 1;
@@ -2101,10 +2131,6 @@ export default function Page({
                     <div className="absolute inset-0 z-[1] bg-gradient-to-r from-black/82 via-black/56 to-black/18" />
                     <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/28 via-transparent to-black/62" />
 
-                    {heroImageLoading ? (
-                      <div className="rad-fade-in absolute inset-0 z-10 bg-black/24 backdrop-blur-[2px]" />
-                    ) : null}
-
                     <div className="relative z-20 flex h-full items-end p-6 sm:p-8">
                       <div
                         key={`${day}-${activeHighlightIndex}`}
@@ -2144,7 +2170,11 @@ export default function Page({
                     </div>
                   </div>
 
-                  <div className={highlights.length > 1 ? "pt-1" : "inline-block pt-1"}>
+                  <div
+                    className={
+                      highlights.length > 1 ? "pt-1" : "inline-block pt-1"
+                    }
+                  >
                     <div
                       className={`grid gap-4 ${
                         highlights.length > 1
@@ -2205,7 +2235,8 @@ export default function Page({
                                 key={index}
                                 type="button"
                                 onClick={() => void transitionToHighlight(index)}
-                                className={`h-2.5 w-2.5 rounded-full transition ${
+                                disabled={!canSwitchHighlights}
+                                className={`h-2.5 w-2.5 rounded-full transition disabled:cursor-not-allowed disabled:opacity-40 ${
                                   index === activeHighlightIndex
                                     ? "bg-white"
                                     : "bg-white/30"
@@ -2219,7 +2250,8 @@ export default function Page({
                             <button
                               type="button"
                               onClick={goToPrevHighlight}
-                              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.055] text-sm text-white transition hover:border-white/16 hover:bg-white/[0.085]"
+                              disabled={!canSwitchHighlights}
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.055] text-sm text-white transition hover:border-white/16 hover:bg-white/[0.085] disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               ←
                             </button>
@@ -2227,7 +2259,8 @@ export default function Page({
                             <button
                               type="button"
                               onClick={goToNextHighlight}
-                              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.055] text-sm text-white transition hover:border-white/16 hover:bg-white/[0.085]"
+                              disabled={!canSwitchHighlights}
+                              className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.055] text-sm text-white transition hover:border-white/16 hover:bg-white/[0.085] disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               →
                             </button>
