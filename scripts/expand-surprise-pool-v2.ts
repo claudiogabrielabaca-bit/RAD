@@ -1,5 +1,6 @@
 ﻿import { prisma } from "@/app/lib/prisma";
 import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
+import { requireScriptSafety } from "./lib/script-safety";
 
 type Args = {
   target: number;
@@ -336,7 +337,9 @@ function printSummary(state: PoolState) {
   const topMonthDays = [...state.monthDayUsage.entries()]
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .slice(0, 20);
-  const centuries = [...state.centuryUsage.entries()].sort((a, b) => a[0] - b[0]);
+  const centuries = [...state.centuryUsage.entries()].sort(
+    (a, b) => a[0] - b[0]
+  );
 
   console.log("\nCurrent valid days:", state.validDays.size);
 
@@ -358,6 +361,14 @@ function printSummary(state: PoolState) {
 
 async function main() {
   const args = parseArgs();
+
+  requireScriptSafety({
+    scriptName: "expand-surprise-pool-v2",
+    operation:
+      `generate/cache surprise candidate highlights via ensureHighlightsForDay ` +
+      `(target ${args.target}, maxAdded ${args.maxAdded}, maxAttempts ${args.maxAttempts})`,
+  });
+
   const state = await loadState();
 
   console.log("=== EXPAND SURPRISE POOL V2 ===");
