@@ -580,10 +580,15 @@ export default function Page({
       const nextItem = highlights[nextIndex];
       const nextImage = nextItem?.image?.trim() || "";
 
+      setHeroImageLoading(!!nextImage);
       await preloadImage(nextImage);
 
       setPreferImmediateHighlightImageSwap(true);
       setActiveHighlightIndex(nextIndex);
+
+      window.setTimeout(() => {
+        setHeroImageLoading(false);
+      }, 180);
     },
     [activeHighlightIndex, highlights, preloadImage]
   );
@@ -933,28 +938,39 @@ export default function Page({
     }
 
     if (requireVerifiedEmail()) return;
+    if (loadingFavoriteDay) return;
+
+    const previousFavorite = isFavoriteDay;
+    const optimisticFavorite = !previousFavorite;
+
+    setToast("");
+    setIsFavoriteDay(optimisticFavorite);
+    setLoadingFavoriteDay(true);
 
     try {
-      setToast("");
-      setLoadingFavoriteDay(true);
-
       const res = await fetch("/api/favorite-day", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ day }),
+        body: JSON.stringify({
+          day,
+          isFavorite: optimisticFavorite,
+        }),
       });
 
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
+        setIsFavoriteDay(previousFavorite);
+        showToast(json?.error ?? "Could not update favorite day.");
         return;
       }
 
       setIsFavoriteDay(!!json?.isFavorite);
     } catch {
-      //
+      setIsFavoriteDay(previousFavorite);
+      showToast("Could not update favorite day.");
     } finally {
       setLoadingFavoriteDay(false);
     }
@@ -2032,13 +2048,16 @@ export default function Page({
                           ? "Remove favorite day"
                           : "Set as favorite day"
                       }
-                      className={`absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-xl transition ${
+                      className={`rad-pressable absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border backdrop-blur-xl ${
                         isFavoriteDay
-                          ? "border-yellow-400/30 bg-yellow-500/18 text-yellow-300 hover:bg-yellow-500/22"
-                          : "border-white/15 bg-black/40 text-white hover:bg-black/48"
-                      } disabled:cursor-not-allowed disabled:opacity-60`}
+                          ? "border-yellow-400/35 bg-yellow-500/20 text-yellow-300 shadow-[0_0_28px_rgba(250,204,21,0.14)] hover:bg-yellow-500/25"
+                          : "border-white/15 bg-black/40 text-white hover:bg-black/50"
+                      } ${loadingFavoriteDay ? "rad-pending-pulse" : ""}`}
                     >
-                      <span className="text-2xl leading-none">
+                      <span
+                        key={isFavoriteDay ? "favorite-on" : "favorite-off"}
+                        className="rad-soft-pop text-2xl leading-none"
+                      >
                         {isFavoriteDay ? "★" : "☆"}
                       </span>
                     </button>
@@ -2061,11 +2080,14 @@ export default function Page({
                     <div className="absolute inset-0 z-[1] bg-gradient-to-b from-black/28 via-transparent to-black/62" />
 
                     {heroImageLoading ? (
-                      <div className="absolute inset-0 z-10 bg-black/30 backdrop-blur-[2px]" />
+                      <div className="rad-fade-in absolute inset-0 z-10 bg-black/24 backdrop-blur-[2px]" />
                     ) : null}
 
                     <div className="relative z-20 flex h-full items-end p-6 sm:p-8">
-                      <div className="max-w-[760px]">
+                      <div
+                        key={`${day}-${activeHighlightIndex}`}
+                        className="rad-fade-swap max-w-[760px]"
+                      >
                         <div className="text-sm text-zinc-200/90">In this day</div>
 
                         <div className="mt-1 text-2xl font-semibold text-white sm:text-3xl">
