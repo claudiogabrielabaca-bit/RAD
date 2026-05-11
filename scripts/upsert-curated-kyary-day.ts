@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { requireScriptSafety } from "./lib/script-safety";
 
 const prisma = new PrismaClient();
 
@@ -131,6 +132,12 @@ function buildCuratedHighlight(image: string | null): CuratedHighlight {
 }
 
 async function main() {
+  requireScriptSafety({
+    scriptName: "upsert-curated-kyary-day",
+    operation:
+      "upsert curated Kyary Pamyu Pamyu rows into DayHighlightCache and SurprisePoolDay",
+  });
+
   console.log("=== UPSERT CURATED KYARY DAY ===");
   console.log("day:", DAY);
 
