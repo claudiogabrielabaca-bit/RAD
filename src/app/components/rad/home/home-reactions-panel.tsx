@@ -80,7 +80,6 @@ export default function HomeReactionsPanel({
   reportingReviewId,
   otherReviews,
   sortedOtherReviews,
-  loadingDay: _loadingDay,
   currentUser,
   reviewMaxLength,
   onSetHoverStars,
