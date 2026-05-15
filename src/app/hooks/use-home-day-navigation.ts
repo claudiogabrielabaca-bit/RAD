@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { getDayWithOffset } from "@/app/lib/home-page-history";
 import { isValidDayString } from "@/app/lib/home-page-utils";
 import type { DayResponse, HighlightItem, SurpriseResponse } from "@/app/lib/rad-types";
@@ -9,6 +9,25 @@ type SetDayResponse = React.Dispatch<React.SetStateAction<DayResponse | null>>;
 type SetHighlightItem = React.Dispatch<React.SetStateAction<HighlightItem | null>>;
 type SetHighlightItems = React.Dispatch<React.SetStateAction<HighlightItem[]>>;
 type SetNumber = React.Dispatch<React.SetStateAction<number>>;
+
+type ScheduledPrefetch = {
+  id: number;
+  type: "idle" | "timeout";
+};
+
+type IdleCapableWindow = Window & {
+  requestIdleCallback?: (callback: IdleRequestCallback) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
+function isAbortError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "AbortError"
+  );
+}
 
 export function useHomeDayNavigation(params: {
   day: string;
@@ -65,10 +84,59 @@ export function useHomeDayNavigation(params: {
   const transitionIdRef = useRef(0);
   const dayBundleCacheRef = useRef<Map<string, SurpriseResponse>>(new Map());
   const prefetchingDaysRef = useRef<Set<string>>(new Set());
+  const dayBundleAbortControllersRef = useRef<Set<AbortController>>(new Set());
+  const scheduledPrefetchesRef = useRef<ScheduledPrefetch[]>([]);
+
+  function cancelScheduledPrefetches() {
+    if (typeof window === "undefined") {
+      scheduledPrefetchesRef.current = [];
+      return;
+    }
+
+    const browserWindow = window as IdleCapableWindow;
+
+    for (const scheduled of scheduledPrefetchesRef.current) {
+      if (
+        scheduled.type === "idle" &&
+        typeof browserWindow.cancelIdleCallback === "function"
+      ) {
+        browserWindow.cancelIdleCallback(scheduled.id);
+      } else {
+        browserWindow.clearTimeout(scheduled.id);
+      }
+    }
+
+    scheduledPrefetchesRef.current = [];
+  }
+
+  function removeScheduledPrefetch(id: number, type: ScheduledPrefetch["type"]) {
+    scheduledPrefetchesRef.current = scheduledPrefetchesRef.current.filter(
+      (item) => item.id !== id || item.type !== type
+    );
+  }
+
+  function abortInFlightDayBundleRequests() {
+    for (const controller of dayBundleAbortControllersRef.current) {
+      controller.abort();
+    }
+
+    dayBundleAbortControllersRef.current.clear();
+    prefetchingDaysRef.current.clear();
+  }
+
+  useEffect(() => {
+    return () => {
+      cancelScheduledPrefetches();
+      abortInFlightDayBundleRequests();
+    };
+  }, []);
 
   function beginDayTransition() {
     transitionIdRef.current += 1;
     const currentTransitionId = transitionIdRef.current;
+
+    cancelScheduledPrefetches();
+    abortInFlightDayBundleRequests();
 
     setMinimumTransitionDone(false);
     setIsDayTransitioning(true);
@@ -102,22 +170,30 @@ export function useHomeDayNavigation(params: {
   }
 
   async function fetchDayBundle(targetDay: string) {
-    const res = await fetch(
-      `/api/day-bundle?day=${encodeURIComponent(targetDay)}`,
-      {
-        cache: "no-store",
+    const controller = new AbortController();
+    dayBundleAbortControllersRef.current.add(controller);
+
+    try {
+      const res = await fetch(
+        `/api/day-bundle?day=${encodeURIComponent(targetDay)}`,
+        {
+          cache: "no-store",
+          signal: controller.signal,
+        }
+      );
+
+      const json = (await res.json().catch(() => null)) as
+        | SurpriseResponse
+        | null;
+
+      if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
+        throw new Error("Failed to load day bundle");
       }
-    );
 
-    const json = (await res.json().catch(() => null)) as
-      | SurpriseResponse
-      | null;
-
-    if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
-      throw new Error("Failed to load day bundle");
+      return json;
+    } finally {
+      dayBundleAbortControllersRef.current.delete(controller);
     }
-
-    return json;
   }
 
   async function prefetchDayBundle(targetDay: string) {
@@ -130,8 +206,10 @@ export function useHomeDayNavigation(params: {
     try {
       const payload = await fetchDayBundle(targetDay);
       cacheBundlePayload(payload);
-    } catch {
-      //
+    } catch (error) {
+      if (!isAbortError(error)) {
+        // Prefetch failures are intentionally silent.
+      }
     } finally {
       prefetchingDaysRef.current.delete(targetDay);
     }
@@ -144,21 +222,34 @@ export function useHomeDayNavigation(params: {
       return;
     }
 
-    const schedule =
-      typeof window !== "undefined" && "requestIdleCallback" in window
-        ? window.requestIdleCallback.bind(window)
-        : (cb: IdleRequestCallback) =>
-            window.setTimeout(
-              () =>
-                cb({
-                  didTimeout: false,
-                  timeRemaining: () => 0,
-                } as IdleDeadline),
-              500
-            );
+    if (typeof window === "undefined") {
+      return;
+    }
 
-    schedule(() => {
+    const browserWindow = window as IdleCapableWindow;
+
+    if (typeof browserWindow.requestIdleCallback === "function") {
+      const id = browserWindow.requestIdleCallback(() => {
+        removeScheduledPrefetch(id, "idle");
+        void prefetchDayBundle(candidate);
+      });
+
+      scheduledPrefetchesRef.current.push({
+        id,
+        type: "idle",
+      });
+
+      return;
+    }
+
+    const id = browserWindow.setTimeout(() => {
+      removeScheduledPrefetch(id, "timeout");
       void prefetchDayBundle(candidate);
+    }, 500);
+
+    scheduledPrefetchesRef.current.push({
+      id,
+      type: "timeout",
     });
   }
 
@@ -237,8 +328,10 @@ export function useHomeDayNavigation(params: {
 
       applyBundlePayload(payload);
       setDay(payload.day);
-    } catch {
+    } catch (error) {
       if (transitionIdRef.current !== transitionId) return;
+      if (isAbortError(error)) return;
+
       showToast("Could not load this day.");
       finishDayTransition(transitionId);
     }
