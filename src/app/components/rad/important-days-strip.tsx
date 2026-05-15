@@ -17,6 +17,10 @@ type MomentStats = {
   views: number;
 };
 
+type DayStatsBatchResponse = {
+  stats?: Record<string, MomentStats>;
+};
+
 type FilterKey = "all" | "war" | "science" | "politics" | "culture";
 
 const FILTERS: Array<{ key: FilterKey; label: string }> = [
@@ -51,6 +55,10 @@ const BADGE_CLASSES: Record<string, string> = {
   selected: "border-white/12 bg-white/[0.08] text-white",
   general: "border-zinc-400/25 bg-zinc-500/18 text-zinc-200",
 };
+
+let importantDaysStatsCache: Record<string, MomentStats> | null = null;
+let importantDaysStatsRequest: Promise<Record<string, MomentStats>> | null =
+  null;
 
 function cleanText(value?: string | null) {
   return value?.replace(/\s+/g, " ").trim() || "";
@@ -95,25 +103,80 @@ function getAllFeaturedMoments() {
   return FEATURED_MOMENTS.slice(0, 5);
 }
 
-async function fetchMomentStats(day: string): Promise<MomentStats> {
-  try {
-    const res = await fetch(`/api/day-bundle?day=${encodeURIComponent(day)}`, {
-      cache: "no-store",
-    });
+function buildFallbackStatsMap(days: string[]) {
+  return Object.fromEntries(
+    days.map((day) => [day, { ...FALLBACK_STATS }])
+  ) as Record<string, MomentStats>;
+}
 
-    if (!res.ok) return FALLBACK_STATS;
+function normalizeStatsMap(
+  payload: DayStatsBatchResponse | null,
+  days: string[]
+) {
+  const fallback = buildFallbackStatsMap(days);
+  const stats = payload?.stats;
 
-    const json = await res.json();
-    const dayData = json?.dayData;
-
-    return {
-      avg: typeof dayData?.avg === "number" ? dayData.avg : 0,
-      count: typeof dayData?.count === "number" ? dayData.count : 0,
-      views: typeof dayData?.views === "number" ? dayData.views : 0,
-    };
-  } catch {
-    return FALLBACK_STATS;
+  if (!stats || typeof stats !== "object") {
+    return fallback;
   }
+
+  for (const day of days) {
+    const item = stats[day];
+
+    fallback[day] = {
+      avg: typeof item?.avg === "number" ? item.avg : 0,
+      count: typeof item?.count === "number" ? item.count : 0,
+      views: typeof item?.views === "number" ? item.views : 0,
+    };
+  }
+
+  return fallback;
+}
+
+async function loadImportantDaysStats(days: string[]) {
+  const uniqueDays = Array.from(new Set(days));
+
+  if (importantDaysStatsCache) {
+    return importantDaysStatsCache;
+  }
+
+  if (importantDaysStatsRequest) {
+    return importantDaysStatsRequest;
+  }
+
+  importantDaysStatsRequest = (async () => {
+    try {
+      const res = await fetch("/api/day-stats-batch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+        body: JSON.stringify({
+          days: uniqueDays,
+        }),
+      });
+
+      if (!res.ok) {
+        return buildFallbackStatsMap(uniqueDays);
+      }
+
+      const json = (await res.json().catch(() => null)) as
+        | DayStatsBatchResponse
+        | null;
+
+      const stats = normalizeStatsMap(json, uniqueDays);
+      importantDaysStatsCache = stats;
+
+      return stats;
+    } catch {
+      return buildFallbackStatsMap(uniqueDays);
+    } finally {
+      importantDaysStatsRequest = null;
+    }
+  })();
+
+  return importantDaysStatsRequest;
 }
 
 function MomentImage({ moment }: { moment: FeaturedMoment }) {
@@ -240,15 +303,11 @@ export default function ImportantDaysStrip({
     let cancelled = false;
 
     async function loadStats() {
-      const entries = await Promise.all(
-        FEATURED_MOMENTS.map(async (moment) => {
-          const stats = await fetchMomentStats(moment.day);
-          return [moment.day, stats] as const;
-        })
-      );
+      const days = FEATURED_MOMENTS.map((moment) => moment.day);
+      const stats = await loadImportantDaysStats(days);
 
       if (!cancelled) {
-        setStatsByDay(Object.fromEntries(entries));
+        setStatsByDay(stats);
       }
     }
 
