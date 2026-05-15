@@ -53,6 +53,7 @@ type HomeReactionsPanelProps = {
   onSetReplyingToId: React.Dispatch<React.SetStateAction<string | null>>;
   onOpenDeleteReplyModal: (replyId: string) => void;
   onRequireReplyInteraction: () => boolean;
+  onProtectedActionStatus: (status: number) => boolean;
   onSetReplyTextByRating: React.Dispatch<
     React.SetStateAction<Record<string, string>>
   >;
@@ -96,6 +97,7 @@ export default function HomeReactionsPanel({
   onSetReplyingToId,
   onOpenDeleteReplyModal,
   onRequireReplyInteraction,
+  onProtectedActionStatus,
   onSetReplyTextByRating,
   onSubmitReply,
   onReportReview,
@@ -262,6 +264,7 @@ export default function HomeReactionsPanel({
             deletingReplyId={deletingReplyId}
             onDeleteReply={onOpenDeleteReplyModal}
             onRequireInteraction={onRequireReplyInteraction}
+            onProtectedActionStatus={onProtectedActionStatus}
           />
 
           {replyingToId === item.id ? (

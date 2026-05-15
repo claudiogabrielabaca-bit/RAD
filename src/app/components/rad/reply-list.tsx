@@ -314,11 +314,13 @@ export default function ReplyList({
   deletingReplyId,
   onDeleteReply,
   onRequireInteraction,
+  onProtectedActionStatus,
 }: {
   replies: ReplyItem[];
   deletingReplyId: string | null;
   onDeleteReply: (replyId: string) => void;
   onRequireInteraction: () => boolean;
+  onProtectedActionStatus: (status: number) => boolean;
 }) {
   const searchParams = useSearchParams();
 
@@ -422,8 +424,7 @@ export default function ReplyList({
 
       const json = await res.json().catch(() => null);
 
-      if (res.status === 401 || res.status === 403) {
-        onRequireInteraction();
+      if (onProtectedActionStatus(res.status)) {
         return;
       }
 
@@ -470,8 +471,7 @@ export default function ReplyList({
 
       const json = await res.json().catch(() => null);
 
-      if (res.status === 401 || res.status === 403) {
-        onRequireInteraction();
+      if (onProtectedActionStatus(res.status)) {
         return;
       }
 
@@ -535,8 +535,7 @@ export default function ReplyList({
 
       const json = await res.json().catch(() => null);
 
-      if (res.status === 401 || res.status === 403) {
-        onRequireInteraction();
+      if (onProtectedActionStatus(res.status)) {
         return;
       }
 

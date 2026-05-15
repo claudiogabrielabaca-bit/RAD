@@ -325,6 +325,26 @@ export default function Page({
     return false;
   }
 
+  function handleProtectedActionStatus(status: number) {
+    if (status === 401) {
+      setCurrentUser(null);
+      openAuthModal("login");
+      return true;
+    }
+
+    if (status === 403) {
+      if (currentUser?.email) {
+        openAuthModal("verify-email", currentUser.email);
+      } else {
+        openAuthModal("login");
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
   function requireReplyInteraction() {
     if (!currentUser) {
       openAuthModal("login");
@@ -1453,6 +1473,10 @@ export default function Page({
 
       const json = await res.json().catch(() => null);
 
+      if (handleProtectedActionStatus(res.status)) {
+        return;
+      }
+
       if (!res.ok) {
         showToast(json?.error ?? "Error saving review.");
         return;
@@ -1502,6 +1526,10 @@ export default function Page({
       });
 
       const json = await res.json().catch(() => null);
+
+      if (handleProtectedActionStatus(res.status)) {
+        return;
+      }
 
       if (!res.ok) {
         showToast(json?.error ?? "Could not delete review.");
@@ -1572,6 +1600,11 @@ export default function Page({
       });
 
       const json = await res.json().catch(() => null);
+
+      if (handleProtectedActionStatus(res.status)) {
+        setReportReviewModalOpen(false);
+        return;
+      }
 
       if (!res.ok) {
         setReportReviewError(json?.error ?? "Could not report review.");
@@ -1654,6 +1687,10 @@ export default function Page({
           };
         });
 
+        if (handleProtectedActionStatus(res.status)) {
+          return;
+        }
+
         showToast(json?.error ?? "Error giving like.");
         return;
       }
@@ -1731,6 +1768,10 @@ export default function Page({
 
       const json = await res.json().catch(() => null);
 
+      if (handleProtectedActionStatus(res.status)) {
+        return;
+      }
+
       if (!res.ok) {
         showToast(json?.error ?? "Could not send reply.");
         return;
@@ -1789,6 +1830,10 @@ export default function Page({
       });
 
       const json = await res.json().catch(() => null);
+
+      if (handleProtectedActionStatus(res.status)) {
+        return;
+      }
 
       if (!res.ok) {
         showToast(json?.error ?? "Could not delete reply.");
@@ -2311,6 +2356,7 @@ export default function Page({
                 onSetReplyingToId={setReplyingToId}
                 onOpenDeleteReplyModal={openDeleteReplyModal}
                 onRequireReplyInteraction={requireReplyInteraction}
+            onProtectedActionStatus={handleProtectedActionStatus}
                 onSetReplyTextByRating={setReplyTextByRating}
                 onSubmitReply={submitReply}
                 onReportReview={reportReview}
