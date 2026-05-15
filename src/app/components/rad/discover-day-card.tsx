@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { formatAvg, formatCompactViews, truncateText, getDiscoverTypeLabel, getDiscoverTypeClasses } from "@/app/lib/home-page-utils";
 import type { DiscoverCard } from "@/app/lib/rad-types";
 
@@ -50,10 +51,12 @@ export default function DiscoverDayCard({
       className="group relative h-[360px] overflow-hidden rounded-[30px] border border-white/8 bg-[#121212]/70 text-left shadow-[0_18px_70px_rgba(0,0,0,0.45)] transition duration-300 hover:-translate-y-1 hover:scale-[1.01] hover:border-white/14"
     >
       {card.image ? (
-        <img
+        <Image
           src={card.image}
           alt={card.title}
-          className="absolute inset-0 h-full w-full object-cover transition duration-500 group-hover:scale-105"
+          fill
+          sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+          className="absolute inset-0 object-cover transition duration-500 group-hover:scale-105"
         />
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] via-[#121212] to-black" />
