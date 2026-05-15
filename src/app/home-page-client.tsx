@@ -477,13 +477,14 @@ export default function Page({
     });
   }
 
-  function buildSurpriseRequestUrl({
-    fresh = false,
-    excludeDays = [],
-  }: {
-    fresh?: boolean;
-    excludeDays?: string[];
-  } = {}) {
+  const buildSurpriseRequestUrl = useCallback(
+    ({
+      fresh = false,
+      excludeDays = [],
+    }: {
+      fresh?: boolean;
+      excludeDays?: string[];
+    } = {}) => {
     const params = new URLSearchParams();
 
     if (fresh) {
@@ -506,7 +507,9 @@ export default function Page({
 
     const query = params.toString();
     return query ? `/api/surprise?${query}` : "/api/surprise";
-  }
+    },
+    [day]
+  );
 
   async function fetchPickDateBundle(targetDay: string) {
     const res = await fetch(
@@ -826,7 +829,7 @@ export default function Page({
     return () => {
       cancelled = true;
     };
-  }, [initialBundle, searchParams]);
+  }, [initialBundle, searchParams, buildSurpriseRequestUrl]);
 
   useEffect(() => {
     const [y, m, d] = day.split("-");
