@@ -3,9 +3,6 @@ import { NextResponse } from "next/server";
 
 const MAX_RATE_LIMIT_RETRIES = 3;
 
-type PrismaErrorWithCode = {
-  code: string;
-};
 
 type RateLimitRow = {
   id: string;
@@ -15,6 +12,15 @@ type RateLimitRow = {
   expiresAt: Date;
   createdAt: Date;
   updatedAt: Date;
+};
+
+type RateLimitUpdateData = {
+  count?:
+    | number
+    | {
+        increment: number;
+      };
+  expiresAt?: Date;
 };
 
 type RateLimitTransactionClient = {
@@ -42,12 +48,7 @@ type RateLimitTransactionClient = {
           key: string;
         };
       };
-      data: {
-        count?: {
-          increment: number;
-        };
-        expiresAt?: Date;
-      };
+      data: RateLimitUpdateData;
     }): Promise<RateLimitRow>;
   };
 };
@@ -57,6 +58,24 @@ type ConsumeRateLimitResult = {
   remaining: number;
   retryAfterSec: number;
 };
+
+function getPrismaErrorCode(error: unknown): string | null {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+  ) {
+    return (error as { code: string }).code;
+  }
+
+  return null;
+}
+
+function isRetryableRateLimitError(error: unknown) {
+  const code = getPrismaErrorCode(error);
+  return code === "P2002" || code === "P2025";
+}
 
 export function getClientIp(req: Request) {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -75,18 +94,6 @@ export function getClientIp(req: Request) {
 export function buildRateLimitKey(req: Request, email?: string) {
   const ip = getClientIp(req);
   return email ? `${ip}:${email.trim().toLowerCase()}` : ip;
-}
-
-function isRetryableRateLimitError(error: unknown) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof (error as { code?: unknown }).code === "string" &&
-    (error as { code: string }).code !== "" &&
-    (error as { code: string }).code !== undefined &&
-    ["P2002", "P2025"].includes((error as { code: string }).code)
-  );
 }
 
 async function consumeRateLimitInTransaction(
@@ -141,7 +148,7 @@ async function consumeRateLimitInTransaction(
         },
       },
       data: {
-        count: 1 as never,
+        count: 1,
         expiresAt,
       },
     });
