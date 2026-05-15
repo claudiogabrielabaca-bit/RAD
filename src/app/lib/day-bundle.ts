@@ -4,7 +4,22 @@ import { getAnonLabel } from "@/app/lib/anon-label";
 import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 import type { ReplyItem } from "@/app/lib/rad-types";
 
+const DAY_BUNDLE_REVIEW_LIMIT = 50;
+const DAY_BUNDLE_REPLY_LIMIT_PER_REVIEW = 25;
+const VIEWER_RELATION_EMPTY_ID = "__rad_no_current_user__";
+
 type CurrentUser = Awaited<ReturnType<typeof getCurrentUser>>;
+
+type ViewerScopedRelationSelect = {
+  where: {
+    userId?: string;
+    id?: string;
+  };
+  select: {
+    id: true;
+  };
+  take: 1;
+};
 
 type ReplyRecord = {
   id: string;
@@ -17,8 +32,11 @@ type ReplyRecord = {
   user: {
     username: string;
   } | null;
-  likes: { id: string; userId: string | null }[];
-  reports: { id: string; userId: string | null }[];
+  likes: { id: string }[];
+  reports: { id: string }[];
+  _count: {
+    likes: number;
+  };
 };
 
 type RatingRecord = {
@@ -31,9 +49,38 @@ type RatingRecord = {
   user: {
     username: string;
   } | null;
-  likes: { id: string; userId: string | null }[];
+  likes: { id: string }[];
   replies: ReplyRecord[];
+  _count: {
+    likes: number;
+  };
 };
+
+function buildViewerScopedRelationSelect(
+  user: CurrentUser
+): ViewerScopedRelationSelect {
+  if (user) {
+    return {
+      where: {
+        userId: user.id,
+      },
+      select: {
+        id: true,
+      },
+      take: 1,
+    };
+  }
+
+  return {
+    where: {
+      id: VIEWER_RELATION_EMPTY_ID,
+    },
+    select: {
+      id: true,
+    },
+    take: 1,
+  };
+}
 
 function buildReplyTree(replies: ReplyRecord[], user: CurrentUser): ReplyItem[] {
   const nodes: ReplyItem[] = replies.map((reply: ReplyRecord) => ({
@@ -48,24 +95,16 @@ function buildReplyTree(replies: ReplyRecord[], user: CurrentUser): ReplyItem[] 
       : reply.anonId
         ? getAnonLabel(reply.anonId)
         : "User",
-    likesCount: reply.likes.length,
-    likedByMe: user
-      ? reply.likes.some(
-          (like: { id: string; userId: string | null }) => like.userId === user.id
-        )
-      : false,
-    reportedByMe: user
-      ? reply.reports.some(
-          (report: { id: string; userId: string | null }) =>
-            report.userId === user.id
-        )
-      : false,
-    replies: [] as ReplyItem[],
+    likesCount: reply._count.likes,
+    likedByMe: user ? reply.likes.length > 0 : false,
+    reportedByMe: user ? reply.reports.length > 0 : false,
+    replies: [],
   }));
 
   const byId = new Map<string, ReplyItem>(
     nodes.map((node: ReplyItem) => [node.id, node])
   );
+
   const roots: ReplyItem[] = [];
 
   for (const node of nodes) {
@@ -85,26 +124,60 @@ function buildReplyTree(replies: ReplyRecord[], user: CurrentUser): ReplyItem[] 
 }
 
 export async function buildDayBundle(day: string) {
-  const [user, highlightResult, ratings, stats]: [
-    CurrentUser,
+  const user = await getCurrentUser();
+  const viewerScopedRelationSelect = buildViewerScopedRelationSelect(user);
+
+  const [highlightResult, ratings, ratingSummary, stats]: [
     Awaited<ReturnType<typeof ensureHighlightsForDay>>,
     RatingRecord[],
-    { views: number } | null
+    {
+      _count: {
+        _all: number;
+      };
+      _avg: {
+        stars: number | null;
+      };
+    },
+    { views: number } | null,
   ] = await Promise.all([
-    getCurrentUser(),
     ensureHighlightsForDay(day),
     prisma.rating.findMany({
       where: { day },
       orderBy: { createdAt: "desc" },
-      include: {
-        likes: true,
+      take: DAY_BUNDLE_REVIEW_LIMIT,
+      select: {
+        id: true,
+        stars: true,
+        review: true,
+        createdAt: true,
+        anonId: true,
+        userId: true,
+        likes: viewerScopedRelationSelect,
+        _count: {
+          select: {
+            likes: true,
+          },
+        },
         replies: {
           orderBy: {
             createdAt: "asc",
           },
-          include: {
-            likes: true,
-            reports: true,
+          take: DAY_BUNDLE_REPLY_LIMIT_PER_REVIEW,
+          select: {
+            id: true,
+            ratingId: true,
+            anonId: true,
+            userId: true,
+            parentReplyId: true,
+            text: true,
+            createdAt: true,
+            likes: viewerScopedRelationSelect,
+            reports: viewerScopedRelationSelect,
+            _count: {
+              select: {
+                likes: true,
+              },
+            },
             user: {
               select: {
                 username: true,
@@ -119,20 +192,23 @@ export async function buildDayBundle(day: string) {
         },
       },
     }),
+    prisma.rating.aggregate({
+      where: { day },
+      _count: {
+        _all: true,
+      },
+      _avg: {
+        stars: true,
+      },
+    }),
     prisma.dayStats.findUnique({
       where: { day },
       select: { views: true },
     }),
   ]);
 
-  const count = ratings.length;
-  const avg =
-    count === 0
-      ? 0
-      : ratings.reduce(
-          (acc: number, r: RatingRecord) => acc + r.stars,
-          0
-        ) / count;
+  const count = ratingSummary._count._all;
+  const avg = ratingSummary._avg.stars ?? 0;
 
   const reviews = ratings
     .map((r: RatingRecord) => ({
@@ -140,12 +216,8 @@ export async function buildDayBundle(day: string) {
       stars: r.stars,
       review: r.review,
       createdAt: r.createdAt.toISOString(),
-      likesCount: r.likes.length,
-      likedByMe: user
-        ? r.likes.some(
-            (like: { id: string; userId: string | null }) => like.userId === user.id
-          )
-        : false,
+      likesCount: r._count.likes,
+      likedByMe: user ? r.likes.length > 0 : false,
       isMine: user ? r.userId === user.id : false,
       authorLabel: r.user?.username
         ? `@${r.user.username}`
