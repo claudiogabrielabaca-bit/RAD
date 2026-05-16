@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 type FeedBadgeKey =
@@ -213,12 +214,14 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
 
           <div className="mt-7 border-l border-white/12 pl-5 sm:pl-7">
             <div className="grid gap-5 sm:grid-cols-[132px_minmax(0,1fr)] sm:items-start">
-              <div className="h-[96px] w-full max-w-[150px] overflow-hidden rounded-2xl border border-white/8 bg-black/40 sm:h-[104px]">
+              <div className="relative h-[96px] w-full max-w-[150px] overflow-hidden rounded-2xl border border-white/8 bg-black/40 sm:h-[104px]">
                 {item.highlightImage ? (
-                  <img
+                  <Image
                     src={item.highlightImage}
                     alt={highlightTitle}
-                    className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                    fill
+                    sizes="150px"
+                    className="object-cover transition duration-500 group-hover:scale-[1.04]"
                     draggable={false}
                   />
                 ) : (
