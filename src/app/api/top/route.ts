@@ -6,6 +6,7 @@ export const revalidate = 0;
 
 const NO_MATCH_LABEL = "No exact historical match";
 const EMPTY_HIGHLIGHT_TEXT = "No exact historical match was found for this date.";
+const TOP_CACHE_TTL_MS = 60 * 1000;
 
 type RankedDay = {
   day: string;
@@ -19,6 +20,17 @@ type RankedDay = {
   secondaryType: string | null;
   kind: string | null;
   category: string | null;
+};
+
+type RankedTopResponse = {
+  top: RankedDay[];
+  low: RankedDay[];
+};
+
+type RankedRatingRow = {
+  day: string;
+  avg: number;
+  count: number;
 };
 
 type CacheRow = {
@@ -41,6 +53,15 @@ type HighlightLike = {
   kind: string | null;
   category: string | null;
 };
+
+let topCache:
+  | {
+      expiresAt: number;
+      payload: RankedTopResponse;
+    }
+  | null = null;
+
+let topRequestPromise: Promise<RankedTopResponse> | null = null;
 
 function cleanText(value?: string | null) {
   return value?.replace(/\s+/g, " ").trim() || "";
@@ -178,29 +199,50 @@ function buildContextFromCacheRow(row?: CacheRow): Omit<
   };
 }
 
-function groupRatings(
-  ratings: { day: string; stars: number }[]
-): Array<{ day: string; avg: number; count: number }> {
-  const byDay = new Map<string, { total: number; count: number }>();
-
-  for (const rating of ratings) {
-    const current = byDay.get(rating.day) ?? { total: 0, count: 0 };
-
-    current.total += rating.stars;
-    current.count += 1;
-
-    byDay.set(rating.day, current);
-  }
-
-  return Array.from(byDay.entries()).map(([day, value]) => ({
-    day,
-    avg: value.total / value.count,
-    count: value.count,
+function normalizeRankedRows(rows: RankedRatingRow[]) {
+  return rows.map((row) => ({
+    day: row.day,
+    avg: Number(row.avg) || 0,
+    count: Number(row.count) || 0,
   }));
+}
+
+async function getTopRatingGroups() {
+  const rows = await prisma.$queryRaw<RankedRatingRow[]>`
+    SELECT
+      "day",
+      AVG("stars")::float AS "avg",
+      COUNT(*)::int AS "count"
+    FROM "Rating"
+    GROUP BY "day"
+    ORDER BY AVG("stars") DESC, COUNT(*) DESC
+    LIMIT 10
+  `;
+
+  return normalizeRankedRows(rows);
+}
+
+async function getLowestRatingGroups() {
+  const rows = await prisma.$queryRaw<RankedRatingRow[]>`
+    SELECT
+      "day",
+      AVG("stars")::float AS "avg",
+      COUNT(*)::int AS "count"
+    FROM "Rating"
+    GROUP BY "day"
+    ORDER BY AVG("stars") ASC, COUNT(*) DESC
+    LIMIT 10
+  `;
+
+  return normalizeRankedRows(rows);
 }
 
 async function buildContextMap(days: string[]) {
   const uniqueDays = Array.from(new Set(days));
+
+  if (uniqueDays.length === 0) {
+    return new Map<string, CacheRow>();
+  }
 
   const rows: CacheRow[] = await prisma.dayHighlightCache.findMany({
     where: {
@@ -232,49 +274,70 @@ function attachContext(
   }));
 }
 
-export async function GET() {
-  try {
-    const ratings = await prisma.rating.findMany({
-      select: {
-        day: true,
-        stars: true,
-      },
+async function buildTopPayload(): Promise<RankedTopResponse> {
+  const [sortedTop, sortedLow] = await Promise.all([
+    getTopRatingGroups(),
+    getLowestRatingGroups(),
+  ]);
+
+  const cacheByDay = await buildContextMap([
+    ...sortedTop.map((item) => item.day),
+    ...sortedLow.map((item) => item.day),
+  ]);
+
+  return {
+    top: attachContext(sortedTop, cacheByDay),
+    low: attachContext(sortedLow, cacheByDay),
+  };
+}
+
+async function getCachedTopPayload() {
+  const now = Date.now();
+
+  if (topCache && topCache.expiresAt > now) {
+    return topCache.payload;
+  }
+
+  if (topRequestPromise) {
+    return topRequestPromise;
+  }
+
+  topRequestPromise = buildTopPayload()
+    .then((payload) => {
+      topCache = {
+        payload,
+        expiresAt: Date.now() + TOP_CACHE_TTL_MS,
+      };
+
+      return payload;
+    })
+    .finally(() => {
+      topRequestPromise = null;
     });
 
-    const grouped = groupRatings(ratings).filter((item) => item.count > 0);
+  return topRequestPromise;
+}
 
-    const sortedTop = [...grouped]
-      .sort((a, b) => {
-        if (b.avg !== a.avg) return b.avg - a.avg;
-        return b.count - a.count;
-      })
-      .slice(0, 10);
+export async function GET() {
+  try {
+    const payload = await getCachedTopPayload();
 
-    const sortedLow = [...grouped]
-      .sort((a, b) => {
-        if (a.avg !== b.avg) return a.avg - b.avg;
-        return b.count - a.count;
-      })
-      .slice(0, 10);
-
-    const cacheByDay = await buildContextMap([
-      ...sortedTop.map((item) => item.day),
-      ...sortedLow.map((item) => item.day),
-    ]);
+    return NextResponse.json(payload, {
+      headers: {
+        "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+      },
+    });
+  } catch (error) {
+    console.error("top GET error:", error);
 
     return NextResponse.json(
+      { error: "Server error" },
       {
-        top: attachContext(sortedTop, cacheByDay),
-        low: attachContext(sortedLow, cacheByDay),
-      },
-      {
+        status: 500,
         headers: {
           "Cache-Control": "no-store",
         },
       }
     );
-  } catch (error) {
-    console.error("top GET error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
