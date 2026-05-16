@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import {
   FEATURED_MOMENTS,
@@ -189,14 +190,16 @@ function MomentImage({ moment }: { moment: FeaturedMoment }) {
   }
 
   return (
-    <img
+    <Image
       src={moment.image}
       alt=""
       aria-hidden="true"
+      fill
+      sizes="(min-width: 1536px) 20vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
       draggable={false}
       loading="lazy"
       onError={() => setFailed(true)}
-      className="absolute inset-0 h-full w-full object-cover object-center transition duration-700 group-hover:scale-[1.04]"
+      className="object-cover object-center transition duration-700 group-hover:scale-[1.04]"
     />
   );
 }
