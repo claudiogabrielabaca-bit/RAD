@@ -4,6 +4,7 @@ import { getOrCreateVisitorId, getVisitorId } from "@/app/lib/visitor-id";
 const SURPRISE_ENGINE_VERSION = "v22-hard-no-repeat-effective-pool-random";
 const GLOBAL_OWNER_KEY = "global:surprise-recent";
 const GLOBAL_HISTORY_MAX = 240;
+const SURPRISE_POOL_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const EXACT_DAY_COOLDOWN_MIN = 48;
 const EXACT_DAY_COOLDOWN_MAX = 120;
@@ -73,6 +74,15 @@ type SurprisePool = {
   monthFrequency: Map<number, number>;
   monthDayFrequency: Map<string, number>;
 };
+
+let surprisePoolCache:
+  | {
+      expiresAt: number;
+      pool: SurprisePool;
+    }
+  | null = null;
+
+let surprisePoolRequest: Promise<SurprisePool> | null = null;
 
 type HistoryState = {
   dayUsage: Map<string, number>;
@@ -849,7 +859,7 @@ async function getFallbackSurprisePoolFromHighlightCache(): Promise<SurprisePool
   };
 }
 
-async function getSurprisePool(): Promise<SurprisePool> {
+async function buildSurprisePool(): Promise<SurprisePool> {
   const dedicatedPool = await getDedicatedSurprisePool();
 
   if (dedicatedPool) {
@@ -857,6 +867,33 @@ async function getSurprisePool(): Promise<SurprisePool> {
   }
 
   return getFallbackSurprisePoolFromHighlightCache();
+}
+
+async function getSurprisePool(): Promise<SurprisePool> {
+  const now = Date.now();
+
+  if (surprisePoolCache && surprisePoolCache.expiresAt > now) {
+    return surprisePoolCache.pool;
+  }
+
+  if (surprisePoolRequest) {
+    return surprisePoolRequest;
+  }
+
+  surprisePoolRequest = buildSurprisePool()
+    .then((pool) => {
+      surprisePoolCache = {
+        pool,
+        expiresAt: Date.now() + SURPRISE_POOL_CACHE_TTL_MS,
+      };
+
+      return pool;
+    })
+    .finally(() => {
+      surprisePoolRequest = null;
+    });
+
+  return surprisePoolRequest;
 }
 
 function buildOwnerKey(kind: OwnerKind, id: string) {
