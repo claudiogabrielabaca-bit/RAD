@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
 type HighlightHeroImageProps = {
@@ -163,11 +164,14 @@ export default function HighlightHeroImage({
       <div className="absolute inset-0 bg-gradient-to-br from-[#1a1a1a] via-[#111] to-black" />
 
       {resolvedDisplaySrc ? (
-        <img
+        <Image
           src={resolvedDisplaySrc}
           alt={alt}
+          fill
+          sizes="100vw"
           draggable={false}
-          className="absolute inset-0 h-full w-full object-cover object-[center_18%]"
+          priority
+          className="object-cover object-[center_18%]"
         />
       ) : (
         <div className="absolute inset-0 animate-pulse bg-black/20" />
