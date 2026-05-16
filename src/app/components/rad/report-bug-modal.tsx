@@ -207,6 +207,7 @@ export default function ReportBugModal({
               {screenshot ? (
                 <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black/30">
                   {previewUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- Local object URL preview; next/image is not appropriate for user-selected files.
                     <img
                       src={previewUrl}
                       alt="Bug screenshot preview"
