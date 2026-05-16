@@ -229,6 +229,7 @@ export default function SocialShareCard({
               src={highlight.image}
               alt={title}
               fill
+          unoptimized
               sizes="1080px"
               className="object-cover"
               draggable={false}

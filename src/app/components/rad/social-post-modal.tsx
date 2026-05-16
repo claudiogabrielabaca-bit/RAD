@@ -233,6 +233,7 @@ export default function SocialPostModal({
                             src={item.image}
                             alt={label}
                             fill
+          unoptimized
                             sizes="112px"
                             className="object-cover"
                             draggable={false}

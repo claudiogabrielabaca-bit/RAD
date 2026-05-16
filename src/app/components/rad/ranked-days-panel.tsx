@@ -169,6 +169,7 @@ function RankedThumbnail({
           src={item.image}
           alt={title}
           fill
+          unoptimized
           sizes="64px"
           draggable={false}
           className="object-cover"

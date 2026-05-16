@@ -220,6 +220,7 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
                     src={item.highlightImage}
                     alt={highlightTitle}
                     fill
+          unoptimized
                     sizes="150px"
                     className="object-cover transition duration-500 group-hover:scale-[1.04]"
                     draggable={false}

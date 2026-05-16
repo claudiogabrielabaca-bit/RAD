@@ -195,6 +195,7 @@ function MomentImage({ moment }: { moment: FeaturedMoment }) {
       alt=""
       aria-hidden="true"
       fill
+          unoptimized
       sizes="(min-width: 1536px) 20vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
       draggable={false}
       loading="lazy"

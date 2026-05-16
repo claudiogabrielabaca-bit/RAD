@@ -168,6 +168,7 @@ export default function HighlightHeroImage({
           src={resolvedDisplaySrc}
           alt={alt}
           fill
+          unoptimized
           sizes="100vw"
           draggable={false}
           priority
