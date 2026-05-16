@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import type { HighlightItem, ReviewItem } from "@/app/lib/rad-types";
@@ -228,10 +229,12 @@ export default function SocialPostModal({
                     >
                       <div className="relative h-20 w-28 overflow-hidden bg-black">
                         {item.image ? (
-                          <img
+                          <Image
                             src={item.image}
                             alt={label}
-                            className="h-full w-full object-cover"
+                            fill
+                            sizes="112px"
+                            className="object-cover"
                             draggable={false}
                           />
                         ) : (
