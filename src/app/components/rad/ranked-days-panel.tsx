@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatAvg } from "@/app/lib/home-page-utils";
@@ -163,12 +164,14 @@ function RankedThumbnail({
 
   if (item.image) {
     return (
-      <div className="hidden h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/40 sm:block">
-        <img
+      <div className="relative hidden h-16 w-16 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-black/40 sm:block">
+        <Image
           src={item.image}
           alt={title}
+          fill
+          sizes="64px"
           draggable={false}
-          className="h-full w-full object-cover"
+          className="object-cover"
         />
       </div>
     );
