@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import type { HighlightItem, ReviewItem } from "@/app/lib/rad-types";
 
 export const SOCIAL_POST_WIDTH = 1080;
@@ -224,11 +225,14 @@ export default function SocialShareCard({
       <div className="grid h-full grid-rows-[minmax(0,1fr)_auto]">
         <div className="relative min-h-0 overflow-hidden border-b border-white/10 bg-black">
           {highlight.image ? (
-            <img
+            <Image
               src={highlight.image}
               alt={title}
-              className="absolute inset-0 h-full w-full object-cover"
+              fill
+              sizes="1080px"
+              className="object-cover"
               draggable={false}
+              priority
             />
           ) : (
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_34%),linear-gradient(180deg,#1a1a1a_0%,#090909_100%)]" />
