@@ -2,11 +2,13 @@ import { prisma } from "@/app/lib/prisma";
 import { getCurrentUser } from "@/app/lib/current-user";
 import { getAnonLabel } from "@/app/lib/anon-label";
 import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
-import type { ReplyItem } from "@/app/lib/rad-types";
+import type { HighlightResponse, ReplyItem } from "@/app/lib/rad-types";
 
 const DAY_BUNDLE_REVIEW_LIMIT = 50;
 const DAY_BUNDLE_REPLY_LIMIT_PER_REVIEW = 25;
 const VIEWER_RELATION_EMPTY_ID = "__rad_no_current_user__";
+const ANONYMOUS_DAY_BUNDLE_CACHE_TTL_MS = 60 * 1000;
+const SHOULD_LOG_DAY_BUNDLE_TIMINGS = process.env.NODE_ENV === "development";
 
 type CurrentUser = Awaited<ReturnType<typeof getCurrentUser>>;
 
@@ -56,6 +58,40 @@ type RatingRecord = {
   };
 };
 
+type DayBundleReview = {
+  id: string;
+  stars: number;
+  review: string;
+  createdAt: string;
+  likesCount: number;
+  likedByMe: boolean;
+  isMine: boolean;
+  authorLabel: string;
+  replies: ReplyItem[];
+};
+
+type DayBundlePayload = {
+  day: string;
+  dayData: {
+    day: string;
+    avg: number;
+    count: number;
+    views: number;
+    reviews: DayBundleReview[];
+  };
+  highlightData: HighlightResponse;
+};
+
+const anonymousDayBundleCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    payload: DayBundlePayload;
+  }
+>();
+
+const anonymousDayBundleRequests = new Map<string, Promise<DayBundlePayload>>();
+
 function buildViewerScopedRelationSelect(
   user: CurrentUser
 ): ViewerScopedRelationSelect {
@@ -80,6 +116,20 @@ function buildViewerScopedRelationSelect(
     },
     take: 1,
   };
+}
+
+async function measureBundleStep<T>(
+  label: string,
+  promise: Promise<T>,
+  timings: Record<string, number>
+): Promise<T> {
+  const startedAt = Date.now();
+
+  try {
+    return await promise;
+  } finally {
+    timings[label] = Date.now() - startedAt;
+  }
 }
 
 function buildReplyTree(replies: ReplyRecord[], user: CurrentUser): ReplyItem[] {
@@ -123,8 +173,15 @@ function buildReplyTree(replies: ReplyRecord[], user: CurrentUser): ReplyItem[] 
   return roots;
 }
 
-export async function buildDayBundle(day: string) {
-  const user = await getCurrentUser();
+async function buildDayBundlePayload(
+  day: string,
+  user: CurrentUser
+): Promise<DayBundlePayload> {
+  const totalStartedAt = Date.now();
+  const timings: Record<string, number> = {
+    currentUser: 0,
+  };
+
   const viewerScopedRelationSelect = buildViewerScopedRelationSelect(user);
 
   const [highlightResult, ratings, ratingSummary, stats]: [
@@ -140,78 +197,92 @@ export async function buildDayBundle(day: string) {
     },
     { views: number } | null,
   ] = await Promise.all([
-    ensureHighlightsForDay(day),
-    prisma.rating.findMany({
-      where: { day },
-      orderBy: { createdAt: "desc" },
-      take: DAY_BUNDLE_REVIEW_LIMIT,
-      select: {
-        id: true,
-        stars: true,
-        review: true,
-        createdAt: true,
-        anonId: true,
-        userId: true,
-        likes: viewerScopedRelationSelect,
+    measureBundleStep("highlight", ensureHighlightsForDay(day), timings),
+    measureBundleStep(
+      "ratings",
+      prisma.rating.findMany({
+        where: { day },
+        orderBy: { createdAt: "desc" },
+        take: DAY_BUNDLE_REVIEW_LIMIT,
+        select: {
+          id: true,
+          stars: true,
+          review: true,
+          createdAt: true,
+          anonId: true,
+          userId: true,
+          likes: viewerScopedRelationSelect,
+          _count: {
+            select: {
+              likes: true,
+            },
+          },
+          replies: {
+            orderBy: {
+              createdAt: "asc",
+            },
+            take: DAY_BUNDLE_REPLY_LIMIT_PER_REVIEW,
+            select: {
+              id: true,
+              ratingId: true,
+              anonId: true,
+              userId: true,
+              parentReplyId: true,
+              text: true,
+              createdAt: true,
+              likes: viewerScopedRelationSelect,
+              reports: viewerScopedRelationSelect,
+              _count: {
+                select: {
+                  likes: true,
+                },
+              },
+              user: {
+                select: {
+                  username: true,
+                },
+              },
+            },
+          },
+          user: {
+            select: {
+              username: true,
+            },
+          },
+        },
+      }),
+      timings
+    ),
+    measureBundleStep(
+      "summary",
+      prisma.rating.aggregate({
+        where: { day },
         _count: {
-          select: {
-            likes: true,
-          },
+          _all: true,
         },
-        replies: {
-          orderBy: {
-            createdAt: "asc",
-          },
-          take: DAY_BUNDLE_REPLY_LIMIT_PER_REVIEW,
-          select: {
-            id: true,
-            ratingId: true,
-            anonId: true,
-            userId: true,
-            parentReplyId: true,
-            text: true,
-            createdAt: true,
-            likes: viewerScopedRelationSelect,
-            reports: viewerScopedRelationSelect,
-            _count: {
-              select: {
-                likes: true,
-              },
-            },
-            user: {
-              select: {
-                username: true,
-              },
-            },
-          },
+        _avg: {
+          stars: true,
         },
-        user: {
-          select: {
-            username: true,
-          },
-        },
-      },
-    }),
-    prisma.rating.aggregate({
-      where: { day },
-      _count: {
-        _all: true,
-      },
-      _avg: {
-        stars: true,
-      },
-    }),
-    prisma.dayStats.findUnique({
-      where: { day },
-      select: { views: true },
-    }),
+      }),
+      timings
+    ),
+    measureBundleStep(
+      "stats",
+      prisma.dayStats.findUnique({
+        where: { day },
+        select: { views: true },
+      }),
+      timings
+    ),
   ]);
 
   const count = ratingSummary._count._all;
   const avg = ratingSummary._avg.stars ?? 0;
 
+  const transformStartedAt = Date.now();
+
   const reviews = ratings
-    .map((r: RatingRecord) => ({
+    .map((r: RatingRecord): DayBundleReview => ({
       id: r.id,
       stars: r.stars,
       review: r.review,
@@ -235,6 +306,15 @@ export async function buildDayBundle(day: string) {
       return bTime - aTime;
     });
 
+  timings.transform = Date.now() - transformStartedAt;
+  timings.total = Date.now() - totalStartedAt;
+
+  if (SHOULD_LOG_DAY_BUNDLE_TIMINGS) {
+    console.info(
+      `[day-bundle] ${day} total=${timings.total}ms currentUser=${timings.currentUser}ms highlight=${timings.highlight ?? 0}ms ratings=${timings.ratings ?? 0}ms summary=${timings.summary ?? 0}ms stats=${timings.stats ?? 0}ms transform=${timings.transform}ms reviews=${ratings.length}`
+    );
+  }
+
   return {
     day,
     dayData: {
@@ -249,4 +329,62 @@ export async function buildDayBundle(day: string) {
       highlights: highlightResult.highlights,
     },
   };
+}
+
+async function getAnonymousDayBundle(day: string) {
+  const now = Date.now();
+
+  const cached = anonymousDayBundleCache.get(day);
+  if (cached && cached.expiresAt > now) {
+    if (SHOULD_LOG_DAY_BUNDLE_TIMINGS) {
+      console.info(`[day-bundle-cache] ${day} hit`);
+    }
+
+    return cached.payload;
+  }
+
+  const pending = anonymousDayBundleRequests.get(day);
+  if (pending) {
+    if (SHOULD_LOG_DAY_BUNDLE_TIMINGS) {
+      console.info(`[day-bundle-cache] ${day} pending`);
+    }
+
+    return pending;
+  }
+
+  const request = buildDayBundlePayload(day, null)
+    .then((payload) => {
+      anonymousDayBundleCache.set(day, {
+        payload,
+        expiresAt: Date.now() + ANONYMOUS_DAY_BUNDLE_CACHE_TTL_MS,
+      });
+
+      return payload;
+    })
+    .finally(() => {
+      anonymousDayBundleRequests.delete(day);
+    });
+
+  anonymousDayBundleRequests.set(day, request);
+
+  return request;
+}
+
+export async function buildDayBundle(day: string) {
+  const currentUserStartedAt = Date.now();
+  const user = await getCurrentUser();
+
+  if (!user) {
+    return getAnonymousDayBundle(day);
+  }
+
+  const payload = await buildDayBundlePayload(day, user);
+
+  if (SHOULD_LOG_DAY_BUNDLE_TIMINGS) {
+    console.info(
+      `[day-bundle-user] ${day} currentUser=${Date.now() - currentUserStartedAt}ms`
+    );
+  }
+
+  return payload;
 }
