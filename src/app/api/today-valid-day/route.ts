@@ -2,10 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { getTodayValidDay } from "@/app/lib/today-valid-day";
 import { buildDayBundle } from "@/app/lib/day-bundle";
+import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 import {
   isValidDayString,
   isValidMonthDayString,
 } from "@/app/lib/day";
+import type { HighlightItem } from "@/app/lib/rad-types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,8 +15,51 @@ export const revalidate = 0;
 const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date.";
 const MAX_BUNDLE_ATTEMPTS = 12;
 const MAX_EXCLUDE_DAYS = 1000;
+const MAX_LIVE_HIGHLIGHT_CHECKS = 1;
 
 type DayBundlePayload = Awaited<ReturnType<typeof buildDayBundle>>;
+
+type CachedHighlightViability = "usable" | "unusable" | "unknown";
+
+type CachedHighlightRow = {
+  day?: string;
+  title: string | null;
+  text: string;
+  type: string;
+};
+
+type HighlightReadiness = {
+  usable: boolean;
+  usedLiveLookup: boolean;
+  shouldRemoveFromPool: boolean;
+  reason:
+    | "cached-usable"
+    | "cached-unusable"
+    | "live-usable"
+    | "live-confirmed-unusable"
+    | "live-unresolved"
+    | "live-budget-exhausted";
+};
+
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function getCurrentMonthDay() {
+  const now = new Date();
+  return `${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+}
+
+function shuffleArray<T>(items: T[]) {
+  const arr = [...items];
+
+  for (let i = arr.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+
+  return arr;
+}
 
 function parseExcludeDays(searchParams: URLSearchParams) {
   const raw = searchParams.get("excludeDays") ?? "";
@@ -39,16 +84,169 @@ function normalizePoolDays(raw: unknown): string[] {
   ).sort();
 }
 
-function isUsableBundle(payload: DayBundlePayload) {
-  const highlight = payload.highlightData?.highlight;
-
-  if (!highlight) return false;
-  if (highlight.type === "none") return false;
-  if (!highlight.title?.trim()) return false;
-  if (!highlight.text?.trim()) return false;
-  if (highlight.text.trim() === EMPTY_FALLBACK_TEXT) return false;
+function isUsableHighlightLike(
+  row: CachedHighlightRow | HighlightItem | null | undefined
+) {
+  if (!row) return false;
+  if (row.type === "none") return false;
+  if (!row.title?.trim()) return false;
+  if (!row.text?.trim()) return false;
+  if (row.text.trim() === EMPTY_FALLBACK_TEXT) return false;
 
   return true;
+}
+
+function isUnusableCachedHighlight(row: CachedHighlightRow | null | undefined) {
+  if (!row) return false;
+  if (row.type === "none") return true;
+  if (!row.text?.trim()) return true;
+  if (row.text.trim() === EMPTY_FALLBACK_TEXT) return true;
+  if (!row.title?.trim()) return true;
+
+  return false;
+}
+
+function isUsableBundle(payload: DayBundlePayload) {
+  return isUsableHighlightLike(payload.highlightData?.highlight);
+}
+
+async function readCachedHighlightViability(
+  day: string
+): Promise<CachedHighlightViability> {
+  if (!isValidDayString(day)) return "unusable";
+
+  const row = await prisma.dayHighlightCache.findUnique({
+    where: { day },
+    select: {
+      title: true,
+      text: true,
+      type: true,
+    },
+  });
+
+  if (!row) {
+    return "unknown";
+  }
+
+  if (isUsableHighlightLike(row)) {
+    return "usable";
+  }
+
+  if (isUnusableCachedHighlight(row)) {
+    return "unusable";
+  }
+
+  return "unknown";
+}
+
+async function pickCachedUsableTodayPoolDay(
+  monthDay: string,
+  excludedSet: Set<string>
+) {
+  const row = await prisma.todayHistoryPool.findUnique({
+    where: { monthDay },
+    select: {
+      validDays: true,
+    },
+  });
+
+  const poolDays = normalizePoolDays(row?.validDays).filter(
+    (day) => !excludedSet.has(day)
+  );
+
+  if (poolDays.length === 0) {
+    return null;
+  }
+
+  const highlightRows = await prisma.dayHighlightCache.findMany({
+    where: {
+      day: {
+        in: poolDays,
+      },
+    },
+    select: {
+      day: true,
+      title: true,
+      text: true,
+      type: true,
+    },
+  });
+
+  const usableDays = highlightRows
+    .filter((candidate) => isUsableHighlightLike(candidate))
+    .map((candidate) => candidate.day)
+    .filter(isValidDayString);
+
+  if (usableDays.length === 0) {
+    return null;
+  }
+
+  return shuffleArray(usableDays)[0] ?? null;
+}
+
+async function checkHighlightBeforeBundle(
+  day: string,
+  options: {
+    allowLiveLookup: boolean;
+  }
+): Promise<HighlightReadiness> {
+  const cachedViability = await readCachedHighlightViability(day);
+
+  if (cachedViability === "usable") {
+    return {
+      usable: true,
+      usedLiveLookup: false,
+      shouldRemoveFromPool: false,
+      reason: "cached-usable",
+    };
+  }
+
+  if (cachedViability === "unusable") {
+    return {
+      usable: false,
+      usedLiveLookup: false,
+      shouldRemoveFromPool: true,
+      reason: "cached-unusable",
+    };
+  }
+
+  if (!options.allowLiveLookup) {
+    return {
+      usable: false,
+      usedLiveLookup: false,
+      shouldRemoveFromPool: false,
+      reason: "live-budget-exhausted",
+    };
+  }
+
+  const highlights = await ensureHighlightsForDay(day);
+
+  if (isUsableHighlightLike(highlights.highlight)) {
+    return {
+      usable: true,
+      usedLiveLookup: true,
+      shouldRemoveFromPool: false,
+      reason: "live-usable",
+    };
+  }
+
+  const viabilityAfterLookup = await readCachedHighlightViability(day);
+
+  if (viabilityAfterLookup === "unusable") {
+    return {
+      usable: false,
+      usedLiveLookup: true,
+      shouldRemoveFromPool: true,
+      reason: "live-confirmed-unusable",
+    };
+  }
+
+  return {
+    usable: false,
+    usedLiveLookup: true,
+    shouldRemoveFromPool: false,
+    reason: "live-unresolved",
+  };
 }
 
 async function removeDayFromTodayPool(day: string) {
@@ -94,6 +292,7 @@ export async function GET(req: Request) {
       ? requestedMonthDay
       : undefined;
 
+    const effectiveMonthDay = monthDay ?? getCurrentMonthDay();
     const baseExcludeDays = parseExcludeDays(searchParams);
 
     if (!bundle) {
@@ -121,6 +320,39 @@ export async function GET(req: Request) {
     const triedDays = new Set<string>(baseExcludeDays);
     const skippedDays: string[] = [];
 
+    if (!fresh) {
+      const cachedUsableDay = await pickCachedUsableTodayPoolDay(
+        effectiveMonthDay,
+        triedDays
+      );
+
+      if (cachedUsableDay) {
+        const payload = await buildDayBundle(cachedUsableDay);
+
+        if (isUsableBundle(payload)) {
+          return NextResponse.json(
+            {
+              ...payload,
+              source: "cache",
+              restartedRound: false,
+              todayAttemptCount: 0,
+              todaySkippedDays: skippedDays,
+            },
+            {
+              headers: {
+                "Cache-Control": "no-store",
+              },
+            }
+          );
+        }
+
+        triedDays.add(cachedUsableDay);
+        skippedDays.push(cachedUsableDay);
+      }
+    }
+
+    let liveHighlightChecks = 0;
+
     for (let attempt = 0; attempt < MAX_BUNDLE_ATTEMPTS; attempt += 1) {
       const result = await getTodayValidDay({
         fresh: fresh && attempt === 0,
@@ -132,6 +364,31 @@ export async function GET(req: Request) {
       if (!result) break;
 
       triedDays.add(result.day);
+
+      const readiness = await checkHighlightBeforeBundle(result.day, {
+        allowLiveLookup: liveHighlightChecks < MAX_LIVE_HIGHLIGHT_CHECKS,
+      });
+
+      if (readiness.usedLiveLookup) {
+        liveHighlightChecks += 1;
+      }
+
+      if (!readiness.usable) {
+        skippedDays.push(result.day);
+
+        console.warn("today-valid-day skipped highlight before bundle:", {
+          day: result.day,
+          attempt: attempt + 1,
+          reason: readiness.reason,
+          liveHighlightChecks,
+        });
+
+        if (readiness.shouldRemoveFromPool) {
+          await removeDayFromTodayPool(result.day);
+        }
+
+        continue;
+      }
 
       const payload = await buildDayBundle(result.day);
 
