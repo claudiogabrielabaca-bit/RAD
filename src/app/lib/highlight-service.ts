@@ -5,6 +5,7 @@ import type { HighlightItem, HighlightResponse } from "@/app/lib/rad-types";
 
 const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date.";
 const NEGATIVE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const LIVE_HIGHLIGHT_LOOKUP_TIMEOUT_MS = 1800;
 
 type CachedRow = {
   day: string;
@@ -210,6 +211,29 @@ function pickPrimaryHighlight(
   };
 
   return [...highlights].sort((a, b) => score(b) - score(a))[0];
+}
+
+function isHighlightLookupTimeout(value: unknown) {
+  return value instanceof Error && value.message === "highlight_lookup_timeout";
+}
+
+async function runLiveHighlightLookupWithTimeout(day: string) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      getDayHighlightsLookup(day),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error("highlight_lookup_timeout"));
+        }, LIVE_HIGHLIGHT_LOOKUP_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function getEmptyResponse(): HighlightResponse {
@@ -450,7 +474,18 @@ export async function ensureHighlightsForDay(
     return featured;
   }
 
-  const lookup = await getDayHighlightsLookup(day);
+  let lookup: Awaited<ReturnType<typeof getDayHighlightsLookup>>;
+
+  try {
+    lookup = await runLiveHighlightLookupWithTimeout(day);
+  } catch (error) {
+    if (isHighlightLookupTimeout(error)) {
+      return getEmptyResponse();
+    }
+
+    throw error;
+  }
+
   const highlights = normalizeWikiHighlights(lookup.highlights).filter(
     (item) => isNonEmptyText(item.text) && item.type !== "none"
   );
