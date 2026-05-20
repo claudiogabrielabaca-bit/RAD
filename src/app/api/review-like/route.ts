@@ -1,12 +1,6 @@
-import { Prisma } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
-import {
-  buildRateLimitKey,
-  consumeRateLimit,
-  createRateLimitResponse,
-} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,28 +9,335 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
 
-type PrismaErrorWithCode = {
-  code: string;
+const SHOULD_LOG_REVIEW_LIKE_TIMINGS = process.env.NODE_ENV === "development";
+const SOFT_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const SOFT_RATE_LIMIT_LIMIT = 240;
+
+type PrismaErrorCode = "P2002" | "P2003";
+
+type SoftRateLimitBucket = {
+  count: number;
+  expiresAt: number;
 };
 
-function isPrismaError(
-  error: unknown,
-  code: "P2002" | "P2025"
-): error is PrismaErrorWithCode {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof (error as { code?: unknown }).code === "string" &&
-    (error as { code: string }).code === code
+type ReviewForNotification = {
+  id: string;
+  userId: string | null;
+  day: string;
+};
+
+const softRateLimitBuckets = new Map<string, SoftRateLimitBucket>();
+let softRateLimitSweepCounter = 0;
+
+function createTimingLogger(label: string) {
+  const startedAt = Date.now();
+  let lastAt = startedAt;
+  const parts: string[] = [];
+
+  function mark(step: string) {
+    if (!SHOULD_LOG_REVIEW_LIKE_TIMINGS) return;
+
+    const now = Date.now();
+    parts.push(`${step}=${now - lastAt}ms`);
+    lastAt = now;
+  }
+
+  function log(extra = "") {
+    if (!SHOULD_LOG_REVIEW_LIKE_TIMINGS) return;
+
+    const total = Date.now() - startedAt;
+    const suffix = extra ? ` ${extra}` : "";
+    console.log(`[${label}] ${parts.join(" ")} total=${total}ms${suffix}`);
+  }
+
+  return {
+    mark,
+    log,
+  };
+}
+
+function logDeferredTask(label: string, startedAt: number, status: string) {
+  if (!SHOULD_LOG_REVIEW_LIKE_TIMINGS) return;
+
+  console.log(
+    `[review-like-deferred] ${label}=${Date.now() - startedAt}ms status=${status}`
   );
 }
 
-export async function POST(req: Request) {
+function runDeferredReviewLikeTask(label: string, task: () => Promise<void>) {
+  const startedAt = Date.now();
+
+  void (async () => {
+    try {
+      await task();
+      logDeferredTask(label, startedAt, "ok");
+    } catch (error) {
+      logDeferredTask(label, startedAt, "error");
+      console.error(`review-like deferred ${label} error:`, error);
+    }
+  })();
+}
+
+function getPrismaErrorCode(error: unknown): string | null {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+  ) {
+    return (error as { code: string }).code;
+  }
+
+  return null;
+}
+
+function isPrismaError(error: unknown, code: PrismaErrorCode) {
+  return getPrismaErrorCode(error) === code;
+}
+
+function consumeSoftRateLimit(key: string) {
+  const now = Date.now();
+
+  softRateLimitSweepCounter += 1;
+
+  if (softRateLimitSweepCounter % 250 === 0) {
+    for (const [bucketKey, bucket] of softRateLimitBuckets.entries()) {
+      if (bucket.expiresAt <= now) {
+        softRateLimitBuckets.delete(bucketKey);
+      }
+    }
+  }
+
+  const existing = softRateLimitBuckets.get(key);
+
+  if (!existing || existing.expiresAt <= now) {
+    softRateLimitBuckets.set(key, {
+      count: 1,
+      expiresAt: now + SOFT_RATE_LIMIT_WINDOW_MS,
+    });
+
+    return {
+      ok: true,
+      retryAfterSec: 0,
+    };
+  }
+
+  if (existing.count >= SOFT_RATE_LIMIT_LIMIT) {
+    return {
+      ok: false,
+      retryAfterSec: Math.max(
+        1,
+        Math.ceil((existing.expiresAt - now) / 1000)
+      ),
+    };
+  }
+
+  existing.count += 1;
+  softRateLimitBuckets.set(key, existing);
+
+  return {
+    ok: true,
+    retryAfterSec: 0,
+  };
+}
+
+async function findReviewForNotification(ratingId: string) {
+  return prisma.rating.findUnique({
+    where: {
+      id: ratingId,
+    },
+    select: {
+      id: true,
+      userId: true,
+      day: true,
+    },
+  });
+}
+
+async function createReviewLikeNotification({
+  review,
+  actorUserId,
+}: {
+  review: ReviewForNotification;
+  actorUserId: string;
+}) {
+  if (!review.userId || review.userId === actorUserId) {
+    return;
+  }
+
+  await prisma.notification.create({
+    data: {
+      userId: review.userId,
+      actorUserId,
+      type: "review_liked",
+      reviewId: review.id,
+      day: review.day,
+    },
+  });
+}
+
+async function deleteReviewLikeNotification({
+  ratingId,
+  actorUserId,
+}: {
+  ratingId: string;
+  actorUserId: string;
+}) {
+  await prisma.notification.deleteMany({
+    where: {
+      type: "review_liked",
+      actorUserId,
+      reviewId: ratingId,
+    },
+  });
+}
+
+function scheduleReviewLikeNotification({
+  ratingId,
+  actorUserId,
+  knownReview,
+}: {
+  ratingId: string;
+  actorUserId: string;
+  knownReview?: ReviewForNotification;
+}) {
+  runDeferredReviewLikeTask("notificationCreate", async () => {
+    const review = knownReview ?? (await findReviewForNotification(ratingId));
+
+    if (!review) {
+      return;
+    }
+
+    await createReviewLikeNotification({
+      review,
+      actorUserId,
+    });
+  });
+}
+
+function scheduleReviewUnlikeNotification({
+  ratingId,
+  actorUserId,
+}: {
+  ratingId: string;
+  actorUserId: string;
+}) {
+  runDeferredReviewLikeTask("notificationDelete", async () => {
+    await deleteReviewLikeNotification({
+      ratingId,
+      actorUserId,
+    });
+  });
+}
+
+async function applyReviewLike({
+  ratingId,
+  userId,
+  knownReview,
+  timing,
+}: {
+  ratingId: string;
+  userId: string;
+  knownReview?: ReviewForNotification;
+  timing: ReturnType<typeof createTimingLogger>;
+}) {
   try {
+    await prisma.ratingLike.create({
+      data: {
+        ratingId,
+        userId,
+        anonId: null,
+      },
+    });
+
+    timing.mark("likeCreate");
+  } catch (error) {
+    if (isPrismaError(error, "P2002")) {
+      timing.mark("likeExists");
+      return {
+        ok: true,
+        notFound: false,
+      };
+    }
+
+    if (isPrismaError(error, "P2003")) {
+      timing.mark("likeMissingReview");
+      return {
+        ok: false,
+        notFound: true,
+      };
+    }
+
+    throw error;
+  }
+
+  scheduleReviewLikeNotification({
+    ratingId,
+    actorUserId: userId,
+    knownReview,
+  });
+  timing.mark("notificationQueued");
+
+  return {
+    ok: true,
+    notFound: false,
+  };
+}
+
+async function applyReviewUnlike({
+  ratingId,
+  userId,
+  timing,
+}: {
+  ratingId: string;
+  userId: string;
+  timing: ReturnType<typeof createTimingLogger>;
+}) {
+  const deleted = await prisma.ratingLike.deleteMany({
+    where: {
+      ratingId,
+      userId,
+    },
+  });
+
+  timing.mark(deleted.count > 0 ? "likeDelete" : "likeMissing");
+
+  if (deleted.count > 0) {
+    scheduleReviewUnlikeNotification({
+      ratingId,
+      actorUserId: userId,
+    });
+    timing.mark("notificationDeleteQueued");
+  }
+
+  return {
+    ok: true,
+  };
+}
+
+export async function POST(req: Request) {
+  const timing = createTimingLogger("review-like");
+
+  try {
+    const body = await req.json().catch(() => null);
+    const ratingId = body?.ratingId;
+    const desiredLiked =
+      typeof body?.liked === "boolean" ? body.liked : null;
+    timing.mark("body");
+
+    if (!ratingId || typeof ratingId !== "string") {
+      timing.log("status=400");
+      return NextResponse.json(
+        { error: "Missing ratingId" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
     const user = await getCurrentUser();
+    timing.mark("currentUser");
 
     if (!user) {
+      timing.log("status=401");
       return NextResponse.json(
         { error: "You must be logged in to like reviews." },
         { status: 401, headers: NO_STORE_HEADERS }
@@ -44,115 +345,51 @@ export async function POST(req: Request) {
     }
 
     if (user.emailVerified === false) {
+      timing.log("status=403");
       return NextResponse.json(
         { error: "You must verify your email to like reviews." },
         { status: 403, headers: NO_STORE_HEADERS }
       );
     }
 
-    const rateLimit = await consumeRateLimit({
-      action: "review-like",
-      key: buildRateLimitKey(req, user.id),
-      limit: 120,
-      windowMs: 15 * 60 * 1000,
-    });
+    const rateLimit = consumeSoftRateLimit(user.id);
+    timing.mark("softRateLimit");
 
     if (!rateLimit.ok) {
-      return createRateLimitResponse(
-        rateLimit.retryAfterSec,
-        "Too many review like attempts. Please try again later."
-      );
-    }
-
-    const body = await req.json().catch(() => null);
-    const ratingId = body?.ratingId;
-    const desiredLiked =
-      typeof body?.liked === "boolean" ? body.liked : null;
-
-    if (!ratingId || typeof ratingId !== "string") {
+      timing.log("status=429");
       return NextResponse.json(
-        { error: "Missing ratingId" },
-        { status: 400, headers: NO_STORE_HEADERS }
+        { error: "Too many review like attempts. Please try again later." },
+        {
+          status: 429,
+          headers: {
+            ...NO_STORE_HEADERS,
+            "Retry-After": String(rateLimit.retryAfterSec),
+          },
+        }
       );
     }
 
-    const review = await prisma.rating.findUnique({
-      where: { id: ratingId },
-      select: {
-        id: true,
-        userId: true,
-        day: true,
-      },
-    });
-
-    if (!review) {
-      return NextResponse.json(
-        { error: "Review not found" },
-        { status: 404, headers: NO_STORE_HEADERS }
-      );
-    }
-
-    const likeWhere = {
-      rating_like_user_unique: {
+    if (desiredLiked === true) {
+      const result = await applyReviewLike({
         ratingId,
         userId: user.id,
-      },
-    } as const;
+        timing,
+      });
 
-    const existingLike = await prisma.ratingLike.findUnique({
-      where: likeWhere,
-      select: {
-        id: true,
-      },
-    });
-
-    const shouldLike =
-      desiredLiked === null ? !existingLike : desiredLiked;
-
-    if (shouldLike) {
-      if (!existingLike) {
-        try {
-          const ops: Prisma.PrismaPromise<unknown>[] = [
-            prisma.ratingLike.create({
-              data: {
-                ratingId,
-                userId: user.id,
-                anonId: null,
-              },
-            }),
-          ];
-
-          if (review.userId && review.userId !== user.id) {
-            ops.push(
-              prisma.notification.create({
-                data: {
-                  userId: review.userId,
-                  actorUserId: user.id,
-                  type: "review_liked",
-                  reviewId: ratingId,
-                  day: review.day,
-                },
-              })
-            );
-          }
-
-          await prisma.$transaction(ops);
-        } catch (error) {
-          if (!isPrismaError(error, "P2002")) {
-            throw error;
-          }
-        }
+      if (result.notFound) {
+        timing.log("status=404");
+        return NextResponse.json(
+          { error: "Review not found" },
+          { status: 404, headers: NO_STORE_HEADERS }
+        );
       }
 
-      const likesCount = await prisma.ratingLike.count({
-        where: { ratingId },
-      });
+      timing.log("status=200 liked=true");
 
       return NextResponse.json(
         {
           ok: true,
           liked: true,
-          likesCount,
         },
         {
           headers: NO_STORE_HEADERS,
@@ -160,50 +397,98 @@ export async function POST(req: Request) {
       );
     }
 
-    if (existingLike) {
-      try {
-        const ops: Prisma.PrismaPromise<unknown>[] = [
-          prisma.ratingLike.delete({
-            where: likeWhere,
-          }),
-        ];
+    if (desiredLiked === false) {
+      await applyReviewUnlike({
+        ratingId,
+        userId: user.id,
+        timing,
+      });
 
-        if (review.userId && review.userId !== user.id) {
-          ops.push(
-            prisma.notification.deleteMany({
-              where: {
-                type: "review_liked",
-                userId: review.userId,
-                actorUserId: user.id,
-                reviewId: ratingId,
-              },
-            })
-          );
-        }
+      timing.log("status=200 liked=false");
 
-        await prisma.$transaction(ops);
-      } catch (error) {
-        if (!isPrismaError(error, "P2025")) {
-          throw error;
+      return NextResponse.json(
+        {
+          ok: true,
+          liked: false,
+        },
+        {
+          headers: NO_STORE_HEADERS,
         }
-      }
+      );
     }
 
-    const likesCount = await prisma.ratingLike.count({
-      where: { ratingId },
+    const [review, existingLike] = await Promise.all([
+      findReviewForNotification(ratingId),
+      prisma.ratingLike.findUnique({
+        where: {
+          rating_like_user_unique: {
+            ratingId,
+            userId: user.id,
+          },
+        },
+        select: {
+          id: true,
+        },
+      }),
+    ]);
+    timing.mark("legacyRead");
+
+    if (!review) {
+      timing.log("status=404");
+      return NextResponse.json(
+        { error: "Review not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (existingLike) {
+      await applyReviewUnlike({
+        ratingId,
+        userId: user.id,
+        timing,
+      });
+
+      timing.log("status=200 liked=false legacy");
+
+      return NextResponse.json(
+        {
+          ok: true,
+          liked: false,
+        },
+        {
+          headers: NO_STORE_HEADERS,
+        }
+      );
+    }
+
+    const result = await applyReviewLike({
+      ratingId,
+      userId: user.id,
+      knownReview: review,
+      timing,
     });
+
+    if (result.notFound) {
+      timing.log("status=404");
+      return NextResponse.json(
+        { error: "Review not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    timing.log("status=200 liked=true legacy");
 
     return NextResponse.json(
       {
         ok: true,
-        liked: false,
-        likesCount,
+        liked: true,
       },
       {
         headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
+    timing.log("status=500");
     console.error("review-like POST error:", error);
     return NextResponse.json(
       {
