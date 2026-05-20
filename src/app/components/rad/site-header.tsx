@@ -11,6 +11,7 @@ import {
 import { usePathname, useRouter } from "next/navigation";
 import AuthModal, { type AuthView } from "@/app/components/rad/auth-modal";
 import ReportBugModal from "@/app/components/rad/report-bug-modal";
+import { fetchCurrentUserClientCached } from "@/app/lib/current-user-client";
 
 type HeaderUser = {
   id: string;
@@ -458,33 +459,21 @@ export default function SiteHeader() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadMe() {
+    async function loadMe(options: { force?: boolean } = {}) {
       try {
         setIsLoadingUser(true);
 
-        const res = await fetch("/api/me", {
-          credentials: "include",
-          cache: "no-store",
+        const user = await fetchCurrentUserClientCached({
+          force: options.force,
         });
-
-        if (!res.ok) {
-          if (!cancelled) {
-            setCurrentUser(null);
-            setNotifications([]);
-            setUnreadNotifications(0);
-          }
-          return;
-        }
-
-        const data = await res.json();
-
-        const user =
-          data && typeof data === "object" && "user" in data
-            ? (data.user ?? null)
-            : (data ?? null);
 
         if (!cancelled) {
           setCurrentUser(user);
+
+          if (!user) {
+            setNotifications([]);
+            setUnreadNotifications(0);
+          }
         }
       } catch {
         if (!cancelled) {
@@ -502,7 +491,7 @@ export default function SiteHeader() {
     void loadMe();
 
     const handleAuthChanged = () => {
-      void loadMe();
+      void loadMe({ force: true });
     };
 
     window.addEventListener("rad-auth-changed", handleAuthChanged);

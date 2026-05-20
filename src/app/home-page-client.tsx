@@ -50,10 +50,11 @@ import {
   getDayWithYearShift,
 } from "@/app/lib/home-page-history";
 import { YEARS, MONTHS } from "@/app/lib/home-page-discover";
+import { type CurrentUser } from "@/app/lib/home-page-auth";
 import {
-  type CurrentUser,
-  type CurrentUserResponse,
-} from "@/app/lib/home-page-auth";
+  fetchCurrentUserClientCached,
+  setCurrentUserClientCache,
+} from "@/app/lib/current-user-client";
 
 const REVIEW_MAX_LENGTH = 280;
 const REPLY_MAX_LENGTH = 220;
@@ -62,6 +63,7 @@ const FORCE_FRESH_MODE = false;
 
 const MIN_DAY_TRANSITION_MS = 1000;
 const HERO_IMAGE_REVEAL_DELAY_MS = 150;
+
 
 type TodayInHistoryResponse = SurpriseResponse & {
   restartedRound?: boolean;
@@ -290,21 +292,10 @@ export default function Page({
 
   async function refreshCurrentUser() {
     try {
-      const res = await fetch("/api/me", {
-        cache: "no-store",
-      });
-
-      const json = (await res.json().catch(() => null)) as
-        | CurrentUserResponse
-        | null;
-
-      if (!res.ok) {
-        setCurrentUser(null);
-        return;
-      }
-
-      setCurrentUser(json?.user ?? null);
+      const user = await fetchCurrentUserClientCached();
+      setCurrentUser(user);
     } catch {
+      setCurrentUserClientCache(null);
       setCurrentUser(null);
     } finally {
       setLoadingCurrentUser(false);
