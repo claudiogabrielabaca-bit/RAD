@@ -738,6 +738,7 @@ export default function Page({
       initialBundle?.highlightData
     ) {
       navigationActionsRef.current.cacheBundlePayload(initialBundle);
+      skipNextAutoDayLoadRef.current = true;
       setHasPickedInitialDay(true);
       return;
     }
@@ -1224,6 +1225,20 @@ export default function Page({
         return;
       }
 
+      const cachedPayload = dayBundleCacheRef.current.get(day);
+
+      if (cachedPayload) {
+        if (!cancelled) {
+          navigationActionsRef.current.applyBundlePayload(cachedPayload);
+          setLoadingDay(false);
+          setLoadingHighlight(false);
+          navigationActionsRef.current.finishDayTransition(transitionId);
+          void navigationActionsRef.current.prefetchRelatedDays(day);
+        }
+
+        return;
+      }
+
       setLoadingDay(true);
       setLoadingHighlight(true);
 
@@ -1248,7 +1263,7 @@ export default function Page({
     return () => {
       cancelled = true;
     };
-  }, [day, hasPickedInitialDay, transitionIdRef]);
+  }, [day, dayBundleCacheRef, hasPickedInitialDay, transitionIdRef]);
 
   useEffect(() => {
     if (!hasPickedInitialDay) return;
