@@ -38,7 +38,93 @@ type NotificationsResponse = {
 };
 
 const NOTIFICATIONS_MUTED_STORAGE_KEY = "rad:notifications-muted";
-const NOTIFICATIONS_POLL_MS = 8000;
+const NOTIFICATIONS_CLIENT_CACHE_TTL_MS = 12 * 1000;
+
+type NotificationsClientCache = {
+  userId: string;
+  expiresAt: number;
+  data: NotificationsResponse;
+};
+
+type NotificationsClientRequest = {
+  userId: string;
+  promise: Promise<NotificationsResponse | null>;
+};
+
+let notificationsClientCache: NotificationsClientCache | null = null;
+let notificationsClientRequest: NotificationsClientRequest | null = null;
+
+function clearNotificationsClientCache() {
+  notificationsClientCache = null;
+  notificationsClientRequest = null;
+}
+
+async function fetchNotificationsClientCached(
+  userId: string,
+  options: { force?: boolean } = {}
+) {
+  const now = Date.now();
+
+  if (
+    !options.force &&
+    notificationsClientCache &&
+    notificationsClientCache.userId === userId &&
+    notificationsClientCache.expiresAt > now
+  ) {
+    return notificationsClientCache.data;
+  }
+
+  if (
+    !options.force &&
+    notificationsClientRequest &&
+    notificationsClientRequest.userId === userId
+  ) {
+    return notificationsClientRequest.promise;
+  }
+
+  const request = (async () => {
+    const res = await fetch("/api/notifications", {
+      credentials: "include",
+      cache: "no-store",
+    });
+
+    const data = (await res.json().catch(() => null)) as
+      | NotificationsResponse
+      | null;
+
+    if (!res.ok || !data) {
+      return null;
+    }
+
+    const payload: NotificationsResponse = {
+      items: Array.isArray(data.items) ? data.items : [],
+      unreadCount:
+        typeof data.unreadCount === "number" ? data.unreadCount : 0,
+    };
+
+    notificationsClientCache = {
+      userId,
+      data: payload,
+      expiresAt: Date.now() + NOTIFICATIONS_CLIENT_CACHE_TTL_MS,
+    };
+
+    return payload;
+  })();
+
+  notificationsClientRequest = {
+    userId,
+    promise: request,
+  };
+
+  try {
+    return await request;
+  } finally {
+    if (notificationsClientRequest?.promise === request) {
+      notificationsClientRequest = null;
+    }
+  }
+}
+
 
 function buildNotificationHref(item: HeaderNotification) {
   const params = new URLSearchParams();
@@ -386,33 +472,33 @@ export default function SiteHeader() {
   const isImportantDaysActive = pathname === "/important-days";
   const isRankedActive = pathname === "/ranked-days";
 
-  const loadNotifications = useCallback(async () => {
-    if (!currentUser?.id) return;
+  const loadNotifications = useCallback(
+    async (options: { force?: boolean } = {}) => {
+      const userId = currentUser?.id;
 
-    try {
-      setLoadingNotifications(true);
+      if (!userId) return;
 
-      const res = await fetch("/api/notifications", {
-        credentials: "include",
-        cache: "no-store",
-      });
+      try {
+        setLoadingNotifications(true);
 
-      const data = (await res.json().catch(() => null)) as
-        | NotificationsResponse
-        | null;
+        const data = await fetchNotificationsClientCached(userId, {
+          force: options.force,
+        });
 
-      if (!res.ok) {
-        return;
+        if (!data) {
+          return;
+        }
+
+        setNotifications(data.items);
+        setUnreadNotifications(data.unreadCount);
+      } catch {
+        // Notification refresh failures are intentionally silent.
+      } finally {
+        setLoadingNotifications(false);
       }
-
-      setNotifications(data?.items ?? []);
-      setUnreadNotifications(data?.unreadCount ?? 0);
-    } catch {
-      //
-    } finally {
-      setLoadingNotifications(false);
-    }
-  }, [currentUser?.id]);
+    },
+    [currentUser?.id]
+  );
 
   useEffect(() => {
     try {
@@ -511,29 +597,6 @@ export default function SiteHeader() {
     if (!currentUser?.id) return;
 
     void loadNotifications();
-
-    const intervalId = window.setInterval(() => {
-      void loadNotifications();
-    }, NOTIFICATIONS_POLL_MS);
-
-    function handleWindowFocus() {
-      void loadNotifications();
-    }
-
-    function handleVisibilityChange() {
-      if (document.visibilityState === "visible") {
-        void loadNotifications();
-      }
-    }
-
-    window.addEventListener("focus", handleWindowFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", handleWindowFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
   }, [currentUser?.id, loadNotifications]);
 
   useEffect(() => {
@@ -608,7 +671,7 @@ export default function SiteHeader() {
 
     if (!nextOpen || !currentUser) return;
 
-    await loadNotifications();
+    await loadNotifications({ force: true });
   }
 
   async function handleNotificationClick(item: HeaderNotification) {
@@ -621,6 +684,8 @@ export default function SiteHeader() {
           entry.id === item.id ? { ...entry, isRead: true } : entry
         )
       );
+
+      clearNotificationsClientCache();
 
       try {
         await fetch("/api/notifications/read", {
@@ -644,6 +709,7 @@ export default function SiteHeader() {
   async function handleClearNotifications() {
     try {
       setClearingNotifications(true);
+      clearNotificationsClientCache();
 
       const res = await fetch("/api/notifications/clear", {
         method: "POST",
