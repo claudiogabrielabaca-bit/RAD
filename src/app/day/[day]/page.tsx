@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 import HomePageClient from "@/app/home-page-client";
 import { buildDayBundle } from "@/app/lib/day-bundle";
+import { prisma } from "@/app/lib/prisma";
 
 type ParamsInput =
   | Promise<{
@@ -11,6 +12,12 @@ type ParamsInput =
   | {
       day?: string;
     };
+
+type MetadataHighlight = {
+  title: string | null;
+  text: string | null;
+  image: string | null;
+};
 
 function isValidDayString(value?: string | null): value is string {
   return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -55,7 +62,62 @@ function getAbsoluteImageUrl(value?: string | null) {
   return null;
 }
 
+function readFirstHighlightFromJson(value: unknown): MetadataHighlight | null {
+  if (!Array.isArray(value)) return null;
+
+  const first = value[0];
+
+  if (!first || typeof first !== "object") return null;
+
+  const item = first as {
+    title?: unknown;
+    text?: unknown;
+    image?: unknown;
+  };
+
+  return {
+    title: typeof item.title === "string" ? item.title : null,
+    text: typeof item.text === "string" ? item.text : null,
+    image: typeof item.image === "string" ? item.image : null,
+  };
+}
+
 const getCachedDayBundle = cache(async (day: string) => buildDayBundle(day));
+
+const getCachedMetadataHighlight = cache(
+  async (day: string): Promise<MetadataHighlight | null> => {
+    try {
+      const row = await prisma.dayHighlightCache.findUnique({
+        where: {
+          day,
+        },
+        select: {
+          title: true,
+          text: true,
+          image: true,
+          highlights: true,
+        },
+      });
+
+      if (!row) return null;
+
+      const directHighlight: MetadataHighlight = {
+        title: row.title,
+        text: row.text,
+        image: row.image,
+      };
+
+      if (cleanText(directHighlight.title) || cleanText(directHighlight.text)) {
+        return directHighlight;
+      }
+
+      return readFirstHighlightFromJson(row.highlights);
+    } catch (error) {
+      console.error("day metadata cache read error:", error);
+      return null;
+    }
+  }
+);
 
 export async function generateMetadata({
   params,
@@ -77,63 +139,50 @@ export async function generateMetadata({
   const displayDate = formatDisplayDate(day);
   const canonicalPath = `/day/${encodeURIComponent(day)}`;
 
-  try {
-    const bundle = await getCachedDayBundle(day);
-    const highlight =
-      bundle.highlightData.highlight ?? bundle.highlightData.highlights?.[0];
+  const metadataHighlight = await getCachedMetadataHighlight(day);
 
-    const highlightTitle = cleanText(highlight?.title);
-    const highlightText = cleanText(highlight?.text);
-    const imageUrl = getAbsoluteImageUrl(highlight?.image);
+  const highlightTitle = cleanText(metadataHighlight?.title);
+  const highlightText = cleanText(metadataHighlight?.text);
+  const imageUrl = getAbsoluteImageUrl(metadataHighlight?.image);
 
-    const title = highlightTitle
-      ? `${highlightTitle} — ${displayDate}`
-      : `${displayDate} on RAD`;
+  const title = highlightTitle
+    ? `${highlightTitle} — ${displayDate}`
+    : `${displayDate} on RAD`;
 
-    const description = truncateText(
-      highlightText || `Explore, rate and discuss ${displayDate} in human history on RAD.`,
-      155
-    );
+  const description = truncateText(
+    highlightText ||
+      `Explore, rate and discuss ${displayDate} in human history on RAD.`,
+    155
+  );
 
-    return {
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: canonicalPath,
+    },
+    openGraph: {
       title,
       description,
-      alternates: {
-        canonical: canonicalPath,
-      },
-      openGraph: {
-        title,
-        description,
-        url: canonicalPath,
-        type: "article",
-        siteName: "RAD",
-        images: imageUrl
-          ? [
-              {
-                url: imageUrl,
-                alt: highlightTitle || `${displayDate} on RAD`,
-              },
-            ]
-          : undefined,
-      },
-      twitter: {
-        card: imageUrl ? "summary_large_image" : "summary",
-        title,
-        description,
-        images: imageUrl ? [imageUrl] : undefined,
-      },
-    };
-  } catch (error) {
-    console.error("day metadata error:", error);
-
-    return {
-      title: `${displayDate} on RAD`,
-      description: `Explore, rate and discuss ${displayDate} in human history on RAD.`,
-      alternates: {
-        canonical: canonicalPath,
-      },
-    };
-  }
+      url: canonicalPath,
+      type: "article",
+      siteName: "RAD",
+      images: imageUrl
+        ? [
+            {
+              url: imageUrl,
+              alt: highlightTitle || `${displayDate} on RAD`,
+            },
+          ]
+        : undefined,
+    },
+    twitter: {
+      card: imageUrl ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: imageUrl ? [imageUrl] : undefined,
+    },
+  };
 }
 
 export default async function DayPage({
