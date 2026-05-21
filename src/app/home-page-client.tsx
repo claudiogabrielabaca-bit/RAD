@@ -1258,8 +1258,32 @@ export default function Page({
 
   useEffect(() => {
     if (!hasPickedInitialDay) return;
+
+    const cachedPayload = dayBundleCacheRef.current.get(day);
+
+    const bundledFavoriteStatus =
+      cachedPayload?.day === day &&
+      typeof cachedPayload.isFavoriteDay === "boolean"
+        ? cachedPayload.isFavoriteDay
+        : initialBundle?.day === day &&
+            typeof initialBundle.isFavoriteDay === "boolean"
+          ? initialBundle.isFavoriteDay
+          : null;
+
+    if (typeof bundledFavoriteStatus === "boolean") {
+      setIsFavoriteDay(bundledFavoriteStatus);
+      setLoadingFavoriteDay(false);
+      return;
+    }
+
     void loadFavoriteDayStatus(day);
-  }, [day, hasPickedInitialDay, loadFavoriteDayStatus]);
+  }, [
+    day,
+    dayBundleCacheRef,
+    hasPickedInitialDay,
+    initialBundle,
+    loadFavoriteDayStatus,
+  ]);
 
   useEffect(() => {
     if (

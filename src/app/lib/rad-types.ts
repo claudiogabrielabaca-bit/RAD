@@ -131,4 +131,6 @@ export type SurpriseResponse = {
   source?: "cache" | "generated" | "realtime-balanced" | "live-balanced-random";
   dayData: DayResponse;
   highlightData: HighlightResponse;
+  isFavoriteDay?: boolean;
+  favoriteDay?: string | null;
 };

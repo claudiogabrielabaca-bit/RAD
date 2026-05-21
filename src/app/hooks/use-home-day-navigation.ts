@@ -272,6 +272,7 @@ export function useHomeDayNavigation(params: {
     setHighlights(items);
     setHighlight(nextHighlight);
     setActiveHighlightIndex(0);
+    setIsFavoriteDay(!!payload.isFavoriteDay);
     setLoadingDay(false);
     setLoadingHighlight(false);
     setPreferImmediateHighlightImageSwap(false);

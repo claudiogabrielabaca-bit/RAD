@@ -80,6 +80,8 @@ type DayBundlePayload = {
     reviews: DayBundleReview[];
   };
   highlightData: HighlightResponse;
+  isFavoriteDay: boolean;
+  favoriteDay: string | null;
 };
 
 const anonymousDayBundleCache = new Map<
@@ -184,7 +186,7 @@ async function buildDayBundlePayload(
 
   const viewerScopedRelationSelect = buildViewerScopedRelationSelect(user);
 
-  const [highlightResult, ratings, ratingSummary, stats]: [
+  const [highlightResult, ratings, ratingSummary, stats, favorite]: [
     Awaited<ReturnType<typeof ensureHighlightsForDay>>,
     RatingRecord[],
     {
@@ -196,6 +198,7 @@ async function buildDayBundlePayload(
       };
     },
     { views: number } | null,
+    { day: string } | null,
   ] = await Promise.all([
     measureBundleStep("highlight", ensureHighlightsForDay(day), timings),
     measureBundleStep(
@@ -274,6 +277,23 @@ async function buildDayBundlePayload(
       }),
       timings
     ),
+    measureBundleStep(
+      "favorite",
+      user
+        ? prisma.favoriteDay.findUnique({
+            where: {
+              favorite_day_user_unique: {
+                userId: user.id,
+                day,
+              },
+            },
+            select: {
+              day: true,
+            },
+          })
+        : Promise.resolve(null),
+      timings
+    ),
   ]);
 
   const count = ratingSummary._count._all;
@@ -311,7 +331,7 @@ async function buildDayBundlePayload(
 
   if (SHOULD_LOG_DAY_BUNDLE_TIMINGS) {
     console.info(
-      `[day-bundle] ${day} total=${timings.total}ms currentUser=${timings.currentUser}ms highlight=${timings.highlight ?? 0}ms ratings=${timings.ratings ?? 0}ms summary=${timings.summary ?? 0}ms stats=${timings.stats ?? 0}ms transform=${timings.transform}ms reviews=${ratings.length}`
+      `[day-bundle] ${day} total=${timings.total}ms currentUser=${timings.currentUser}ms highlight=${timings.highlight ?? 0}ms ratings=${timings.ratings ?? 0}ms summary=${timings.summary ?? 0}ms stats=${timings.stats ?? 0}ms favorite=${timings.favorite ?? 0}ms transform=${timings.transform}ms reviews=${ratings.length}`
     );
   }
 
@@ -328,6 +348,8 @@ async function buildDayBundlePayload(
       highlight: highlightResult.highlight,
       highlights: highlightResult.highlights,
     },
+    isFavoriteDay: !!favorite,
+    favoriteDay: favorite?.day ?? null,
   };
 }
 
