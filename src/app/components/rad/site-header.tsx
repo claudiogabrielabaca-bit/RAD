@@ -129,10 +129,6 @@ async function fetchNotificationsClientCached(
 function buildNotificationHref(item: HeaderNotification) {
   const params = new URLSearchParams();
 
-  if (item.day) {
-    params.set("day", item.day);
-  }
-
   if (item.reviewId) {
     params.set("reviewId", item.reviewId);
   }
@@ -142,9 +138,14 @@ function buildNotificationHref(item: HeaderNotification) {
   }
 
   const query = params.toString();
+
+  if (item.day) {
+    const dayPath = `/day/${encodeURIComponent(item.day)}`;
+    return query ? `${dayPath}?${query}` : dayPath;
+  }
+
   return query ? `/?${query}` : "/";
 }
-
 function formatNotificationTime(value: string) {
   try {
     return new Intl.DateTimeFormat("es-AR", {
@@ -594,10 +595,11 @@ export default function SiteHeader() {
   }, [pathname]);
 
   useEffect(() => {
-    if (!currentUser?.id) return;
+    if (currentUser?.id) return;
 
-    void loadNotifications();
-  }, [currentUser?.id, loadNotifications]);
+    setNotifications([]);
+    setUnreadNotifications(0);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     if (!menuOpen && !notificationsOpen) return;
