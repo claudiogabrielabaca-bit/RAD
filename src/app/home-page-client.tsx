@@ -1895,6 +1895,43 @@ export default function Page({
     }
   }
 
+  async function shareCurrentDay() {
+    const displayDate = formatDisplayDate(day);
+    const cleanTitle = decodeHtml(highlight?.title ?? "").trim();
+    const title = cleanTitle
+      ? `${cleanTitle} — ${displayDate} | RAD`
+      : `${displayDate} | RAD`;
+
+    const text = `Explore and rate ${displayDate} on RAD.`;
+    const url = `${window.location.origin}${pathname}?day=${encodeURIComponent(day)}`;
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title,
+          text,
+          url,
+        });
+
+        return;
+      }
+
+      await navigator.clipboard.writeText(url);
+      setToast("Day link copied.");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+
+      try {
+        await navigator.clipboard.writeText(url);
+        setToast("Day link copied.");
+      } catch {
+        setToast("Unable to copy day link.");
+      }
+    }
+  }
+
   async function submitSuggestion() {
     if (!suggestEvent.trim()) {
       setSuggestToast("Write an event title.");
@@ -2261,6 +2298,16 @@ export default function Page({
                       }`}
                     >
                       <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={shareCurrentDay}
+                          className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.055] px-4 text-sm font-medium text-white transition hover:border-white/16 hover:bg-white/[0.085]"
+                          aria-label="Share this day"
+                          title="Share this day"
+                        >
+                          Share day
+                        </button>
+
                         {highlight.articleUrl ? (
                           <a
                             href={highlight.articleUrl}
