@@ -392,6 +392,10 @@ async function getAnonymousDayBundle(day: string) {
   return request;
 }
 
+export async function buildAnonymousDayBundle(day: string) {
+  return getAnonymousDayBundle(day);
+}
+
 export async function buildDayBundle(day: string) {
   const currentUserStartedAt = Date.now();
   const user = await getCurrentUser();

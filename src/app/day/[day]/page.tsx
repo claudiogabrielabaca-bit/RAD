@@ -2,7 +2,7 @@
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import HomePageClient from "@/app/home-page-client";
-import { buildDayBundle } from "@/app/lib/day-bundle";
+import { buildAnonymousDayBundle } from "@/app/lib/day-bundle";
 import { prisma } from "@/app/lib/prisma";
 
 type ParamsInput =
@@ -82,7 +82,7 @@ function readFirstHighlightFromJson(value: unknown): MetadataHighlight | null {
   };
 }
 
-const getCachedDayBundle = cache(async (day: string) => buildDayBundle(day));
+const getCachedAnonymousDayBundle = cache(async (day: string) => buildAnonymousDayBundle(day));
 
 const getCachedMetadataHighlight = cache(
   async (day: string): Promise<MetadataHighlight | null> => {
@@ -199,9 +199,15 @@ export default async function DayPage({
   let initialBundle = null;
 
   try {
-    initialBundle = await getCachedDayBundle(day);
+    const anonymousBundle = await getCachedAnonymousDayBundle(day);
+
+    initialBundle = {
+      day: anonymousBundle.day,
+      dayData: anonymousBundle.dayData,
+      highlightData: anonymousBundle.highlightData,
+    };
   } catch (error) {
-    console.error("day page initial bundle error:", error);
+    console.error("day page initial anonymous bundle error:", error);
   }
 
   return <HomePageClient initialBundle={initialBundle} />;
