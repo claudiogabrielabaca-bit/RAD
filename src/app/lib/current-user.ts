@@ -1,7 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { getSessionToken, hashSessionToken } from "@/app/lib/auth";
 
-const CURRENT_USER_CACHE_TTL_MS = 10 * 1000;
+const CURRENT_USER_CACHE_TTL_MS = 60 * 1000;
 
 type CurrentUser = {
   id: string;

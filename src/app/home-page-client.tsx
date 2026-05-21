@@ -130,6 +130,10 @@ export default function Page({
   const consumedProfileJumpRef = useRef(false);
   const consumedNotificationJumpKeyRef = useRef("");
   const didInitDayRef = useRef(false);
+  const dayViewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const favoriteStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null
+  );
 
   const dayRequestRef = useRef(0);
   const skipNextAutoDayLoadRef = useRef(false);
@@ -1208,13 +1212,34 @@ export default function Page({
     const transitionId = transitionIdRef.current;
 
     async function run() {
-      fetch("/api/day-view", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ day }),
-      }).catch(() => {});
+      if (dayViewTimeoutRef.current) {
+        clearTimeout(dayViewTimeoutRef.current);
+      }
+
+      dayViewTimeoutRef.current = setTimeout(() => {
+        dayViewTimeoutRef.current = null;
+
+        const payload = JSON.stringify({ day });
+
+        if (navigator.sendBeacon) {
+          const blob = new Blob([payload], {
+            type: "application/json",
+          });
+
+          if (navigator.sendBeacon("/api/day-view", blob)) {
+            return;
+          }
+        }
+
+        fetch("/api/day-view", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: payload,
+          keepalive: true,
+        }).catch(() => {});
+      }, 1800);
 
       if (skipNextAutoDayLoadRef.current) {
         skipNextAutoDayLoadRef.current = false;
@@ -1289,7 +1314,14 @@ export default function Page({
       return;
     }
 
-    void loadFavoriteDayStatus(day);
+    if (favoriteStatusTimeoutRef.current) {
+      clearTimeout(favoriteStatusTimeoutRef.current);
+    }
+
+    favoriteStatusTimeoutRef.current = setTimeout(() => {
+      favoriteStatusTimeoutRef.current = null;
+      void loadFavoriteDayStatus(day);
+    }, 900);
   }, [
     day,
     dayBundleCacheRef,
