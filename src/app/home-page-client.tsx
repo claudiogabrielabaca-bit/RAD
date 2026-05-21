@@ -709,6 +709,19 @@ export default function Page({
     if (!hasPickedInitialDay) return;
     if (!isValidDayString(day)) return;
 
+    const routeDayMatch = pathname.match(/^\/day\/([^/]+)\/?$/);
+
+    if (routeDayMatch) {
+      const currentRouteDay = routeDayMatch[1]
+        ? decodeURIComponent(routeDayMatch[1])
+        : "";
+
+      if (currentRouteDay === day) return;
+
+      router.replace(`/day/${encodeURIComponent(day)}`, { scroll: false });
+      return;
+    }
+
     const currentQueryDay = searchParams.get("day");
 
     if (currentQueryDay === day) return;
@@ -1903,7 +1916,7 @@ export default function Page({
       : `${displayDate} | RAD`;
 
     const text = `Explore and rate ${displayDate} on RAD.`;
-    const url = `${window.location.origin}${pathname}?day=${encodeURIComponent(day)}`;
+    const url = `${window.location.origin}/day/${encodeURIComponent(day)}`;
 
     try {
       if (navigator.share) {
