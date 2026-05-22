@@ -152,6 +152,7 @@ export default function Page({
 
   const dayBackHistoryRef = useRef<string[]>([]);
   const isGoingBackRef = useRef(false);
+  const currentVisibleDayRef = useRef(initialBundle?.day ?? "");
 
   const initialHighlightItems = initialBundle?.highlightData?.highlights?.length
     ? initialBundle.highlightData.highlights
@@ -592,8 +593,7 @@ export default function Page({
     !hasPickedInitialDay ||
     isDayTransitioning ||
     !minimumTransitionDone ||
-    loadingDay ||
-    loadingHighlight;
+    loadingDay;
 
   const canSwitchHighlights =
     highlights.length > 1 && !isHighlightSwitchLocked;
@@ -677,6 +677,12 @@ export default function Page({
   useEffect(() => {
     resetUserScopedNavigationState();
   }, [currentUser?.id, resetUserScopedNavigationState]);
+
+  useEffect(() => {
+    if (isValidDayString(day)) {
+      currentVisibleDayRef.current = day;
+    }
+  }, [day]);
 
   useEffect(() => {
     if (!hasPickedInitialDay) return;
@@ -1138,10 +1144,15 @@ export default function Page({
     beginDayTransition();
     const transitionId = transitionIdRef.current;
     const monthDay = getTodayHistoryMonthDay();
+    const currentDayForRequest = isValidDayString(currentVisibleDayRef.current)
+      ? currentVisibleDayRef.current
+      : isValidDayString(day)
+        ? day
+        : "";
     const excludedDays = new Set<string>();
 
-    if (isValidDayString(day)) {
-      excludedDays.add(day);
+    if (currentDayForRequest) {
+      excludedDays.add(currentDayForRequest);
     }
 
     async function requestTodayHistory(fresh: boolean) {
@@ -1150,7 +1161,7 @@ export default function Page({
           bundle: true,
           fresh,
           monthDay,
-          currentDay: day,
+          currentDay: currentDayForRequest,
           excludeDays: Array.from(excludedDays),
         }),
         {
@@ -1189,7 +1200,7 @@ export default function Page({
           break;
         }
 
-        if (candidate.day === day) {
+        if (currentDayForRequest && candidate.day === currentDayForRequest) {
           excludedDays.add(candidate.day);
           continue;
         }
@@ -1199,6 +1210,12 @@ export default function Page({
       }
 
       if (!payload) {
+        showToast("No new 'today in history' day available yet.");
+        finishDayTransition(transitionId);
+        return;
+      }
+
+      if (currentDayForRequest && payload.day === currentDayForRequest) {
         showToast("No new 'today in history' day available yet.");
         finishDayTransition(transitionId);
         return;
@@ -1220,10 +1237,10 @@ export default function Page({
 
       if (
         hasPickedInitialDay &&
-        isValidDayString(day) &&
+        currentDayForRequest &&
         !isGoingBackRef.current
       ) {
-        pushCurrentDayToBackHistory(day, payload.day);
+        pushCurrentDayToBackHistory(currentDayForRequest, payload.day);
       }
 
       applyBundlePayload(payload);
