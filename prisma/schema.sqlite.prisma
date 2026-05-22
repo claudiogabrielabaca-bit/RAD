@@ -9,39 +9,39 @@ datasource db {
 }
 
 model User {
-  id                     String   @id @default(cuid())
-  email                  String   @unique
-  username               String   @unique
-  passwordHash           String
-  bio                    String?
+  id           String  @id @default(cuid())
+  email        String  @unique
+  username     String  @unique
+  passwordHash String
+  bio          String?
 
-  emailVerified          Boolean  @default(false)
-  emailVerifyCode        String?
-  emailVerifyExpiresAt   DateTime?
-  emailVerifyAttempts    Int      @default(0)
+  emailVerified        Boolean   @default(false)
+  emailVerifyCode      String?
+  emailVerifyExpiresAt DateTime?
+  emailVerifyAttempts  Int       @default(0)
 
-  loginCode              String?
-  loginCodeExpiresAt     DateTime?
-  loginCodeAttempts      Int      @default(0)
+  loginCode          String?
+  loginCodeExpiresAt DateTime?
+  loginCodeAttempts  Int       @default(0)
 
   passwordResetCode      String?
   passwordResetExpiresAt DateTime?
-  passwordResetAttempts  Int      @default(0)
+  passwordResetAttempts  Int       @default(0)
 
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  sessions               Session[]
-  ratings                Rating[]
-  likes                  RatingLike[]
-  reports                ReviewReport[]
-  replies                RatingReply[]
-  replyLikes             ReplyLike[]
-  replyReports           ReplyReport[]
-  favoriteDays           FavoriteDay[]
-  surpriseDecks          SurpriseDeck[]
-  notificationsReceived  Notification[] @relation("NotificationRecipient")
-  notificationsSent      Notification[] @relation("NotificationActor")
+  sessions              Session[]
+  ratings               Rating[]
+  likes                 RatingLike[]
+  reports               ReviewReport[]
+  replies               RatingReply[]
+  replyLikes            ReplyLike[]
+  replyReports          ReplyReport[]
+  favoriteDays          FavoriteDay[]
+  surpriseDecks         SurpriseDeck[]
+  notificationsReceived Notification[] @relation("NotificationRecipient")
+  notificationsSent     Notification[] @relation("NotificationActor")
 }
 
 model Session {
@@ -51,8 +51,9 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
+
 model AdminSession {
   id        String   @id @default(cuid())
   username  String
@@ -63,17 +64,18 @@ model AdminSession {
 
   @@index([expiresAt])
 }
-model Rating {
-  id            String   @id @default(cuid())
-  anonId        String?
-  userId        String?
-  day           String
-  stars         Int
-  review        String
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
 
-  user          User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+model Rating {
+  id        String   @id @default(cuid())
+  anonId    String?
+  userId    String?
+  day       String
+  stars     Int
+  review    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   likes         RatingLike[]
   reports       ReviewReport[]
@@ -82,6 +84,8 @@ model Rating {
 
   @@unique([anonId, day], name: "anonId_day")
   @@unique([userId, day], name: "userId_day")
+  @@index([day, createdAt], name: "rating_day_created_at_idx")
+  @@index([day, stars], name: "rating_day_stars_idx")
 }
 
 model RatingLike {
@@ -91,8 +95,8 @@ model RatingLike {
   userId    String?
   createdAt DateTime @default(now())
 
-  rating    Rating   @relation(fields: [ratingId], references: [id], onDelete: Cascade)
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating Rating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([ratingId, anonId], name: "rating_like_anon_unique")
   @@unique([ratingId, userId], name: "rating_like_user_unique")
@@ -108,44 +112,45 @@ model ReviewReport {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  rating    Rating   @relation(fields: [ratingId], references: [id], onDelete: Cascade)
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rating Rating @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  user   User?  @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([ratingId, anonId], name: "review_report_anon_unique")
   @@unique([ratingId, userId], name: "review_report_user_unique")
 }
 
 model RatingReply {
-  id            String        @id @default(cuid())
+  id            String   @id @default(cuid())
   ratingId      String
   anonId        String?
   userId        String?
   parentReplyId String?
   text          String
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  rating        Rating        @relation(fields: [ratingId], references: [id], onDelete: Cascade)
-  user          User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  parentReply   RatingReply?  @relation("ReplyThread", fields: [parentReplyId], references: [id], onDelete: Cascade)
-  childReplies  RatingReply[] @relation("ReplyThread")
+  rating        Rating         @relation(fields: [ratingId], references: [id], onDelete: Cascade)
+  user          User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentReply   RatingReply?   @relation("ReplyThread", fields: [parentReplyId], references: [id], onDelete: Cascade)
+  childReplies  RatingReply[]  @relation("ReplyThread")
   likes         ReplyLike[]
   reports       ReplyReport[]
   notifications Notification[]
 
   @@index([ratingId])
   @@index([parentReplyId])
+  @@index([ratingId, createdAt], name: "rating_reply_rating_created_at_idx")
 }
 
 model ReplyLike {
-  id        String      @id @default(cuid())
+  id        String   @id @default(cuid())
   replyId   String
   anonId    String?
   userId    String?
-  createdAt DateTime    @default(now())
+  createdAt DateTime @default(now())
 
-  reply     RatingReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
-  user      User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reply RatingReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  user  User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([replyId, anonId], name: "reply_like_anon_unique")
   @@unique([replyId, userId], name: "reply_like_user_unique")
@@ -153,17 +158,17 @@ model ReplyLike {
 }
 
 model ReplyReport {
-  id        String      @id @default(cuid())
+  id        String   @id @default(cuid())
   replyId   String
   anonId    String?
   userId    String?
   reason    String
-  status    String      @default("pending")
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  reply     RatingReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
-  user      User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reply RatingReply @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  user  User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([replyId, anonId], name: "reply_report_anon_unique")
   @@unique([replyId, userId], name: "reply_report_user_unique")
@@ -178,7 +183,7 @@ model FavoriteDay {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([anonId, day], name: "favorite_day_anon_unique")
   @@unique([userId, day], name: "favorite_day_user_unique")
@@ -229,10 +234,11 @@ model SurpriseDeck {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  user          User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
+
 model TodayHistoryPool {
   monthDay   String   @id
   validDays  Json
@@ -252,10 +258,10 @@ model Notification {
   isRead      Boolean          @default(false)
   createdAt   DateTime         @default(now())
 
-  user        User             @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
-  actorUser   User             @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: Cascade)
-  review      Rating?          @relation(fields: [reviewId], references: [id], onDelete: Cascade)
-  reply       RatingReply?     @relation(fields: [replyId], references: [id], onDelete: Cascade)
+  user      User         @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actorUser User         @relation("NotificationActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+  review    Rating?      @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  reply     RatingReply? @relation(fields: [replyId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
   @@index([userId, isRead, createdAt])
