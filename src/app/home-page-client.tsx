@@ -59,6 +59,7 @@ import {
 const REVIEW_MAX_LENGTH = 280;
 const REPLY_MAX_LENGTH = 220;
 const HIGHLIGHT_SCROLL_OFFSET = 365;
+const DAY_VIEW_TRACKING_DELAY_MS = 8000;
 const FORCE_FRESH_MODE = false;
 
 const MIN_DAY_TRANSITION_MS = 1000;
@@ -1227,6 +1228,10 @@ export default function Page({
       dayViewTimeoutRef.current = setTimeout(() => {
         dayViewTimeoutRef.current = null;
 
+        if (cancelled || document.visibilityState !== "visible") {
+          return;
+        }
+
         const payload = JSON.stringify({ day });
 
         if (navigator.sendBeacon) {
@@ -1247,7 +1252,7 @@ export default function Page({
           body: payload,
           keepalive: true,
         }).catch(() => {});
-      }, 1800);
+      }, DAY_VIEW_TRACKING_DELAY_MS);
 
       if (skipNextAutoDayLoadRef.current) {
         skipNextAutoDayLoadRef.current = false;
