@@ -159,15 +159,21 @@ export default function Page({
       ? [initialBundle.highlightData.highlight]
       : [];
 
-  const [day, setDay] = useState<string>(initialBundle?.day ?? minDay);
+  const [day, setDay] = useState<string>(initialBundle?.day ?? "");
   const [hasPickedInitialDay, setHasPickedInitialDay] = useState(
     !!initialBundle
   );
   const [canGoBack, setCanGoBack] = useState(false);
 
-  const [selectedYear, setSelectedYear] = useState("1800");
-  const [selectedMonth, setSelectedMonth] = useState("01");
-  const [selectedDay, setSelectedDay] = useState("01");
+  const [selectedYear, setSelectedYear] = useState(
+    initialBundle?.day?.slice(0, 4) ?? today.slice(0, 4)
+  );
+  const [selectedMonth, setSelectedMonth] = useState(
+    initialBundle?.day?.slice(5, 7) ?? today.slice(5, 7)
+  );
+  const [selectedDay, setSelectedDay] = useState(
+    initialBundle?.day?.slice(8, 10) ?? today.slice(8, 10)
+  );
 
   const [currentUser, setCurrentUser] = useState<CurrentUser>(null);
   const [, setLoadingCurrentUser] = useState(true);
@@ -253,6 +259,10 @@ export default function Page({
   const DAYS = Array.from({ length: daysInSelectedMonth }, (_, i) =>
     pad2(i + 1)
   );
+
+  const navigationDay = isValidDayString(day) ? day : today;
+  const visibleDayLabel =
+    hasPickedInitialDay && isValidDayString(day) ? day : "Finding a day...";
 
   function openAuthModal(view: AuthView = "login", nextEmail = "") {
     setAuthView(view);
@@ -1551,7 +1561,7 @@ export default function Page({
   }
 
   function goToPreviousDay() {
-    const prev = getDayWithOffset(day, -1);
+    const prev = getDayWithOffset(navigationDay, -1);
 
     if (prev && prev >= minDay) {
       void openDay(prev, { scrollToHighlight: false });
@@ -1559,7 +1569,7 @@ export default function Page({
   }
 
   function goToNextDay() {
-    const next = getDayWithOffset(day, 1);
+    const next = getDayWithOffset(navigationDay, 1);
 
     if (next && next <= today) {
       void openDay(next, { scrollToHighlight: false });
@@ -1567,7 +1577,7 @@ export default function Page({
   }
 
   function shiftYearBy(delta: number) {
-    const nextDay = getDayWithYearShift(day, delta, minDay, today);
+    const nextDay = getDayWithYearShift(navigationDay, delta, minDay, today);
 
     if (!nextDay) return;
 
@@ -1600,11 +1610,11 @@ export default function Page({
     void transitionToHighlight(nextIndex);
   }
 
-  const isAtMinDay = day <= minDay;
-  const isAtToday = day >= today;
+  const isAtMinDay = !isValidDayString(day) || navigationDay <= minDay;
+  const isAtToday = !isValidDayString(day) || navigationDay >= today;
 
   const [currentYear] = today.split("-").map(Number);
-  const [selectedYearNum, selectedMonthNum, selectedDayNum] = day
+  const [selectedYearNum, selectedMonthNum, selectedDayNum] = navigationDay
     .split("-")
     .map(Number);
 
@@ -2229,7 +2239,7 @@ export default function Page({
                     Now exploring
                   </div>
                   <div className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                    {day}
+                    {visibleDayLabel}
                   </div>
                 </div>
 
