@@ -10,6 +10,7 @@ type HighlightHeroImageProps = {
   onLoadingChange?: (loading: boolean) => void;
   revealDelayMs?: number;
   preferImmediateSwap?: boolean;
+  resetKey?: string;
 };
 
 const IMAGE_LOADING_FAILSAFE_MS = 3500;
@@ -21,6 +22,7 @@ export default function HighlightHeroImage({
   onLoadingChange,
   revealDelayMs = 0,
   preferImmediateSwap = false,
+  resetKey = "",
 }: HighlightHeroImageProps) {
   const normalizedSrc = src?.trim() || null;
 
@@ -50,11 +52,13 @@ export default function HighlightHeroImage({
     }
 
     if (!normalizedSrc) {
+      setDisplaySrc(null);
       onLoadingChange?.(false);
       return;
     }
 
     if (preferImmediateSwap) {
+      setDisplaySrc(normalizedSrc);
       onLoadingChange?.(false);
       return;
     }
@@ -64,6 +68,7 @@ export default function HighlightHeroImage({
       return;
     }
 
+    setDisplaySrc(null);
     onLoadingChange?.(true);
 
     const img = new window.Image();
@@ -87,9 +92,7 @@ export default function HighlightHeroImage({
         completeTimerRef.current = null;
       }
 
-      if (nextSrc) {
-        setDisplaySrc(nextSrc);
-      }
+      setDisplaySrc(nextSrc);
 
       onLoadingChange?.(false);
     };
@@ -151,6 +154,7 @@ export default function HighlightHeroImage({
     onLoadingChange,
     revealDelayMs,
     preferImmediateSwap,
+    resetKey,
   ]);
 
   const resolvedDisplaySrc = !normalizedSrc

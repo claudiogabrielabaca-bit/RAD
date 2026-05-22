@@ -577,29 +577,6 @@ export default function Page({
     }
   }
 
-  const preloadImage = useCallback((src?: string | null) => {
-    const normalizedSrc = src?.trim();
-
-    if (!normalizedSrc) {
-      return Promise.resolve();
-    }
-
-    return new Promise<void>((resolve) => {
-      const img = new window.Image();
-      img.decoding = "async";
-
-      const done = () => resolve();
-
-      img.onload = done;
-      img.onerror = done;
-      img.src = normalizedSrc;
-
-      if (img.complete) {
-        resolve();
-      }
-    });
-  }, []);
-
   const isHighlightSwitchLocked =
     !hasPickedInitialDay ||
     isDayTransitioning ||
@@ -625,28 +602,12 @@ export default function Page({
       }
 
       pendingHighlightIndexRef.current = nextIndex;
+      highlightTransitionRequestRef.current += 1;
 
-      const requestId = highlightTransitionRequestRef.current + 1;
-      highlightTransitionRequestRef.current = requestId;
-
-      const nextItem = highlights[nextIndex];
-      const nextImage = nextItem?.image?.trim() || "";
-
-      await preloadImage(nextImage);
-
-      if (highlightTransitionRequestRef.current !== requestId) return;
-      if (isHighlightSwitchLocked) return;
-
-      setPreferImmediateHighlightImageSwap(true);
+      setPreferImmediateHighlightImageSwap(false);
       setActiveHighlightIndex(nextIndex);
     },
-    [
-      activeHighlightIndex,
-      canSwitchHighlights,
-      highlights,
-      isHighlightSwitchLocked,
-      preloadImage,
-    ]
+    [activeHighlightIndex, canSwitchHighlights, highlights.length]
   );
 
   useEffect(() => {
@@ -1083,6 +1044,8 @@ export default function Page({
         | SurpriseResponse
         | null;
 
+      if (transitionIdRef.current !== transitionId) return;
+
       if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
         showToast("No random day available.");
         finishDayTransition(transitionId);
@@ -1121,6 +1084,8 @@ export default function Page({
       applyBundlePayload(json);
       setDay(json.day);
     } catch {
+      if (transitionIdRef.current !== transitionId) return;
+
       showToast("Could not load a random day.");
       finishDayTransition(transitionId);
     }
@@ -1153,6 +1118,8 @@ export default function Page({
 
     try {
       const { res, json } = await requestTodayHistory();
+
+      if (transitionIdRef.current !== transitionId) return;
 
       const payload =
         res.ok &&
@@ -1211,6 +1178,8 @@ export default function Page({
       applyBundlePayload(payload);
       setDay(payload.day);
     } catch {
+      if (transitionIdRef.current !== transitionId) return;
+
       showToast("Could not load today in history.");
       finishDayTransition(transitionId);
     }
@@ -2427,8 +2396,10 @@ export default function Page({
                     </button>
 
                     <HighlightHeroImage
+                      key={`${day}-${activeHighlightIndex}-${highlight.image ?? "no-image"}`}
                       src={highlight.image}
                       alt={decodeHtml(highlight.title) || "Historical highlight"}
+                      resetKey={`${day}-${activeHighlightIndex}`}
                       revealDelayMs={HERO_IMAGE_REVEAL_DELAY_MS}
                       preferImmediateSwap={preferImmediateHighlightImageSwap}
                       onLoadingChange={(loading: boolean) => {

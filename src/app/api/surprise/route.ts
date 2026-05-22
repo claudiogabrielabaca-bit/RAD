@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
 import { getNextSurpriseDay } from "@/app/lib/surprise-deck";
 import { buildDayBundle } from "@/app/lib/day-bundle";
+import { isValidDayString } from "@/app/lib/day";
 import {
   buildRateLimitKey,
   consumeRateLimit,
@@ -17,9 +18,22 @@ const NO_STORE_HEADERS = {
 
 const SURPRISE_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const SURPRISE_RATE_LIMIT_LIMIT = 60;
+const MAX_EXCLUDE_DAYS = 120;
+
+function parseExcludeDays(searchParams: URLSearchParams) {
+  const raw = searchParams.get("excludeDays") ?? "";
+
+  if (!raw.trim()) return [];
+
+  return Array.from(
+    new Set(raw.split(",").map((item) => item.trim()).filter(isValidDayString))
+  ).slice(0, MAX_EXCLUDE_DAYS);
+}
 
 export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const excludeDays = parseExcludeDays(searchParams);
     const user = await getCurrentUser();
 
     const rateLimit = await consumeRateLimit({
@@ -38,6 +52,7 @@ export async function GET(req: Request) {
 
     const result = await getNextSurpriseDay({
       userId: user?.id ?? null,
+      excludeDays,
     });
 
     if (!result) {

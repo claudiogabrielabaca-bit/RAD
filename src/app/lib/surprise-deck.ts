@@ -576,15 +576,27 @@ function pickFromCandidateDays(
 function pickRealtimeBalancedDay(
   pool: SurprisePool,
   ownerHistory: string[],
-  globalHistory: string[]
+  globalHistory: string[],
+  excludedDays = new Set<string>()
 ): PickResult | null {
   const uniqueDays = uniqueSortedStrings(pool.days.filter(isValidDayString));
 
   if (uniqueDays.length === 0) return null;
 
-  const ownerSeen = new Set(ownerHistory.filter((day) => uniqueDays.includes(day)));
-  let candidateDays = uniqueDays.filter((day) => !ownerSeen.has(day));
+  const uniqueDaySet = new Set(uniqueDays);
+  const excludedPoolDays = new Set(
+    Array.from(excludedDays).filter((day) => uniqueDaySet.has(day))
+  );
+  const ownerSeen = new Set(ownerHistory.filter((day) => uniqueDaySet.has(day)));
+  let candidateDays = uniqueDays.filter(
+    (day) => !ownerSeen.has(day) && !excludedPoolDays.has(day)
+  );
   let resetCycle = false;
+
+  if (candidateDays.length === 0) {
+    candidateDays = uniqueDays.filter((day) => !excludedPoolDays.has(day));
+    resetCycle = true;
+  }
 
   if (candidateDays.length === 0) {
     candidateDays = uniqueDays;
@@ -959,7 +971,10 @@ export async function claimVisitorDeckToUser(userId: string) {
   ]);
 }
 
-export async function getNextSurpriseDay(options?: { userId?: string | null }) {
+export async function getNextSurpriseDay(options?: {
+  userId?: string | null;
+  excludeDays?: string[];
+}) {
   const userId = options?.userId ?? null;
   const visitorId = await getOrCreateVisitorId();
 
@@ -978,6 +993,11 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
     : buildOwnerKey("visitor", visitorId);
 
   const poolSet = new Set(pool.days);
+  const excludedDays = new Set(
+    (options?.excludeDays ?? []).filter(
+      (day) => isValidDayString(day) && poolSet.has(day)
+    )
+  );
 
   const [ownerRow, globalRow]: [SurpriseDeckRow | null, SurpriseDeckRow | null] =
     await Promise.all([
@@ -991,7 +1011,12 @@ export async function getNextSurpriseDay(options?: { userId?: string | null }) {
 
   let ownerHistory = getOwnerCycleHistory(ownerRow, poolSet);
   const globalHistory = getGlobalRecentHistory(globalRow, poolSet);
-  const pick = pickRealtimeBalancedDay(pool, ownerHistory, globalHistory);
+  const pick = pickRealtimeBalancedDay(
+    pool,
+    ownerHistory,
+    globalHistory,
+    excludedDays
+  );
 
   if (!pick || !isValidDayString(pick.day)) {
     return null;
