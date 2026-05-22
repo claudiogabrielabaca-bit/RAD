@@ -1095,13 +1095,19 @@ export default function Page({
     beginDayTransition();
     const transitionId = transitionIdRef.current;
     const monthDay = getTodayHistoryMonthDay();
+    const excludedDays = new Set<string>();
 
-    async function requestTodayHistory() {
+    if (isValidDayString(day)) {
+      excludedDays.add(day);
+    }
+
+    async function requestTodayHistory(fresh: boolean) {
       const res = await fetch(
         buildTodayInHistoryRequestUrl({
           bundle: true,
-          fresh: FORCE_FRESH_MODE,
-          excludeDays: isValidDayString(day) ? [day] : [],
+          fresh,
+          monthDay,
+          excludeDays: Array.from(excludedDays),
         }),
         {
           cache: "no-store",
@@ -1117,21 +1123,39 @@ export default function Page({
     }
 
     try {
-      const { res, json } = await requestTodayHistory();
+      let payload: TodayInHistoryResponse | null = null;
 
-      if (transitionIdRef.current !== transitionId) return;
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const { res, json } = await requestTodayHistory(
+          FORCE_FRESH_MODE || attempt > 0
+        );
 
-      const payload =
-        res.ok &&
-        json &&
-        "day" in json &&
-        "dayData" in json &&
-        "highlightData" in json
-          ? (json as TodayInHistoryResponse)
-          : null;
+        if (transitionIdRef.current !== transitionId) return;
+
+        const candidate =
+          res.ok &&
+          json &&
+          "day" in json &&
+          "dayData" in json &&
+          "highlightData" in json
+            ? (json as TodayInHistoryResponse)
+            : null;
+
+        if (!candidate) {
+          break;
+        }
+
+        if (candidate.day === day) {
+          excludedDays.add(candidate.day);
+          continue;
+        }
+
+        payload = candidate;
+        break;
+      }
 
       if (!payload) {
-        showToast("No valid 'today in history' day available yet.");
+        showToast("No new 'today in history' day available yet.");
         finishDayTransition(transitionId);
         return;
       }
@@ -1139,30 +1163,13 @@ export default function Page({
       if (payload.restartedRound) {
         clearTodayHistory(monthDay);
         showTodayHistoryNotice(
-          `You explored all available moments for ${formatMonthDayLabel(
+          \`You explored all available moments for \${formatMonthDayLabel(
             monthDay
-          )}. A new round has started.`
+          )}. A new round has started.\`
         );
       }
 
       rememberTodayHistoryDay(payload.day);
-
-      if (payload.day === day) {
-        applyBundlePayload(payload);
-        finishDayTransition(transitionId);
-
-        if (
-          scrollToResult &&
-          (payload.highlightData.highlight ||
-            payload.highlightData.highlights?.length)
-        ) {
-          requestAnimationFrame(() => {
-            scrollToHighlightBlock();
-          });
-        }
-
-        return;
-      }
 
       skipNextAutoDayLoadRef.current = true;
       pendingScrollToHighlightRef.current = scrollToResult;
@@ -1184,6 +1191,7 @@ export default function Page({
       finishDayTransition(transitionId);
     }
   }
+
 
   useEffect(() => {
     if (!hasPickedInitialDay) return;
