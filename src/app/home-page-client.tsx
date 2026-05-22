@@ -1322,6 +1322,16 @@ export default function Page({
       return;
     }
 
+    const shouldWaitForFullPublicBundle =
+      initialBundle?.day === day &&
+      !!initialBundle.publicInitialOnly &&
+      !cachedPayload;
+
+    if (shouldWaitForFullPublicBundle) {
+      setLoadingFavoriteDay(false);
+      return;
+    }
+
     if (favoriteStatusTimeoutRef.current) {
       clearTimeout(favoriteStatusTimeoutRef.current);
     }
