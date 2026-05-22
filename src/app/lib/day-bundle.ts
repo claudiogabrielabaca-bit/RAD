@@ -84,6 +84,11 @@ type DayBundlePayload = {
   favoriteDay: string | null;
 };
 
+type RatingSummaryRecord = {
+  count: number;
+  avg: number;
+};
+
 const anonymousDayBundleCache = new Map<
   string,
   {
@@ -186,17 +191,9 @@ async function buildDayBundlePayload(
 
   const viewerScopedRelationSelect = buildViewerScopedRelationSelect(user);
 
-  const [highlightResult, ratings, ratingSummary, stats, favorite]: [
+  const [highlightResult, ratings, stats, favorite]: [
     Awaited<ReturnType<typeof ensureHighlightsForDay>>,
     RatingRecord[],
-    {
-      _count: {
-        _all: number;
-      };
-      _avg: {
-        stars: number | null;
-      };
-    },
     { views: number } | null,
     { day: string } | null,
   ] = await Promise.all([
@@ -257,19 +254,6 @@ async function buildDayBundlePayload(
       timings
     ),
     measureBundleStep(
-      "summary",
-      prisma.rating.aggregate({
-        where: { day },
-        _count: {
-          _all: true,
-        },
-        _avg: {
-          stars: true,
-        },
-      }),
-      timings
-    ),
-    measureBundleStep(
       "stats",
       prisma.dayStats.findUnique({
         where: { day },
@@ -296,8 +280,33 @@ async function buildDayBundlePayload(
     ),
   ]);
 
-  const count = ratingSummary._count._all;
-  const avg = ratingSummary._avg.stars ?? 0;
+  let count = ratings.length;
+  let avg =
+    ratings.length > 0
+      ? ratings.reduce((sum, rating) => sum + rating.stars, 0) / ratings.length
+      : 0;
+
+  if (ratings.length >= DAY_BUNDLE_REVIEW_LIMIT) {
+    const ratingSummaryRows = await measureBundleStep(
+      "summary",
+      prisma.$queryRaw<RatingSummaryRecord[]>`
+        SELECT
+          COUNT(*)::integer AS "count",
+          COALESCE(AVG("stars")::double precision, 0) AS "avg"
+        FROM "Rating"
+        WHERE "day" = ${day}
+      `,
+      timings
+    );
+
+    const ratingSummary = ratingSummaryRows[0];
+    count = ratingSummary?.count ?? count;
+    avg = ratingSummary?.avg ?? avg;
+  } else {
+    timings.summary = 0;
+  }
+
+  const views = stats?.views ?? 0;
 
   const transformStartedAt = Date.now();
 
@@ -341,7 +350,7 @@ async function buildDayBundlePayload(
       day,
       avg,
       count,
-      views: stats?.views ?? 0,
+      views,
       reviews,
     },
     highlightData: {
