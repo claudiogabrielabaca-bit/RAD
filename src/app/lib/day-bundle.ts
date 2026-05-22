@@ -8,7 +8,9 @@ const DAY_BUNDLE_REVIEW_LIMIT = 50;
 const DAY_BUNDLE_REPLY_LIMIT_PER_REVIEW = 25;
 const VIEWER_RELATION_EMPTY_ID = "__rad_no_current_user__";
 const ANONYMOUS_DAY_BUNDLE_CACHE_TTL_MS = 60 * 1000;
-const SHOULD_LOG_DAY_BUNDLE_TIMINGS = process.env.NODE_ENV === "development";
+const SHOULD_LOG_DAY_BUNDLE_TIMINGS =
+  process.env.NODE_ENV === "development" ||
+  process.env.RAD_LOG_DAY_BUNDLE_TIMINGS === "1";
 
 type CurrentUser = Awaited<ReturnType<typeof getCurrentUser>>;
 
