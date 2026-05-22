@@ -1322,7 +1322,15 @@ export default function Page({
     return () => {
       cancelled = true;
     };
-  }, [day, dayBundleCacheRef, hasPickedInitialDay, transitionIdRef]);
+  }, [
+    day,
+    dayBundleCacheRef,
+    hasPickedInitialDay,
+    initialBundle?.day,
+    initialBundle?.publicInitialOnly,
+    pathname,
+    transitionIdRef,
+  ]);
 
   useEffect(() => {
     if (!hasPickedInitialDay) return;
