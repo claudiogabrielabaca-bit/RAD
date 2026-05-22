@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
 import { isValidDayString } from "@/app/lib/day";
 import { sendMail } from "@/app/lib/mail";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -97,6 +102,27 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "You must be logged in to suggest an event." },
         { status: 401, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (user.emailVerified === false) {
+      return NextResponse.json(
+        { error: "You must verify your email to suggest an event." },
+        { status: 403, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "suggest-event",
+      key: buildRateLimitKey(req, user.id),
+      limit: 5,
+      windowMs: 60 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many suggestions. Please try again later."
       );
     }
 
