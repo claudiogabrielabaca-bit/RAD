@@ -4,6 +4,10 @@ import { simulateSurpriseDays } from "@/app/lib/surprise-deck";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const ENABLE_SURPRISE_TEST =
+  process.env.NODE_ENV !== "production" ||
+  process.env.RAD_ENABLE_SURPRISE_TEST === "1";
+
 function getMonthDay(day: string) {
   return day.slice(5, 10);
 }
@@ -58,6 +62,18 @@ function summarizeWindow(days: string[], size: number) {
 
 export async function GET(req: Request) {
   try {
+    if (!ENABLE_SURPRISE_TEST) {
+      return NextResponse.json(
+        { error: "Not found" },
+        {
+          status: 404,
+          headers: {
+            "Cache-Control": "no-store",
+          },
+        }
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const requestedCount = Number(searchParams.get("count") ?? "1000");
     const count = Math.max(1, Math.min(requestedCount, 5000));
