@@ -63,6 +63,18 @@ function getJsonString(
   return typeof value === "string" ? value : null;
 }
 
+function isUsableFeedHighlight(item: {
+  highlightTitle: string | null;
+  highlightText: string | null;
+  highlightType: string | null;
+}) {
+  return (
+    !!item.highlightTitle?.trim() &&
+    !!item.highlightText?.trim() &&
+    item.highlightType !== "none"
+  );
+}
+
 export async function GET() {
   try {
     const ratings: FeedRatingRow[] = await prisma.rating.findMany({
@@ -166,7 +178,7 @@ export async function GET() {
         highlightCategory,
         highlightSecondaryType,
       };
-    });
+    }).filter((item) => isUsableFeedHighlight(item));
 
     return NextResponse.json(
       { items },
