@@ -1150,6 +1150,7 @@ export default function Page({
           bundle: true,
           fresh,
           monthDay,
+          currentDay: day,
           excludeDays: Array.from(excludedDays),
         }),
         {

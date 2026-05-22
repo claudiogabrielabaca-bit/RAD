@@ -224,6 +224,30 @@ function pickFromPool(
   };
 }
 
+function pickRestartedFromPool(
+  pooledDays: string[],
+  currentDay?: string | null
+): TodayValidDayResult | null {
+  if (pooledDays.length === 0) return null;
+
+  const restartCandidates =
+    currentDay && isValidDayString(currentDay)
+      ? pooledDays.filter((candidate) => candidate !== currentDay)
+      : pooledDays;
+
+  if (restartCandidates.length === 0) {
+    return null;
+  }
+
+  const shuffled = shuffleArray(restartCandidates);
+
+  return {
+    day: shuffled[0],
+    source: "cache",
+    restartedRound: true,
+  };
+}
+
 async function discoverUntilNextAvailable(
   candidates: string[],
   excludedSet: Set<string>
@@ -270,11 +294,20 @@ export async function getTodayValidDay(options?: {
   maxAttempts?: number;
   excludeDays?: string[];
   monthDay?: string;
+  currentDay?: string;
 }): Promise<TodayValidDayResult | null> {
   const excludeDays = Array.from(
     new Set((options?.excludeDays ?? []).filter(isValidDayString))
   );
   const excludedSet = new Set<string>(excludeDays);
+  const currentDay =
+    options?.currentDay && isValidDayString(options.currentDay)
+      ? options.currentDay
+      : null;
+
+  if (currentDay) {
+    excludedSet.add(currentDay);
+  }
 
   const { month, day } = parseMonthDay(options?.monthDay);
   const monthStr = pad2(month);
@@ -297,13 +330,7 @@ export async function getTodayValidDay(options?: {
       return pooledPick;
     }
 
-    const restartedPool = shuffleArray(rawStoredPool);
-
-    return {
-      day: restartedPool[0],
-      source: "cache",
-      restartedRound: true,
-    };
+    return pickRestartedFromPool(rawStoredPool, currentDay);
   }
 
   const allCandidateDays = getValidYearsForMonthDay(month, day);
@@ -396,13 +423,7 @@ export async function getTodayValidDay(options?: {
   }
 
   if (pooledDays.length > 0) {
-    const shuffled = shuffleArray(pooledDays);
-
-    return {
-      day: shuffled[0],
-      source: "cache",
-      restartedRound: true,
-    };
+    return pickRestartedFromPool(pooledDays, currentDay);
   }
 
   return null;

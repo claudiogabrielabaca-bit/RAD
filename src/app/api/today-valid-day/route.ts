@@ -306,7 +306,17 @@ export async function GET(req: Request) {
       : undefined;
 
     const effectiveMonthDay = monthDay ?? getCurrentMonthDay();
+    const requestedCurrentDay = searchParams.get("currentDay");
+    const currentDay =
+      isValidDayString(requestedCurrentDay) &&
+      requestedCurrentDay.slice(5, 10) === effectiveMonthDay
+        ? requestedCurrentDay
+        : null;
     const baseExcludeDays = parseExcludeDays(searchParams);
+
+    if (currentDay && !baseExcludeDays.includes(currentDay)) {
+      baseExcludeDays.unshift(currentDay);
+    }
 
     if (!bundle) {
       const result = await getTodayValidDay({
@@ -314,6 +324,7 @@ export async function GET(req: Request) {
         maxAttempts: 72,
         excludeDays: baseExcludeDays,
         monthDay,
+        currentDay: currentDay ?? undefined,
       });
 
       if (!result) {
@@ -372,9 +383,16 @@ export async function GET(req: Request) {
         maxAttempts: 72,
         excludeDays: Array.from(triedDays),
         monthDay,
+        currentDay: currentDay ?? undefined,
       });
 
       if (!result) break;
+
+      if (currentDay && result.day === currentDay) {
+        triedDays.add(result.day);
+        skippedDays.push(result.day);
+        continue;
+      }
 
       triedDays.add(result.day);
 

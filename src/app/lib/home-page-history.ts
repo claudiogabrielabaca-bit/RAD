@@ -199,11 +199,13 @@ export function buildTodayInHistoryRequestUrl({
   fresh = false,
   bundle = false,
   monthDay = getTodayHistoryMonthDay(),
+  currentDay = "",
 }: {
   excludeDays?: string[];
   fresh?: boolean;
   bundle?: boolean;
   monthDay?: string;
+  currentDay?: string;
 } = {}) {
   const params = new URLSearchParams();
 
@@ -217,6 +219,14 @@ export function buildTodayInHistoryRequestUrl({
 
   if (monthDay) {
     params.set("monthDay", monthDay);
+  }
+
+  if (
+    currentDay &&
+    isValidDayString(currentDay) &&
+    currentDay.slice(5, 10) === monthDay
+  ) {
+    params.set("currentDay", currentDay);
   }
 
   const historyDays = getRecentTodayHistory(monthDay);
