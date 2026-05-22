@@ -17,6 +17,19 @@ const MAX_BUNDLE_ATTEMPTS = 12;
 const MAX_EXCLUDE_DAYS = 1000;
 const MAX_LIVE_HIGHLIGHT_CHECKS = 1;
 
+const SHOULD_LOG_TODAY_VALID_DAY =
+  process.env.NODE_ENV !== "production" ||
+  process.env.RAD_LOG_TODAY_VALID_DAY === "1";
+
+function logTodayValidDayWarning(
+  message: string,
+  payload: Record<string, unknown>
+) {
+  if (!SHOULD_LOG_TODAY_VALID_DAY) return;
+
+  console.warn(message, payload);
+}
+
 type DayBundlePayload = Awaited<ReturnType<typeof buildDayBundle>>;
 
 type CachedHighlightViability = "usable" | "unusable" | "unknown";
@@ -274,7 +287,7 @@ async function removeDayFromTodayPool(day: string) {
     },
   });
 
-  console.warn("today-valid-day removed unusable day from pool:", {
+  logTodayValidDayWarning("today-valid-day removed unusable day from pool:", {
     day,
     monthDay,
     previousCount: currentDays.length,
@@ -376,7 +389,7 @@ export async function GET(req: Request) {
       if (!readiness.usable) {
         skippedDays.push(result.day);
 
-        console.warn("today-valid-day skipped highlight before bundle:", {
+        logTodayValidDayWarning("today-valid-day skipped highlight before bundle:", {
           day: result.day,
           attempt: attempt + 1,
           reason: readiness.reason,
@@ -411,7 +424,7 @@ export async function GET(req: Request) {
 
       skippedDays.push(result.day);
 
-      console.warn("today-valid-day skipped unusable bundle:", {
+      logTodayValidDayWarning("today-valid-day skipped unusable bundle:", {
         day: result.day,
         title: payload.highlightData?.highlight?.title ?? null,
         type: payload.highlightData?.highlight?.type ?? null,
