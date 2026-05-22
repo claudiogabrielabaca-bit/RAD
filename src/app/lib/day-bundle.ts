@@ -392,6 +392,25 @@ async function getAnonymousDayBundle(day: string) {
   return request;
 }
 
+export async function buildPublicInitialDayBundle(day: string) {
+  const highlightResult = await ensureHighlightsForDay(day);
+
+  return {
+    day,
+    dayData: {
+      day,
+      avg: 0,
+      count: 0,
+      views: 0,
+      reviews: [],
+    },
+    highlightData: {
+      highlight: highlightResult.highlight,
+      highlights: highlightResult.highlights,
+    },
+  };
+}
+
 export async function buildAnonymousDayBundle(day: string) {
   return getAnonymousDayBundle(day);
 }

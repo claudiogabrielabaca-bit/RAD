@@ -2,7 +2,8 @@
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import HomePageClient from "@/app/home-page-client";
-import { buildAnonymousDayBundle } from "@/app/lib/day-bundle";
+import { getFeaturedMoment } from "@/app/lib/featured-moments";
+import { buildPublicInitialDayBundle } from "@/app/lib/day-bundle";
 import { prisma } from "@/app/lib/prisma";
 
 type ParamsInput =
@@ -18,6 +19,18 @@ type MetadataHighlight = {
   text: string | null;
   image: string | null;
 };
+
+function readFeaturedMetadataHighlight(day: string): MetadataHighlight | null {
+  const item = getFeaturedMoment(day);
+  if (!item) return null;
+
+  return {
+    title: item.title,
+    text: item.text,
+    image: item.image ?? null,
+  };
+}
+
 
 function isValidDayString(value?: string | null): value is string {
   return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
@@ -82,7 +95,9 @@ function readFirstHighlightFromJson(value: unknown): MetadataHighlight | null {
   };
 }
 
-const getCachedAnonymousDayBundle = cache(async (day: string) => buildAnonymousDayBundle(day));
+const getCachedPublicInitialDayBundle = cache(async (day: string) =>
+  buildPublicInitialDayBundle(day)
+);
 
 const getCachedMetadataHighlight = cache(
   async (day: string): Promise<MetadataHighlight | null> => {
@@ -139,7 +154,9 @@ export async function generateMetadata({
   const displayDate = formatDisplayDate(day);
   const canonicalPath = `/day/${encodeURIComponent(day)}`;
 
-  const metadataHighlight = await getCachedMetadataHighlight(day);
+  const metadataHighlight =
+    readFeaturedMetadataHighlight(day) ??
+    (await getCachedMetadataHighlight(day));
 
   const highlightTitle = cleanText(metadataHighlight?.title);
   const highlightText = cleanText(metadataHighlight?.text);
@@ -199,15 +216,16 @@ export default async function DayPage({
   let initialBundle = null;
 
   try {
-    const anonymousBundle = await getCachedAnonymousDayBundle(day);
+    const publicInitialBundle = await getCachedPublicInitialDayBundle(day);
 
     initialBundle = {
-      day: anonymousBundle.day,
-      dayData: anonymousBundle.dayData,
-      highlightData: anonymousBundle.highlightData,
+      day: publicInitialBundle.day,
+      dayData: publicInitialBundle.dayData,
+      highlightData: publicInitialBundle.highlightData,
+      publicInitialOnly: true,
     };
   } catch (error) {
-    console.error("day page initial anonymous bundle error:", error);
+    console.error("day page public initial bundle error:", error);
   }
 
   return <HomePageClient initialBundle={initialBundle} />;

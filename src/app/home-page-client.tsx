@@ -69,6 +69,11 @@ type TodayInHistoryResponse = SurpriseResponse & {
   restartedRound?: boolean;
 };
 
+type InitialBundle = SurpriseResponse & {
+  publicInitialOnly?: boolean;
+};
+
+
 function recomputeDayStats(reviews: DayResponse["reviews"]) {
   const count = reviews.length;
   const avg =
@@ -108,7 +113,7 @@ function removeReplyFromTree(
 export default function Page({
   initialBundle = null,
 }: {
-  initialBundle?: SurpriseResponse | null;
+  initialBundle?: InitialBundle | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -745,8 +750,11 @@ export default function Page({
       initialBundle?.dayData &&
       initialBundle?.highlightData
     ) {
-      navigationActionsRef.current.cacheBundlePayload(initialBundle);
-      skipNextAutoDayLoadRef.current = true;
+      if (!initialBundle.publicInitialOnly) {
+        navigationActionsRef.current.cacheBundlePayload(initialBundle);
+        skipNextAutoDayLoadRef.current = true;
+      }
+
       setHasPickedInitialDay(true);
       return;
     }
