@@ -1,4 +1,4 @@
-# dependencies
+﻿# dependencies
 /node_modules
 /.pnp
 .pnp.*
@@ -54,8 +54,11 @@ next-env.d.ts
 *.orig
 *.dump
 *.sql
-*.sqlite
-*.sqlite3
+!prisma/migrations/**/migration.sql
+*.sql
+!prisma/migrations/**/migration.sqlite
+*.sql
+!prisma/migrations/**/migration.sqlite3
 *.db
 /_app_root_backup
 /backups
@@ -75,3 +78,9 @@ surprise-audit-*.json
 /rad-full-audit-*/
 /logs/
 *.dump
+
+
+# keep Prisma migration SQL files versioned
+!/prisma/migrations/
+!/prisma/migrations/**/
+!/prisma/migrations/**/migration.sql
