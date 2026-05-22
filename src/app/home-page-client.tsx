@@ -61,6 +61,7 @@ const REPLY_MAX_LENGTH = 220;
 const HIGHLIGHT_SCROLL_OFFSET = 365;
 const DAY_VIEW_TRACKING_DELAY_MS = 8000;
 const FORCE_FRESH_MODE = false;
+const LAST_DAY_STORAGE_KEY = "rad:lastDay";
 
 const MIN_DAY_TRANSITION_MS = 1000;
 const HERO_IMAGE_REVEAL_DELAY_MS = 150;
@@ -672,7 +673,7 @@ export default function Page({
     if (!isValidDayString(day)) return;
 
     try {
-      window.localStorage.setItem("rad:lastDay", day);
+      window.localStorage.setItem(LAST_DAY_STORAGE_KEY, day);
     } catch {
       //
     }
@@ -745,6 +746,38 @@ export default function Page({
         } catch {
           if (!cancelled) {
             setDay(queryDay);
+          }
+        } finally {
+          if (!cancelled) {
+            setHasPickedInitialDay(true);
+          }
+        }
+
+        return;
+      }
+
+      let storedDay = "";
+
+      try {
+        const value = window.localStorage.getItem(LAST_DAY_STORAGE_KEY);
+        storedDay = isValidDayString(value) ? value : "";
+      } catch {
+        storedDay = "";
+      }
+
+      if (storedDay) {
+        try {
+          const payload =
+            await navigationActionsRef.current.fetchDayBundle(storedDay);
+
+          if (!cancelled) {
+            skipNextAutoDayLoadRef.current = true;
+            navigationActionsRef.current.applyBundlePayload(payload);
+            setDay(payload.day);
+          }
+        } catch {
+          if (!cancelled) {
+            setDay(storedDay);
           }
         } finally {
           if (!cancelled) {
