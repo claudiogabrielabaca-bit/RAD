@@ -1163,9 +1163,9 @@ export default function Page({
       if (payload.restartedRound) {
         clearTodayHistory(monthDay);
         showTodayHistoryNotice(
-          \`You explored all available moments for \${formatMonthDayLabel(
+          `You explored all available moments for ${formatMonthDayLabel(
             monthDay
-          )}. A new round has started.\`
+          )}. A new round has started.`
         );
       }
 

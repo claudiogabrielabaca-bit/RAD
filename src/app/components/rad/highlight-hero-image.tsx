@@ -52,13 +52,11 @@ export default function HighlightHeroImage({
     }
 
     if (!normalizedSrc) {
-      setDisplaySrc(null);
       onLoadingChange?.(false);
       return;
     }
 
     if (preferImmediateSwap) {
-      setDisplaySrc(normalizedSrc);
       onLoadingChange?.(false);
       return;
     }
@@ -68,7 +66,6 @@ export default function HighlightHeroImage({
       return;
     }
 
-    setDisplaySrc(null);
     onLoadingChange?.(true);
 
     const img = new window.Image();
