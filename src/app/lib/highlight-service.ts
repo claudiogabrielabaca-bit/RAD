@@ -277,16 +277,6 @@ function buildFeaturedHighlightResponse(day: string): HighlightResponse | null {
   };
 }
 
-function shouldUseFeaturedOverride(row: CachedRow | null | undefined) {
-  if (!row) return true;
-  if (row.type === "none") return true;
-  if (!isNonEmptyText(row.text)) return true;
-  if (row.text.trim() === EMPTY_FALLBACK_TEXT) return true;
-  if (!row.title?.trim()) return true;
-  if (!row.image?.trim()) return true;
-  return false;
-}
-
 function isFreshNegativeCache(row: CachedRow) {
   return Date.now() - row.updatedAt.getTime() < NEGATIVE_CACHE_TTL_MS;
 }
@@ -294,6 +284,12 @@ function isFreshNegativeCache(row: CachedRow) {
 async function readCachedHighlights(
   day: string
 ): Promise<HighlightResponse | null> {
+  const featured = buildFeaturedHighlightResponse(day);
+
+  if (featured) {
+    return featured;
+  }
+
   const row = await prisma.dayHighlightCache.findUnique({
     where: { day },
     select: {
@@ -308,13 +304,6 @@ async function readCachedHighlights(
       updatedAt: true,
     },
   });
-
-  const featured = buildFeaturedHighlightResponse(day);
-
-  if (featured && shouldUseFeaturedOverride(row as CachedRow | null)) {
-    await writeHighlightsToCache(day, featured.highlights ?? []);
-    return featured;
-  }
 
   if (!row) {
     return null;
