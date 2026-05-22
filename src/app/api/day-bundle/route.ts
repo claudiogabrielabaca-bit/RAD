@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { buildDayBundle } from "@/app/lib/day-bundle";
+import { buildDayBundle, buildDayCommunityBundle } from "@/app/lib/day-bundle";
 import { isValidDayString } from "@/app/lib/day";
 
 export const dynamic = "force-dynamic";
@@ -9,12 +9,15 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const day = searchParams.get("day");
+    const communityOnly = searchParams.get("communityOnly") === "1";
 
     if (!isValidDayString(day)) {
       return NextResponse.json({ error: "Invalid day" }, { status: 400 });
     }
 
-    const payload = await buildDayBundle(day);
+    const payload = communityOnly
+      ? await buildDayCommunityBundle(day)
+      : await buildDayBundle(day);
 
     return NextResponse.json(payload, {
       headers: {

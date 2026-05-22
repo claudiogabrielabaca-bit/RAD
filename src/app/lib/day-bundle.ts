@@ -184,7 +184,8 @@ function buildReplyTree(replies: ReplyRecord[], user: CurrentUser): ReplyItem[] 
 
 async function buildDayBundlePayload(
   day: string,
-  user: CurrentUser
+  user: CurrentUser,
+  options?: { includeHighlights?: boolean }
 ): Promise<DayBundlePayload> {
   const totalStartedAt = Date.now();
   const timings: Record<string, number> = {
@@ -192,6 +193,12 @@ async function buildDayBundlePayload(
   };
 
   const viewerScopedRelationSelect = buildViewerScopedRelationSelect(user);
+  const includeHighlights = options?.includeHighlights !== false;
+  const highlightPromise = includeHighlights
+    ? ensureHighlightsForDay(day)
+    : Promise.resolve(
+        {} as Awaited<ReturnType<typeof ensureHighlightsForDay>>
+      );
 
   const [highlightResult, ratings, stats, favorite]: [
     Awaited<ReturnType<typeof ensureHighlightsForDay>>,
@@ -199,7 +206,7 @@ async function buildDayBundlePayload(
     { views: number } | null,
     { day: string } | null,
   ] = await Promise.all([
-    measureBundleStep("highlight", ensureHighlightsForDay(day), timings),
+    measureBundleStep("highlight", highlightPromise, timings),
     measureBundleStep(
       "ratings",
       prisma.rating.findMany({
@@ -424,6 +431,14 @@ export async function buildPublicInitialDayBundle(day: string) {
 
 export async function buildAnonymousDayBundle(day: string) {
   return getAnonymousDayBundle(day);
+}
+
+export async function buildDayCommunityBundle(day: string) {
+  const user = await getCurrentUser();
+
+  return buildDayBundlePayload(day, user, {
+    includeHighlights: false,
+  });
 }
 
 export async function buildDayBundle(day: string) {

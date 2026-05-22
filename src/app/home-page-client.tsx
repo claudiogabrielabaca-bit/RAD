@@ -1302,11 +1302,17 @@ export default function Page({
       setLoadingHighlight(true);
 
       try {
-        const payload = await navigationActionsRef.current.fetchDayBundle(day);
+        const payload = await navigationActionsRef.current.fetchDayBundle(day, {
+          communityOnly: true,
+        });
 
         if (cancelled) return;
 
-        navigationActionsRef.current.applyBundlePayload(payload);
+        setData(payload.dayData);
+
+        if (typeof payload.isFavoriteDay === "boolean") {
+          setIsFavoriteDay(payload.isFavoriteDay);
+        }
       } catch {
         if (cancelled) return;
         showToast("Error cargando el día.");

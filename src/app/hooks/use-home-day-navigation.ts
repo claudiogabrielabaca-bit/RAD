@@ -169,13 +169,22 @@ export function useHomeDayNavigation(params: {
     dayBundleCacheRef.current.delete(targetDay);
   }
 
-  async function fetchDayBundle(targetDay: string) {
+  async function fetchDayBundle(
+    targetDay: string,
+    options?: { communityOnly?: boolean }
+  ) {
     const controller = new AbortController();
     dayBundleAbortControllersRef.current.add(controller);
 
+    const params = new URLSearchParams({ day: targetDay });
+
+    if (options?.communityOnly) {
+      params.set("communityOnly", "1");
+    }
+
     try {
       const res = await fetch(
-        `/api/day-bundle?day=${encodeURIComponent(targetDay)}`,
+        "/api/day-bundle?" + params.toString(),
         {
           cache: "no-store",
           signal: controller.signal,
