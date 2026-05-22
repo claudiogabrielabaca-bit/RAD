@@ -1,0 +1,41 @@
+name: RAD CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  quality:
+    name: Lint, Prisma, build and script checks
+    runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/rad_ci?schema=public
+      SESSION_SECRET: ci_session_secret_do_not_use_in_production
+      AUTH_CODE_SECRET: ci_auth_code_secret_do_not_use_in_production
+      ADMIN_SECRET: ci_admin_secret_do_not_use_in_production
+      ADMIN_USERNAME: ci_admin
+      ADMIN_PASSWORD: ci_admin_password
+      RESEND_API_KEY: re_ci_dummy
+      TURNSTILE_SECRET_KEY: ci_turnstile_dummy
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Run full project checks
+        run: npm run check:full
