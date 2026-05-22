@@ -1262,6 +1262,21 @@ export default function Page({
         return;
       }
 
+      const shouldKeepPublicInitialBundleLightweight =
+        initialBundle?.day === day &&
+        !!initialBundle.publicInitialOnly &&
+        pathname?.startsWith("/day/");
+
+      if (shouldKeepPublicInitialBundleLightweight) {
+        if (!cancelled) {
+          setLoadingDay(false);
+          setLoadingHighlight(false);
+          navigationActionsRef.current.finishDayTransition(transitionId);
+        }
+
+        return;
+      }
+
       const cachedPayload = dayBundleCacheRef.current.get(day);
 
       if (cachedPayload) {
