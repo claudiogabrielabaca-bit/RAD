@@ -125,6 +125,7 @@ export default function Page({
 
   const rateBoxRef = useRef<HTMLDivElement | null>(null);
   const myReviewBlockRef = useRef<HTMLDivElement | null>(null);
+  const communityPanelRef = useRef<HTMLDivElement | null>(null);
   const highlightBlockRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollToHighlightRef = useRef(false);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,6 +144,7 @@ export default function Page({
 
   const dayRequestRef = useRef(0);
   const skipNextAutoDayLoadRef = useRef(false);
+  const communityBundleLoadedDayRef = useRef("");
 
   const highlightTransitionRequestRef = useRef(0);
   const pendingHighlightIndexRef = useRef(0);
@@ -1369,6 +1371,104 @@ export default function Page({
   ]);
 
   useEffect(() => {
+    if (!hasPickedInitialDay) return;
+
+    const shouldLazyLoadPublicCommunity =
+      initialBundle?.day === day &&
+      !!initialBundle.publicInitialOnly &&
+      pathname?.startsWith("/day/");
+
+    if (!shouldLazyLoadPublicCommunity) return;
+    if (communityBundleLoadedDayRef.current === day) return;
+
+    let cancelled = false;
+    let loadTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    async function loadCommunityBundle() {
+      if (communityBundleLoadedDayRef.current === day) return;
+
+      const cachedPayload = dayBundleCacheRef.current.get(day);
+
+      if (cachedPayload) {
+        communityBundleLoadedDayRef.current = day;
+
+        if (!cancelled) {
+          navigationActionsRef.current.applyBundlePayload(cachedPayload);
+        }
+
+        return;
+      }
+
+      communityBundleLoadedDayRef.current = day;
+      setLoadingDay(true);
+
+      try {
+        const payload = await navigationActionsRef.current.fetchDayBundle(day);
+
+        if (cancelled) return;
+
+        navigationActionsRef.current.applyBundlePayload(payload);
+      } catch {
+        communityBundleLoadedDayRef.current = "";
+
+        if (!cancelled) {
+          showToast("Could not load community activity.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingDay(false);
+        }
+      }
+    }
+
+    function maybeLoadCommunityBundle() {
+      if (cancelled) return;
+      if (communityBundleLoadedDayRef.current === day) return;
+
+      const target = communityPanelRef.current;
+      if (!target) return;
+
+      const rect = target.getBoundingClientRect();
+      const hasScrollIntent = window.scrollY > 420;
+      const isNearCommunityPanel = rect.top < window.innerHeight * 0.95;
+
+      if (!hasScrollIntent || !isNearCommunityPanel) return;
+
+      if (loadTimeout) {
+        clearTimeout(loadTimeout);
+      }
+
+      loadTimeout = setTimeout(() => {
+        void loadCommunityBundle();
+      }, 250);
+    }
+
+    window.addEventListener("scroll", maybeLoadCommunityBundle, {
+      passive: true,
+    });
+    window.addEventListener("resize", maybeLoadCommunityBundle);
+
+    maybeLoadCommunityBundle();
+
+    return () => {
+      cancelled = true;
+
+      if (loadTimeout) {
+        clearTimeout(loadTimeout);
+      }
+
+      window.removeEventListener("scroll", maybeLoadCommunityBundle);
+      window.removeEventListener("resize", maybeLoadCommunityBundle);
+    };
+  }, [
+    day,
+    dayBundleCacheRef,
+    hasPickedInitialDay,
+    initialBundle,
+    pathname,
+  ]);
+
+  useEffect(() => {
     if (
       !loadingHighlight &&
       pendingScrollToHighlightRef.current &&
@@ -2484,8 +2584,9 @@ export default function Page({
                 </div>
               ) : null}
 
-              <HomeReactionsPanel
-                rateBoxRef={rateBoxRef}
+              <div ref={communityPanelRef}>
+                <HomeReactionsPanel
+                  rateBoxRef={rateBoxRef}
                 myReviewBlockRef={myReviewBlockRef}
                 targetReviewId={searchParams.get("reviewId")}
                 myReview={myReview ?? null}
@@ -2523,8 +2624,9 @@ export default function Page({
                 onSetReplyTextByRating={setReplyTextByRating}
                 onSubmitReply={submitReply}
                 onReportReview={reportReview}
-                reviewMaxLength={REVIEW_MAX_LENGTH}
-              />
+                  reviewMaxLength={REVIEW_MAX_LENGTH}
+                />
+              </div>
             </div>
           </section>
         </div>
