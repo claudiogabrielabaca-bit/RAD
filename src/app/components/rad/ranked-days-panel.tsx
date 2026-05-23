@@ -458,12 +458,14 @@ export default function RankedDaysPanel() {
   const [top, setTop] = useState<TopItem[]>([]);
   const [low, setLow] = useState<TopItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
 
     async function run() {
       setLoading(true);
+      setError("");
 
       try {
         const res = await fetch("/api/top", {
@@ -484,6 +486,7 @@ export default function RankedDaysPanel() {
         if (!cancelled) {
           setTop([]);
           setLow([]);
+          setError("Could not load ranked days.");
         }
       } finally {
         if (!cancelled) {
@@ -503,6 +506,14 @@ export default function RankedDaysPanel() {
     router.push(`/?day=${encodeURIComponent(selectedDay)}&focus=highlight`, {
       scroll: false,
     });
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-[24px] border border-red-400/20 bg-red-500/10 px-5 py-4 text-sm text-red-200">
+        {error}
+      </div>
+    );
   }
 
   return (
