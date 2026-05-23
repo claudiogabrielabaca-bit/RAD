@@ -521,8 +521,20 @@ export default function ProfilePageClient() {
             </div>
 
               {favoriteDays.length === 0 ? (
-                <div className="rounded-2xl border border-white/10 bg-black/20 p-6 text-sm text-zinc-400">
-                You have not saved favorite days yet.
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-6">
+                  <div className="text-sm font-medium text-zinc-200">
+                    You have not saved favorite days yet.
+                  </div>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-500">
+                    Mark days with the star to build your personal collection of moments in history.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => router.push("/")}
+                    className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-white/16 hover:bg-white/[0.08] hover:text-white"
+                  >
+                    Explore days
+                  </button>
                 </div>
               ) : (
                 <div className="flex flex-wrap justify-center gap-5">
@@ -689,8 +701,20 @@ export default function ProfilePageClient() {
             </div>
 
             {displayedRatings.length === 0 ? (
-              <div className="border-t border-white/8 py-6 text-sm text-zinc-500">
-                You have not rated any day yet.
+              <div className="border-t border-white/8 py-6">
+                <div className="text-sm font-medium text-zinc-200">
+                  You have not rated any day yet.
+                </div>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-500">
+                  Pick a day, leave a rating, and your review history will appear here.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push("/")}
+                  className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-white/16 hover:bg-white/[0.08] hover:text-white"
+                >
+                  Rate a day
+                </button>
               </div>
             ) : (
               <div className="divide-y divide-white/8 border-t border-white/8">
