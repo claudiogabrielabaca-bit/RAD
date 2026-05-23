@@ -417,12 +417,14 @@ export default function HomeReactionsPanel({
             <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="text-sm font-medium text-zinc-200">
-                  Latest reviews ({otherReviews.length})
+                  {myReview ? "Community reviews" : "Latest reviews"} ({otherReviews.length})
                 </div>
 
                 {otherReviews.length === 0 ? (
                   <div className="mt-2 text-sm text-zinc-500">
-                    No reviews yet. Be the first.
+                    {myReview
+                      ? "No other community reviews yet."
+                      : "No reviews yet. Be the first."}
                   </div>
                 ) : null}
               </div>
