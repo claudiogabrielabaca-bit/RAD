@@ -5,6 +5,10 @@ import { isAdminAuthenticated } from "@/app/lib/admin";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
 type RatingAuthor = {
   user?: { username: string } | null;
   anonId?: string | null;
@@ -18,9 +22,18 @@ type RecentReviewRating = {
   anonId: string | null;
   createdAt: Date;
   user: { username: string } | null;
-  reports: Array<{ status: string }>;
-  replies: Array<{ id: string }>;
-  likes: Array<{ id: string }>;
+  _count: {
+    reports: number;
+    replies: number;
+    likes: number;
+  };
+};
+
+type PendingReportCountRow = {
+  ratingId: string;
+  _count: {
+    _all: number;
+  };
 };
 
 function getRatingAuthorLabel(rating: RatingAuthor) {
@@ -34,66 +47,85 @@ export async function GET() {
     const isAdmin = await isAdminAuthenticated();
 
     if (!isAdmin) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
 
     const ratings: RecentReviewRating[] = await prisma.rating.findMany({
       orderBy: { createdAt: "desc" },
       take: 24,
-      include: {
+      select: {
+        id: true,
+        day: true,
+        stars: true,
+        review: true,
+        anonId: true,
+        createdAt: true,
         user: {
           select: {
             username: true,
           },
         },
-        reports: {
+        _count: {
           select: {
-            status: true,
-          },
-        },
-        replies: {
-          select: {
-            id: true,
-          },
-        },
-        likes: {
-          select: {
-            id: true,
+            reports: true,
+            replies: true,
+            likes: true,
           },
         },
       },
     });
 
-    const reviews = ratings.map((rating: RecentReviewRating) => {
-      const reportsCount = rating.reports.length;
-      const pendingReportsCount = rating.reports.filter(
-        (report: { status: string }) => report.status === "pending"
-      ).length;
+    const ratingIds = ratings.map((rating: RecentReviewRating) => rating.id);
 
-      return {
-        id: rating.id,
-        day: rating.day,
-        stars: rating.stars,
-        review: rating.review,
-        authorLabel: getRatingAuthorLabel(rating),
-        createdAt: rating.createdAt.toISOString(),
-        reportsCount,
-        pendingReportsCount,
-        repliesCount: rating.replies.length,
-        likesCount: rating.likes.length,
-      };
-    });
+    const pendingReportRows: PendingReportCountRow[] = ratingIds.length
+      ? await prisma.reviewReport.groupBy({
+          by: ["ratingId"],
+          where: {
+            ratingId: {
+              in: ratingIds,
+            },
+            status: "pending",
+          },
+          _count: {
+            _all: true,
+          },
+        })
+      : [];
+
+    const pendingReportsMap = new Map(
+      pendingReportRows.map((row: PendingReportCountRow) => [
+        row.ratingId,
+        row._count._all,
+      ])
+    );
+
+    const reviews = ratings.map((rating: RecentReviewRating) => ({
+      id: rating.id,
+      day: rating.day,
+      stars: rating.stars,
+      review: rating.review,
+      authorLabel: getRatingAuthorLabel(rating),
+      createdAt: rating.createdAt.toISOString(),
+      reportsCount: rating._count.reports,
+      pendingReportsCount: pendingReportsMap.get(rating.id) ?? 0,
+      repliesCount: rating._count.replies,
+      likesCount: rating._count.likes,
+    }));
 
     return NextResponse.json(
       { reviews },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("admin recent-reviews GET error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }
