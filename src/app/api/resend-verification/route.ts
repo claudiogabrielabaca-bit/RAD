@@ -12,14 +12,35 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+const RESEND_VERIFY_EMAIL_MAX_LENGTH = 254;
+const TURNSTILE_TOKEN_MAX_LENGTH = 4096;
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
-    const email = body?.email?.toString().trim().toLowerCase();
+    const email = body?.email?.toString().trim().toLowerCase() ?? "";
     const turnstileToken = body?.turnstileToken?.toString() ?? "";
 
-    if (!email || !email.includes("@")) {
-      return NextResponse.json({ error: "Invalid email." }, { status: 400 });
+    if (!isValidEmail(email) || email.length > RESEND_VERIFY_EMAIL_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: "Invalid email." },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (turnstileToken.length > TURNSTILE_TOKEN_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: "Security check failed. Please try again." },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     const rateLimit = await consumeRateLimit({
@@ -41,7 +62,7 @@ export async function POST(req: Request) {
     if (!turnstile.ok) {
       return NextResponse.json(
         { error: "Security check failed. Please try again." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -113,13 +134,14 @@ This code expires in 15 minutes.`,
         devCode,
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("resend-verification POST error:", error);
-    return NextResponse.json({ error: "Server error." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error." },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }
