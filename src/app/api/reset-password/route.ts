@@ -18,16 +18,27 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
 
+const RESET_PASSWORD_EMAIL_MAX_LENGTH = 254;
+const RESET_PASSWORD_MAX_LENGTH = 256;
+const TURNSTILE_TOKEN_MAX_LENGTH = 4096;
+
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
 
-    const email = body?.email?.toString().trim().toLowerCase();
+    const email = body?.email?.toString().trim().toLowerCase() ?? "";
     const code = body?.code?.toString().trim();
     const newPassword = body?.newPassword?.toString() ?? "";
     const turnstileToken = body?.turnstileToken?.toString() ?? "";
 
-    if (!email || !email.includes("@")) {
+    if (
+      !isValidEmail(email) ||
+      email.length > RESET_PASSWORD_EMAIL_MAX_LENGTH
+    ) {
       return NextResponse.json(
         { error: "Invalid email." },
         { status: 400, headers: NO_STORE_HEADERS }
@@ -44,6 +55,16 @@ export async function POST(req: Request) {
     if (newPassword.length < 8) {
       return NextResponse.json(
         { error: "Password must be at least 8 characters." },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (
+      newPassword.length > RESET_PASSWORD_MAX_LENGTH ||
+      turnstileToken.length > TURNSTILE_TOKEN_MAX_LENGTH
+    ) {
+      return NextResponse.json(
+        { error: "Invalid password reset data." },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
