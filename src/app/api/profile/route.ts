@@ -16,6 +16,8 @@ const NO_STORE_HEADERS = {
 
 const PROFILE_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const PROFILE_RATE_LIMIT_LIMIT = 120;
+const PROFILE_RATINGS_LIST_LIMIT = 200;
+const PROFILE_FAVORITE_DAYS_LIST_LIMIT = 200;
 
 type RatingRow = {
   id: string;
@@ -71,31 +73,57 @@ export async function GET(req: Request) {
       );
     }
 
-    const [ratings, favoriteDays]: [RatingRow[], FavoriteDayRow[]] =
-      await Promise.all([
-        prisma.rating.findMany({
-          where: { userId: user.id },
-          orderBy: { updatedAt: "desc" },
-          select: {
-            id: true,
-            day: true,
-            stars: true,
-            review: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        }),
-        prisma.favoriteDay.findMany({
-          where: { userId: user.id },
-          orderBy: { updatedAt: "desc" },
-          select: {
-            id: true,
-            day: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        }),
-      ]);
+    const [
+      ratings,
+      favoriteDays,
+      ratingsAggregate,
+      starRows,
+      favoritesCount,
+    ] = await Promise.all([
+      prisma.rating.findMany({
+        where: { userId: user.id },
+        orderBy: { updatedAt: "desc" },
+        take: PROFILE_RATINGS_LIST_LIMIT,
+        select: {
+          id: true,
+          day: true,
+          stars: true,
+          review: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.favoriteDay.findMany({
+        where: { userId: user.id },
+        orderBy: { updatedAt: "desc" },
+        take: PROFILE_FAVORITE_DAYS_LIST_LIMIT,
+        select: {
+          id: true,
+          day: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      prisma.rating.aggregate({
+        where: { userId: user.id },
+        _count: {
+          _all: true,
+        },
+        _avg: {
+          stars: true,
+        },
+      }),
+      prisma.rating.groupBy({
+        by: ["stars"],
+        where: { userId: user.id },
+        _count: {
+          _all: true,
+        },
+      }),
+      prisma.favoriteDay.count({
+        where: { userId: user.id },
+      }),
+    ]);
 
     const favoriteDaysList = favoriteDays.map((item: FavoriteDayRow) => item.day);
 
@@ -122,19 +150,13 @@ export async function GET(req: Request) {
       favoriteDayPreviews.map((item: FavoritePreviewRow) => [item.day, item])
     );
 
-    const ratingsCount = ratings.length;
-    const favoritesCount = favoriteDays.length;
-    const averageRating =
-      ratingsCount > 0
-        ? ratings.reduce(
-            (acc: number, item: RatingRow) => acc + item.stars,
-            0
-          ) / ratingsCount
-        : 0;
+    const ratingsCount = ratingsAggregate._count._all;
+    const averageRating = ratingsAggregate._avg.stars ?? 0;
 
     const starDistribution = [5, 4, 3, 2, 1].map((stars) => ({
       stars,
-      count: ratings.filter((item: RatingRow) => item.stars === stars).length,
+      count:
+        starRows.find((item) => item.stars === stars)?._count._all ?? 0,
     }));
 
     return NextResponse.json(
