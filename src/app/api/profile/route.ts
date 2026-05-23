@@ -6,21 +6,9 @@ import {
   consumeRateLimit,
   createRateLimitResponse,
 } from "@/app/lib/rate-limit";
-import {
-  buildRateLimitKey,
-  consumeRateLimit,
-  createRateLimitResponse,
-} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const NO_STORE_HEADERS = {
-  "Cache-Control": "no-store",
-};
-
-const PROFILE_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
-const PROFILE_RATE_LIMIT_LIMIT = 120;
 
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
@@ -66,20 +54,6 @@ export async function GET(req: Request) {
           status: 401,
           headers: NO_STORE_HEADERS,
         }
-      );
-    }
-
-    const rateLimit = await consumeRateLimit({
-      action: "profile",
-      key: buildRateLimitKey(req, user.id),
-      limit: PROFILE_RATE_LIMIT_LIMIT,
-      windowMs: PROFILE_RATE_LIMIT_WINDOW_MS,
-    });
-
-    if (!rateLimit.ok) {
-      return createRateLimitResponse(
-        rateLimit.retryAfterSec,
-        "Too many profile requests. Please try again later."
       );
     }
 
