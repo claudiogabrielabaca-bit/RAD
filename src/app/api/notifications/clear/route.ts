@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
+import { invalidateNotificationsCache } from "@/app/lib/notifications-cache";
 import {
   buildRateLimitKey,
   consumeRateLimit,
@@ -44,6 +45,8 @@ export async function POST(req: Request) {
         userId: user.id,
       },
     });
+
+    invalidateNotificationsCache(user.id);
 
     return NextResponse.json(
       { ok: true },
