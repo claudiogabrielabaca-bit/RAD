@@ -89,6 +89,15 @@ function formatDayLabel(day: string) {
   );
 }
 
+function buildReviewDeepLink(day: string, reviewId: string) {
+  const params = new URLSearchParams();
+
+  params.set("day", day);
+  params.set("reviewId", reviewId);
+
+  return `/?${params.toString()}#review-${encodeURIComponent(reviewId)}`;
+}
+
 function renderStars(stars: number) {
   const safeStars = Math.max(0, Math.min(5, stars));
 
@@ -727,12 +736,12 @@ export default function ProfilePageClient() {
                       role="button"
                       tabIndex={0}
                       onClick={() =>
-                        router.push(`/?day=${encodeURIComponent(rating.day)}`)
+                        router.push(buildReviewDeepLink(rating.day, rating.id))
                       }
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          router.push(`/?day=${encodeURIComponent(rating.day)}`);
+                          router.push(buildReviewDeepLink(rating.day, rating.id));
                         }
                       }}
                       className="group grid cursor-pointer gap-4 py-5 transition hover:bg-white/[0.025] sm:grid-cols-[minmax(190px,0.95fr)_minmax(0,1.35fr)_auto] sm:items-center sm:px-2"
