@@ -147,7 +147,12 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
   const highlightText = cleanText(item.highlightText);
 
   function openDay() {
-    router.push(`/?day=${encodeURIComponent(item.day)}`);
+    const params = new URLSearchParams();
+
+    params.set("day", item.day);
+    params.set("reviewId", item.id);
+
+    router.push(`/?${params.toString()}`);
   }
 
   return (
