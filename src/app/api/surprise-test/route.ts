@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { simulateSurpriseDays } from "@/app/lib/surprise-deck";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -7,6 +12,10 @@ export const revalidate = 0;
 const ENABLE_SURPRISE_TEST =
   process.env.NODE_ENV !== "production" ||
   process.env.RAD_ENABLE_SURPRISE_TEST === "1";
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
 
 function getMonthDay(day: string) {
   return day.slice(5, 10);
@@ -67,10 +76,22 @@ export async function GET(req: Request) {
         { error: "Not found" },
         {
           status: 404,
-          headers: {
-            "Cache-Control": "no-store",
-          },
+          headers: NO_STORE_HEADERS,
         }
+      );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "surprise-test",
+      key: buildRateLimitKey(req, "debug"),
+      limit: 20,
+      windowMs: 15 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many surprise test requests. Please try again later."
       );
     }
 
@@ -115,13 +136,14 @@ export async function GET(req: Request) {
         topRepeatedCenturies: topCounts(centuries, 20),
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("surprise-test GET error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }
