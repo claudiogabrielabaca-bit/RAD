@@ -15,6 +15,8 @@ const PENDING_LOGIN_COOKIE = "rad_pending_login_email";
 const CODE_ATTEMPT_LIMIT = 5;
 const INVALID_MESSAGE = "Invalid or expired login code.";
 
+const LOGIN_CODE_EMAIL_MAX_LENGTH = 254;
+
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
@@ -51,7 +53,9 @@ export async function POST(req: Request) {
     const code = body?.code?.toString().trim() ?? "";
     const email = await getPendingLoginEmail();
 
-    if (!email) {
+    if (!email || email.length > LOGIN_CODE_EMAIL_MAX_LENGTH) {
+      await clearPendingLoginEmailCookie();
+
       return NextResponse.json(
         { error: "Start the login flow again." },
         { status: 400, headers: NO_STORE_HEADERS }
