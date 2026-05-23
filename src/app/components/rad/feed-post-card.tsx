@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 
 type FeedBadgeKey =
   | "event"
@@ -140,7 +139,6 @@ function getFeedBadges(item: FeedPostItem): FeedBadgeKey[] {
 }
 
 export default function FeedPostCard({ item }: { item: FeedPostItem }) {
-  const router = useRouter();
   const badges = getFeedBadges(item);
   const reviewText = cleanText(item.review);
   const highlightTitle = cleanText(item.highlightTitle) || item.displayDate;
@@ -152,7 +150,9 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
     params.set("day", item.day);
     params.set("reviewId", item.id);
 
-    router.push(`/?${params.toString()}`);
+    window.location.assign(
+      `/?${params.toString()}#review-${encodeURIComponent(item.id)}`
+    );
   }
 
   return (

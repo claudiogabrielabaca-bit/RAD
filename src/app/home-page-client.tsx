@@ -993,18 +993,23 @@ export default function Page({
 
     consumedNotificationJumpKeyRef.current = jumpKey;
 
-    const timeout = setTimeout(() => {
-      target.scrollIntoView({
-        behavior: "auto",
-        block: "center",
-      });
+    const currentHash = decodeURIComponent(
+      window.location.hash.replace(/^#/, "")
+    );
 
-      router.replace(`${pathname}?day=${encodeURIComponent(queryDay)}`, {
-        scroll: false,
-      });
-    }, 500);
+    if (currentHash && target.id && currentHash === target.id) {
+      consumedNotificationJumpKeyRef.current = jumpKey;
+      return;
+    }
 
-    return () => clearTimeout(timeout);
+    target.scrollIntoView({
+      behavior: "auto",
+      block: "center",
+    });
+
+    router.replace(`${pathname}?day=${encodeURIComponent(queryDay)}`, {
+      scroll: false,
+    });
   }, [searchParams, day, pathname, router, loadingDay, data]);
 
   async function loadDay(d: string) {
