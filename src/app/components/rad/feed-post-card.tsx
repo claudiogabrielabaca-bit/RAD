@@ -207,7 +207,7 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
           </div>
 
           <div className="mt-7">
-            <p className="break-words text-xl font-semibold uppercase tracking-[0.05em] text-zinc-50 [overflow-wrap:anywhere] sm:text-2xl">
+            <p className="break-words text-xl font-semibold leading-snug tracking-[-0.01em] text-zinc-50 [overflow-wrap:anywhere] sm:text-2xl">
               {reviewText || "No written review"}
             </p>
           </div>
