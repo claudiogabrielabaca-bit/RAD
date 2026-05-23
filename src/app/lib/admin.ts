@@ -49,9 +49,15 @@ async function compareAdminPassword(input: string, expected: string) {
   return safeEqual(input, expected);
 }
 
+function isLikelyAdminSessionToken(value: string) {
+  return /^[a-f0-9]{64}$/i.test(value);
+}
+
 async function readIncomingAdminSessionToken() {
   const store = await cookies();
-  return store.get(ADMIN_COOKIE_NAME)?.value ?? "";
+  const token = store.get(ADMIN_COOKIE_NAME)?.value ?? "";
+
+  return isLikelyAdminSessionToken(token) ? token : "";
 }
 
 function getAdminCookieValueOptions(expiresAt?: Date | null) {
