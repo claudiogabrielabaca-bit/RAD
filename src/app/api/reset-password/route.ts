@@ -183,6 +183,9 @@ export async function POST(req: Request) {
         passwordResetCode: null,
         passwordResetExpiresAt: null,
         passwordResetAttempts: 0,
+        loginCode: null,
+        loginCodeExpiresAt: null,
+        loginCodeAttempts: 0,
       },
     });
 
