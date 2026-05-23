@@ -168,16 +168,23 @@ export async function POST(req: Request) {
     const notificationRecipientId = parentReplyOwnerId ?? rating.userId ?? null;
 
     if (notificationRecipientId && notificationRecipientId !== user.id) {
-      await prisma.notification.create({
-        data: {
-          userId: notificationRecipientId,
-          actorUserId: user.id,
-          type: "review_replied",
-          reviewId: ratingId,
-          replyId: reply.id,
-          day: rating.day,
-        },
-      });
+      await prisma.notification
+        .create({
+          data: {
+            userId: notificationRecipientId,
+            actorUserId: user.id,
+            type: "review_replied",
+            reviewId: ratingId,
+            replyId: reply.id,
+            day: rating.day,
+          },
+        })
+        .catch((notificationError: unknown) => {
+          console.error(
+            "review-reply notification create error:",
+            notificationError
+          );
+        });
     }
 
     return NextResponse.json(
