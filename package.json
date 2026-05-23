@@ -15,7 +15,8 @@
     "check": "npm run lint && npm run prisma:validate && npm run build",
     "check:full": "npm run lint && npm run prisma:validate && npm run build && npm run scripts:check",
     "audit:prod": "npm audit --omit=dev",
-    "audit:signatures": "npm audit signatures"
+    "audit:signatures": "npm audit signatures",
+    "release:check": "npm run check:full && npm run audit:signatures && npm run audit:prod"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
