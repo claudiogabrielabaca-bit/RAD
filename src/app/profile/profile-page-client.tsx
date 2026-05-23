@@ -172,6 +172,18 @@ function buildLoginRedirectPath(returnTo: string) {
   return `${basePath}?${params.toString()}${hash}`;
 }
 
+function buildVerifyEmailRedirectPath(email: string) {
+  const params = new URLSearchParams();
+
+  params.set("auth", "verify-email");
+
+  if (email.trim()) {
+    params.set("email", email.trim().toLowerCase());
+  }
+
+  return `/?${params.toString()}`;
+}
+
 function PencilIcon() {
   return (
     <svg
@@ -264,6 +276,11 @@ export default function ProfilePageClient() {
     if (bioSaving) return;
     setBioModalOpen(false);
     setBioError("");
+  }
+
+  function goToVerifyEmail() {
+    const email = data?.user?.email ?? "";
+    router.push(buildVerifyEmailRedirectPath(email));
   }
 
   async function saveBio() {
@@ -383,9 +400,19 @@ export default function ProfilePageClient() {
                           Verified account
                         </span>
                       ) : (
-                        <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs text-amber-300">
-                          Email not verified
-                        </span>
+                        <>
+                          <span className="rounded-full bg-amber-500/15 px-3 py-1 text-xs text-amber-300">
+                            Email not verified
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={goToVerifyEmail}
+                            className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-xs font-medium text-amber-200 transition hover:bg-amber-300/15 hover:text-amber-100"
+                          >
+                            Verify now
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
