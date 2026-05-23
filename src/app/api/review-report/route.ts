@@ -21,6 +21,7 @@ const NO_STORE_HEADERS = {
 
 const REPORT_REASON_MIN_LENGTH = 3;
 const REPORT_REASON_MAX_LENGTH = 280;
+const MAX_RATING_ID_LENGTH = 80;
 
 function escapeHtml(value: string) {
   return value
@@ -65,10 +66,11 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => null);
 
-    const ratingId = body?.ratingId;
+    const ratingId =
+      typeof body?.ratingId === "string" ? body.ratingId.trim() : null;
     const reason = body?.reason;
 
-    if (!ratingId || typeof ratingId !== "string") {
+    if (!ratingId || ratingId.length > MAX_RATING_ID_LENGTH) {
       return NextResponse.json(
         { error: "Invalid ratingId" },
         { status: 400, headers: NO_STORE_HEADERS }

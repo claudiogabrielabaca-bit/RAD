@@ -21,6 +21,7 @@ const NO_STORE_HEADERS = {
 
 const REPORT_REASON_MIN_LENGTH = 3;
 const REPORT_REASON_MAX_LENGTH = 280;
+const MAX_REPLY_ID_LENGTH = 80;
 
 function escapeHtml(value: string) {
   return value
@@ -64,10 +65,11 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => null);
-    const replyId = body?.replyId;
+    const replyId =
+      typeof body?.replyId === "string" ? body.replyId.trim() : null;
     const reason = body?.reason;
 
-    if (!replyId || typeof replyId !== "string") {
+    if (!replyId || replyId.length > MAX_REPLY_ID_LENGTH) {
       return NextResponse.json(
         { error: "Invalid replyId" },
         { status: 400, headers: NO_STORE_HEADERS }
