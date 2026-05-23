@@ -5,19 +5,32 @@ import { isAdminAuthenticated } from "@/app/lib/admin";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+const MAX_RATING_ID_LENGTH = 80;
+
 export async function POST(req: Request) {
   try {
     const isAdmin = await isAdminAuthenticated();
 
     if (!isAdmin) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
 
     const body = await req.json().catch(() => null);
-    const ratingId = body?.ratingId;
+    const ratingId =
+      typeof body?.ratingId === "string" ? body.ratingId.trim() : null;
 
-    if (!ratingId || typeof ratingId !== "string") {
-      return NextResponse.json({ error: "Invalid ratingId" }, { status: 400 });
+    if (!ratingId || ratingId.length > MAX_RATING_ID_LENGTH) {
+      return NextResponse.json(
+        { error: "Invalid ratingId" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     const rating = await prisma.rating.findUnique({
@@ -29,7 +42,10 @@ export async function POST(req: Request) {
     });
 
     if (!rating) {
-      return NextResponse.json({ error: "Review not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Review not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
 
     await prisma.rating.delete({
@@ -45,13 +61,14 @@ export async function POST(req: Request) {
         },
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("admin delete-review POST error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }
