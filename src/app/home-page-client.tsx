@@ -75,6 +75,19 @@ type InitialBundle = SurpriseResponse & {
   publicInitialOnly?: boolean;
 };
 
+function getAuthViewFromQuery(value: string | null): AuthView | null {
+  switch (value) {
+    case "login":
+    case "login-code":
+    case "register":
+    case "forgot-password":
+    case "reset-password":
+    case "verify-email":
+      return value;
+    default:
+      return null;
+  }
+}
 
 function recomputeDayStats(reviews: DayResponse["reviews"]) {
   const count = reviews.length;
@@ -274,6 +287,27 @@ export default function Page({
   function closeAuthModal() {
     setAuthModalOpen(false);
   }
+
+  useEffect(() => {
+    const requestedAuthView = getAuthViewFromQuery(searchParams.get("auth"));
+
+    if (!requestedAuthView) return;
+
+    const requestedEmail = searchParams.get("email") ?? "";
+
+    setAuthView(requestedAuthView);
+    setAuthEmail(requestedEmail);
+    setAuthModalOpen(true);
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("auth");
+    params.delete("email");
+
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, {
+      scroll: false,
+    });
+  }, [pathname, router, searchParams]);
 
   function syncDayBackHistory(nextHistory: string[]) {
     const safe = nextHistory

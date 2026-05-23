@@ -155,6 +155,23 @@ function isValidDayString(value?: string | null): value is string {
   return !!value && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function buildLoginRedirectPath(returnTo: string) {
+  const safeReturnTo = returnTo.startsWith("/") ? returnTo : "/";
+  const hashIndex = safeReturnTo.indexOf("#");
+  const beforeHash =
+    hashIndex >= 0 ? safeReturnTo.slice(0, hashIndex) : safeReturnTo;
+  const hash = hashIndex >= 0 ? safeReturnTo.slice(hashIndex) : "";
+  const queryIndex = beforeHash.indexOf("?");
+  const basePath =
+    queryIndex >= 0 ? beforeHash.slice(0, queryIndex) || "/" : beforeHash || "/";
+  const query = queryIndex >= 0 ? beforeHash.slice(queryIndex + 1) : "";
+  const params = new URLSearchParams(query);
+
+  params.set("auth", "login");
+
+  return `${basePath}?${params.toString()}${hash}`;
+}
+
 function PencilIcon() {
   return (
     <svg
@@ -210,7 +227,7 @@ export default function ProfilePageClient() {
       const json = await res.json().catch(() => null);
 
       if (res.status === 401) {
-        router.push(returnTo);
+        router.push(buildLoginRedirectPath(returnTo));
         return;
       }
 
