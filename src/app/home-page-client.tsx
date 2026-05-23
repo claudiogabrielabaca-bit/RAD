@@ -1210,47 +1210,6 @@ export default function Page({
       }
 
       if (!payload || (currentDayForRequest && payload.day === currentDayForRequest)) {
-        clearTodayHistory(monthDay);
-
-        excludedDays.clear();
-
-        if (currentDayForRequest) {
-          excludedDays.add(currentDayForRequest);
-        }
-
-        for (let attempt = 0; attempt < 12; attempt += 1) {
-          const { res, json } = await requestTodayHistory(true);
-
-          if (transitionIdRef.current !== transitionId) return;
-
-          const candidate =
-            res.ok &&
-            json &&
-            "day" in json &&
-            "dayData" in json &&
-            "highlightData" in json
-              ? (json as TodayInHistoryResponse)
-              : null;
-
-          if (!candidate) {
-            continue;
-          }
-
-          if (currentDayForRequest && candidate.day === currentDayForRequest) {
-            excludedDays.add(candidate.day);
-            continue;
-          }
-
-          payload = {
-            ...candidate,
-            restartedRound: true,
-          };
-
-          break;
-        }
-      }
-
-      if (!payload || (currentDayForRequest && payload.day === currentDayForRequest)) {
         showToast("Could not load another today in history moment. Please try again.");
         finishDayTransition(transitionId);
         return;

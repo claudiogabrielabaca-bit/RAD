@@ -226,14 +226,13 @@ function pickFromPool(
 
 function pickRestartedFromPool(
   pooledDays: string[],
-  currentDay?: string | null
+  hardExcludedSet: Set<string>
 ): TodayValidDayResult | null {
   if (pooledDays.length === 0) return null;
 
-  const restartCandidates =
-    currentDay && isValidDayString(currentDay)
-      ? pooledDays.filter((candidate) => candidate !== currentDay)
-      : pooledDays;
+  const restartCandidates = pooledDays.filter(
+    (candidate) => !hardExcludedSet.has(candidate)
+  );
 
   if (restartCandidates.length === 0) {
     return null;
@@ -293,21 +292,30 @@ export async function getTodayValidDay(options?: {
   fresh?: boolean;
   maxAttempts?: number;
   excludeDays?: string[];
+  softExcludeDays?: string[];
   monthDay?: string;
   currentDay?: string;
 }): Promise<TodayValidDayResult | null> {
-  const excludeDays = Array.from(
+  const hardExcludeDays = Array.from(
     new Set((options?.excludeDays ?? []).filter(isValidDayString))
   );
-  const excludedSet = new Set<string>(excludeDays);
+  const softExcludeDays = Array.from(
+    new Set((options?.softExcludeDays ?? []).filter(isValidDayString))
+  );
+  const hardExcludedSet = new Set<string>(hardExcludeDays);
   const currentDay =
     options?.currentDay && isValidDayString(options.currentDay)
       ? options.currentDay
       : null;
 
   if (currentDay) {
-    excludedSet.add(currentDay);
+    hardExcludedSet.add(currentDay);
   }
+
+  const combinedExcludedSet = new Set<string>([
+    ...hardExcludedSet,
+    ...softExcludeDays,
+  ]);
 
   const { month, day } = parseMonthDay(options?.monthDay);
   const monthStr = pad2(month);
@@ -324,13 +332,13 @@ export async function getTodayValidDay(options?: {
    * and can become the real bottleneck even when the pool is already ready.
    */
   if (!options?.fresh && rawStoredPool.length > 0) {
-    const pooledPick = pickFromPool(rawStoredPool, excludedSet);
+    const pooledPick = pickFromPool(rawStoredPool, combinedExcludedSet);
 
     if (pooledPick) {
       return pooledPick;
     }
 
-    return pickRestartedFromPool(rawStoredPool, currentDay);
+    return pickRestartedFromPool(rawStoredPool, hardExcludedSet);
   }
 
   const allCandidateDays = getValidYearsForMonthDay(month, day);
@@ -363,7 +371,7 @@ export async function getTodayValidDay(options?: {
     pooledDays = await savePoolDays(monthStr, dayStr, pooledDays);
   }
 
-  const pooledPick = pickFromPool(pooledDays, excludedSet);
+  const pooledPick = pickFromPool(pooledDays, combinedExcludedSet);
 
   const pooledSet = new Set<string>(pooledDays);
 
@@ -390,7 +398,7 @@ export async function getTodayValidDay(options?: {
 
   if (untestedCandidates.length > 0) {
     const { selectedDay, discoveredValidDays } =
-      await discoverUntilNextAvailable(untestedCandidates, excludedSet);
+      await discoverUntilNextAvailable(untestedCandidates, combinedExcludedSet);
 
     if (discoveredValidDays.length > 0) {
       pooledDays = await savePoolDays(monthStr, dayStr, [
@@ -423,7 +431,7 @@ export async function getTodayValidDay(options?: {
   }
 
   if (pooledDays.length > 0) {
-    return pickRestartedFromPool(pooledDays, currentDay);
+    return pickRestartedFromPool(pooledDays, hardExcludedSet);
   }
 
   return null;

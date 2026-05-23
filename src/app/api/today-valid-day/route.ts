@@ -312,17 +312,17 @@ export async function GET(req: Request) {
       requestedCurrentDay.slice(5, 10) === effectiveMonthDay
         ? requestedCurrentDay
         : null;
-    const baseExcludeDays = parseExcludeDays(searchParams);
-
-    if (currentDay && !baseExcludeDays.includes(currentDay)) {
-      baseExcludeDays.unshift(currentDay);
-    }
+    const softExcludeDays = parseExcludeDays(searchParams).filter(
+      (excludedDay) => excludedDay !== currentDay
+    );
+    const hardExcludeDays = currentDay ? [currentDay] : [];
 
     if (!bundle) {
       const result = await getTodayValidDay({
         fresh,
         maxAttempts: 72,
-        excludeDays: baseExcludeDays,
+        excludeDays: hardExcludeDays,
+        softExcludeDays,
         monthDay,
         currentDay: currentDay ?? undefined,
       });
@@ -341,13 +341,14 @@ export async function GET(req: Request) {
       });
     }
 
-    const triedDays = new Set<string>(baseExcludeDays);
+    const triedDays = new Set<string>(hardExcludeDays);
+    const softExcludedSet = new Set<string>(softExcludeDays);
     const skippedDays: string[] = [];
 
     if (!fresh) {
       const cachedUsableDay = await pickCachedUsableTodayPoolDay(
         effectiveMonthDay,
-        triedDays
+        new Set([...triedDays, ...softExcludedSet])
       );
 
       if (cachedUsableDay) {
@@ -382,6 +383,7 @@ export async function GET(req: Request) {
         fresh: fresh && attempt === 0,
         maxAttempts: 72,
         excludeDays: Array.from(triedDays),
+        softExcludeDays,
         monthDay,
         currentDay: currentDay ?? undefined,
       });
