@@ -13,7 +13,9 @@
     "prisma:validate": "prisma validate",
     "scripts:check": "tsc -p tsconfig.scripts.json --noEmit",
     "check": "npm run lint && npm run prisma:validate && npm run build",
-    "check:full": "npm run lint && npm run prisma:validate && npm run build && npm run scripts:check"
+    "check:full": "npm run lint && npm run prisma:validate && npm run build && npm run scripts:check",
+    "audit:prod": "npm audit --omit=dev",
+    "audit:signatures": "npm audit signatures"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
