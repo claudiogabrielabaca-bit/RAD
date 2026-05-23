@@ -72,6 +72,9 @@ next-env.d.ts
 
 # local audit / scratch outputs
 surprise-audit-*.json
+tmp-*.cjs
+tmp-*.mjs
+tmp-*.ts
 /logs/
 
 /rad-audit-packs-*/
