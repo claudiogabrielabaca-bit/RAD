@@ -12,6 +12,10 @@ export const revalidate = 0;
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const DESCRIPTION_MIN_LENGTH = 10;
 const DESCRIPTION_MAX_LENGTH = 3000;
@@ -39,14 +43,14 @@ export async function POST(req: Request) {
     if (!user) {
       return NextResponse.json(
         { error: "You must be logged in to report a bug." },
-        { status: 401 }
+        { status: 401, headers: NO_STORE_HEADERS }
       );
     }
 
     if (user.emailVerified === false) {
       return NextResponse.json(
         { error: "You must verify your email to report a bug." },
-        { status: 403 }
+        { status: 403, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -67,7 +71,7 @@ export async function POST(req: Request) {
     const formData = await req.formData().catch(() => null);
 
     if (!formData) {
-      return NextResponse.json({ error: "Bad form data." }, { status: 400 });
+      return NextResponse.json({ error: "Bad form data." }, { status: 400, headers: NO_STORE_HEADERS });
     }
 
     const description = normalizeText(formData.get("description"));
@@ -79,7 +83,7 @@ export async function POST(req: Request) {
     if (description.length < DESCRIPTION_MIN_LENGTH) {
       return NextResponse.json(
         { error: "Bug description is too short." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -88,21 +92,21 @@ export async function POST(req: Request) {
         {
           error: `Bug description is too long. Max ${DESCRIPTION_MAX_LENGTH} chars.`,
         },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
     if (pagePath.length > PAGE_PATH_MAX_LENGTH) {
       return NextResponse.json(
         { error: `Path is too long. Max ${PAGE_PATH_MAX_LENGTH} chars.` },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
     if (pageUrl.length > PAGE_URL_MAX_LENGTH) {
       return NextResponse.json(
         { error: `URL is too long. Max ${PAGE_URL_MAX_LENGTH} chars.` },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -111,7 +115,7 @@ export async function POST(req: Request) {
         {
           error: `User agent is too long. Max ${USER_AGENT_MAX_LENGTH} chars.`,
         },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -126,14 +130,14 @@ export async function POST(req: Request) {
       if (!screenshotEntry.type.startsWith("image/")) {
         return NextResponse.json(
           { error: "Screenshot must be an image." },
-          { status: 400 }
+          { status: 400, headers: NO_STORE_HEADERS }
         );
       }
 
       if (screenshotEntry.size > MAX_IMAGE_BYTES) {
         return NextResponse.json(
           { error: "Screenshot is too large. Max 5 MB." },
-          { status: 400 }
+          { status: 400, headers: NO_STORE_HEADERS }
         );
       }
 
@@ -151,7 +155,7 @@ export async function POST(req: Request) {
     if (!toEmail) {
       return NextResponse.json(
         { error: "Bug report inbox is not configured." },
-        { status: 500 }
+        { status: 500, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -198,13 +202,16 @@ export async function POST(req: Request) {
       console.error("report-bug POST resend error:", result.error);
       return NextResponse.json(
         { error: "Could not send bug report." },
-        { status: 500 }
+        { status: 500, headers: NO_STORE_HEADERS }
       );
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(
+      { ok: true },
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (error) {
     console.error("report-bug POST error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Server error" }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }
