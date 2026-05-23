@@ -2,8 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 import { FEATURED_MOMENTS } from "@/app/lib/featured-moments";
 import type { DiscoverCard } from "@/app/lib/rad-types";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+const DISCOVER_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const DISCOVER_RATE_LIMIT_LIMIT = 120;
 
 type RatingStatsRow = {
   day: string;
@@ -26,6 +38,20 @@ function clamp(n: number, min: number, max: number) {
 
 export async function GET(req: NextRequest) {
   try {
+    const rateLimit = await consumeRateLimit({
+      action: "discover",
+      key: buildRateLimitKey(req),
+      limit: DISCOVER_RATE_LIMIT_LIMIT,
+      windowMs: DISCOVER_RATE_LIMIT_WINDOW_MS,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many discover requests. Please try again later."
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const rawCount = Number(searchParams.get("count") ?? "5");
     const count = clamp(
@@ -94,13 +120,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { cards },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("discover GET error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }
