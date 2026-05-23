@@ -29,13 +29,6 @@ type RecentReviewRating = {
   };
 };
 
-type PendingReportCountRow = {
-  ratingId: string;
-  _count: {
-    _all: number;
-  };
-};
-
 function getRatingAuthorLabel(rating: RatingAuthor) {
   if (rating.user?.username) return `@${rating.user.username}`;
   if (rating.anonId) return rating.anonId;
@@ -80,27 +73,28 @@ export async function GET() {
 
     const ratingIds = ratings.map((rating: RecentReviewRating) => rating.id);
 
-    const pendingReportRows: PendingReportCountRow[] = ratingIds.length
-      ? await prisma.reviewReport.groupBy({
-          by: ["ratingId"],
+    const pendingReportRows: Array<{ ratingId: string }> = ratingIds.length
+      ? await prisma.reviewReport.findMany({
           where: {
             ratingId: {
               in: ratingIds,
             },
             status: "pending",
           },
-          _count: {
-            _all: true,
+          select: {
+            ratingId: true,
           },
         })
       : [];
 
-    const pendingReportsMap = new Map(
-      pendingReportRows.map((row: PendingReportCountRow) => [
+    const pendingReportsMap = new Map<string, number>();
+
+    for (const row of pendingReportRows) {
+      pendingReportsMap.set(
         row.ratingId,
-        row._count._all,
-      ])
-    );
+        (pendingReportsMap.get(row.ratingId) ?? 0) + 1
+      );
+    }
 
     const reviews = ratings.map((rating: RecentReviewRating) => ({
       id: rating.id,
