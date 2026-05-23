@@ -16,6 +16,7 @@ export const revalidate = 0;
 const MAX_BATCH_DAYS = 120;
 const MAX_RAW_BATCH_DAYS = 240;
 const DAY_STATS_CACHE_TTL_MS = 60 * 1000;
+const MAX_DAY_STATS_CACHE_ENTRIES = 500;
 
 type DayStatsBatchPayload = {
   stats: Record<string, DayStatsSummary>;
@@ -41,6 +42,32 @@ const dayStatsRequests = new Map<string, Promise<DayStatsBatchPayload>>();
 
 function buildStatsCacheKey(days: string[]) {
   return [...days].sort().join(",");
+}
+
+function sweepExpiredDayStatsCache() {
+  const now = Date.now();
+
+  for (const [key, entry] of dayStatsCache.entries()) {
+    if (entry.expiresAt <= now) {
+      dayStatsCache.delete(key);
+    }
+  }
+
+  if (dayStatsCache.size <= MAX_DAY_STATS_CACHE_ENTRIES) {
+    return;
+  }
+
+  const overflow = dayStatsCache.size - MAX_DAY_STATS_CACHE_ENTRIES;
+  let removed = 0;
+
+  for (const key of dayStatsCache.keys()) {
+    dayStatsCache.delete(key);
+    removed += 1;
+
+    if (removed >= overflow) {
+      break;
+    }
+  }
 }
 
 async function buildDayStatsPayload(days: string[]): Promise<DayStatsBatchPayload> {
@@ -69,6 +96,8 @@ async function getCachedDayStatsPayload(days: string[]) {
         payload,
         expiresAt: Date.now() + DAY_STATS_CACHE_TTL_MS,
       });
+
+      sweepExpiredDayStatsCache();
 
       return payload;
     })
