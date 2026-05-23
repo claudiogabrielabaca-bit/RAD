@@ -129,6 +129,10 @@ async function fetchNotificationsClientCached(
 function buildNotificationHref(item: HeaderNotification) {
   const params = new URLSearchParams();
 
+  if (item.day) {
+    params.set("day", item.day);
+  }
+
   if (item.reviewId) {
     params.set("reviewId", item.reviewId);
   }
@@ -137,14 +141,16 @@ function buildNotificationHref(item: HeaderNotification) {
     params.set("replyId", item.replyId);
   }
 
+  const targetId = item.replyId
+    ? `reply-${item.replyId}`
+    : item.reviewId
+      ? `review-${item.reviewId}`
+      : "";
+
   const query = params.toString();
+  const hash = targetId ? `#${encodeURIComponent(targetId)}` : "";
 
-  if (item.day) {
-    const dayPath = `/day/${encodeURIComponent(item.day)}`;
-    return query ? `${dayPath}?${query}` : dayPath;
-  }
-
-  return query ? `/?${query}` : "/";
+  return query ? `/?${query}${hash}` : `/${hash}`;
 }
 function formatNotificationTime(value: string) {
   try {
