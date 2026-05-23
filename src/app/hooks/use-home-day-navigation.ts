@@ -157,6 +157,9 @@ export function useHomeDayNavigation(params: {
 
   function finishDayTransition(transitionId: number) {
     if (transitionIdRef.current !== transitionId) return;
+
+    setLoadingDay(false);
+    setLoadingHighlight(false);
     setIsDayTransitioning(false);
   }
 

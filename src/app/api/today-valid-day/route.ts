@@ -197,6 +197,37 @@ async function pickCachedUsableTodayPoolDay(
   return shuffleArray(usableDays)[0] ?? null;
 }
 
+async function pickAnyCachedUsableMonthDay(
+  monthDay: string,
+  excludedSet: Set<string>
+) {
+  const rows = await prisma.dayHighlightCache.findMany({
+    where: {
+      day: {
+        endsWith: `-${monthDay}`,
+      },
+    },
+    select: {
+      day: true,
+      title: true,
+      text: true,
+      type: true,
+    },
+  });
+
+  const usableDays = rows
+    .filter((candidate) => isUsableHighlightLike(candidate))
+    .map((candidate) => candidate.day)
+    .filter((candidate) => isValidDayString(candidate))
+    .filter((candidate) => !excludedSet.has(candidate));
+
+  if (usableDays.length === 0) {
+    return null;
+  }
+
+  return shuffleArray(usableDays)[0] ?? null;
+}
+
 async function checkHighlightBeforeBundle(
   day: string,
   options: {
@@ -452,6 +483,38 @@ export async function GET(req: Request) {
       });
 
       await removeDayFromTodayPool(result.day);
+    }
+
+    const fallbackExcludedDays = new Set(triedDays);
+
+    if (currentDay) {
+      fallbackExcludedDays.add(currentDay);
+    }
+
+    const fallbackDay = await pickAnyCachedUsableMonthDay(
+      effectiveMonthDay,
+      fallbackExcludedDays
+    );
+
+    if (fallbackDay) {
+      const payload = await buildDayBundle(fallbackDay);
+
+      if (isUsableBundle(payload) && (!currentDay || payload.day !== currentDay)) {
+        return NextResponse.json(
+          {
+            ...payload,
+            source: "cache",
+            restartedRound: true,
+            todayAttemptCount: MAX_BUNDLE_ATTEMPTS,
+            todaySkippedDays: skippedDays,
+          },
+          {
+            headers: {
+              "Cache-Control": "no-store",
+            },
+          }
+        );
+      }
     }
 
     return NextResponse.json(
