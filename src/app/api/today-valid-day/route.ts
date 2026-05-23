@@ -8,6 +8,11 @@ import {
   isValidMonthDayString,
 } from "@/app/lib/day";
 import type { HighlightItem } from "@/app/lib/rad-types";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,7 +20,12 @@ export const revalidate = 0;
 const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date.";
 const MAX_BUNDLE_ATTEMPTS = 12;
 const MAX_EXCLUDE_DAYS = 1000;
+const MAX_EXCLUDE_DAYS_QUERY_LENGTH = 20000;
 const MAX_LIVE_HIGHLIGHT_CHECKS = 1;
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
 
 const SHOULD_LOG_TODAY_VALID_DAY =
   process.env.NODE_ENV !== "production" ||
@@ -75,7 +85,10 @@ function shuffleArray<T>(items: T[]) {
 }
 
 function parseExcludeDays(searchParams: URLSearchParams) {
-  const raw = searchParams.get("excludeDays") ?? "";
+  const raw = (searchParams.get("excludeDays") ?? "").slice(
+    0,
+    MAX_EXCLUDE_DAYS_QUERY_LENGTH
+  );
 
   if (!raw.trim()) return [];
 
@@ -328,6 +341,20 @@ async function removeDayFromTodayPool(day: string) {
 
 export async function GET(req: Request) {
   try {
+    const rateLimit = await consumeRateLimit({
+      action: "today-valid-day",
+      key: buildRateLimitKey(req, "public"),
+      limit: 120,
+      windowMs: 15 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many today in history requests. Please try again later."
+      );
+    }
+
     const { searchParams } = new URL(req.url);
     const fresh = searchParams.get("fresh") === "1";
     const bundle = searchParams.get("bundle") === "1";
@@ -361,14 +388,12 @@ export async function GET(req: Request) {
       if (!result) {
         return NextResponse.json(
           { error: "No valid 'today in history' day found." },
-          { status: 404 }
+          { status: 404, headers: NO_STORE_HEADERS }
         );
       }
 
       return NextResponse.json(result, {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       });
     }
 
@@ -524,13 +549,14 @@ export async function GET(req: Request) {
       },
       {
         status: 404,
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("today-valid-day GET error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }
