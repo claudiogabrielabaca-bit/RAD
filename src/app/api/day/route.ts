@@ -108,14 +108,29 @@ export async function GET(req: Request) {
         where: { day },
         orderBy: { createdAt: "desc" },
         include: {
-          likes: true,
+          likes: {
+            select: {
+              id: true,
+              userId: true,
+            },
+          },
           replies: {
             orderBy: {
               createdAt: "asc",
             },
             include: {
-              likes: true,
-              reports: true,
+              likes: {
+                select: {
+                  id: true,
+                  userId: true,
+                },
+              },
+              reports: {
+                select: {
+                  id: true,
+                  userId: true,
+                },
+              },
               user: {
                 select: {
                   username: true,
