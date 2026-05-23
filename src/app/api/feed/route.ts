@@ -75,18 +75,6 @@ function getJsonString(
   return typeof value === "string" ? value : null;
 }
 
-function isUsableFeedHighlight(item: {
-  highlightTitle: string | null;
-  highlightText: string | null;
-  highlightType: string | null;
-}) {
-  return (
-    !!item.highlightTitle?.trim() &&
-    !!item.highlightText?.trim() &&
-    item.highlightType !== "none"
-  );
-}
-
 export async function GET(req: Request) {
   try {
     const rateLimit = await consumeRateLimit({
@@ -204,7 +192,7 @@ export async function GET(req: Request) {
         highlightCategory,
         highlightSecondaryType,
       };
-    }).filter((item) => isUsableFeedHighlight(item));
+    });
 
     return NextResponse.json(
       { items },
