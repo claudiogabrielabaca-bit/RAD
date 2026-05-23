@@ -220,6 +220,7 @@ export default function ProfilePageClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [showAllRatings, setShowAllRatings] = useState(false);
+  const [showAllFavoriteDays, setShowAllFavoriteDays] = useState(false);
 
   const [bioModalOpen, setBioModalOpen] = useState(false);
   const [bioDraft, setBioDraft] = useState("");
@@ -353,6 +354,9 @@ export default function ProfilePageClient() {
 
   const { user, stats, latestRatings, ratings, favoriteDays } = data;
   const displayedRatings = showAllRatings ? ratings : latestRatings;
+  const displayedFavoriteDays = showAllFavoriteDays
+    ? favoriteDays
+    : favoriteDays.slice(0, 3);
 
   return (
     <>
@@ -522,7 +526,7 @@ export default function ProfilePageClient() {
                 </div>
               ) : (
                 <div className="flex flex-wrap justify-center gap-5">
-                  {favoriteDays.slice(0, 3).map((favorite) => {
+                  {displayedFavoriteDays.map((favorite) => {
                   const title =
                     favorite.preview?.title?.trim() ||
                     fallbackFavoriteTitle(favorite.day);
@@ -643,6 +647,20 @@ export default function ProfilePageClient() {
                 })}
                 </div>
               )}
+
+              {favoriteDays.length > 3 ? (
+                <div className="mt-5 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllFavoriteDays((prev) => !prev)}
+                    className="rounded-2xl border border-white/10 bg-black/20 px-5 py-2.5 text-sm font-medium text-zinc-200 transition hover:border-white/16 hover:bg-white/[0.055] hover:text-white"
+                  >
+                    {showAllFavoriteDays
+                      ? "Show fewer favorite days"
+                      : `Show all favorite days (${favoriteDays.length})`}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </section>
 
