@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RAD - Rate Any Day in Human History
 
-## Getting Started
+RAD is a Next.js app to explore, rate, review and discover any day in human history.
 
-First, run the development server:
+## Stack
 
-```bash
+- Next.js
+- React
+- TypeScript
+- Prisma
+- PostgreSQL
+- Railway
+- Cloudflare Turnstile
+- Resend
+
+## Local development
+
+Run from the project root:
+
+```powershell
+npm install
+npx prisma generate
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Quality checks
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Use the full check before pushing important changes:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```powershell
+npm run check:full
+```
 
-## Learn More
+Before a release or deployment-sensitive change:
 
-To learn more about Next.js, take a look at the following resources:
+```powershell
+npm run release:check
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Production notes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Production runs on Railway.
+- Database migrations should be applied with Prisma migrate deploy.
+- Secrets must stay in environment variables, never in the repository.
+- Local `.env` files are intentionally ignored.
 
-## Deploy on Vercel
+Expected production start command:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```sh
+npx prisma migrate deploy && npx prisma generate && npm run start
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Security baseline
+
+- Hashed user sessions.
+- Hashed admin sessions.
+- Rate-limited public, auth and admin-sensitive endpoints.
+- Cloudflare Turnstile on sensitive flows.
+- Security headers and CSP configured in `next.config.ts`.
+- Production secrets documented through `.env.example` only.
+
+## Repository hygiene
+
+- Do not commit `.env` files.
+- Do not commit local SQLite databases.
+- Do not commit temporary audit scripts or local backup archives.
+- Always run checks before pushing.
