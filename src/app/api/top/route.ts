@@ -12,6 +12,7 @@ export const revalidate = 0;
 const NO_MATCH_LABEL = "No exact historical match";
 const EMPTY_HIGHLIGHT_TEXT = "No exact historical match was found for this date.";
 const TOP_CACHE_TTL_MS = 60 * 1000;
+const MIN_RANKING_VOTES = 2;
 
 type RankedDay = {
   day: string;
@@ -220,6 +221,7 @@ async function getTopRatingGroups() {
       COUNT(*)::int AS "count"
     FROM "Rating"
     GROUP BY "day"
+    HAVING COUNT(*) >= ${MIN_RANKING_VOTES}
     ORDER BY AVG("stars") DESC, COUNT(*) DESC
     LIMIT 10
   `;
@@ -235,6 +237,7 @@ async function getLowestRatingGroups() {
       COUNT(*)::int AS "count"
     FROM "Rating"
     GROUP BY "day"
+    HAVING COUNT(*) >= ${MIN_RANKING_VOTES}
     ORDER BY AVG("stars") ASC, COUNT(*) DESC
     LIMIT 10
   `;
