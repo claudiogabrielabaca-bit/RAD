@@ -19,6 +19,10 @@ export const revalidate = 0;
 
 const EMAIL_VERIFY_TTL_MINUTES = 20;
 
+const REGISTER_EMAIL_MAX_LENGTH = 254;
+const REGISTER_PASSWORD_MAX_LENGTH = 256;
+const TURNSTILE_TOKEN_MAX_LENGTH = 4096;
+
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
@@ -66,7 +70,7 @@ export async function POST(req: Request) {
     const turnstileToken =
       typeof body?.turnstileToken === "string" ? body.turnstileToken : "";
 
-    if (!isValidEmail(email)) {
+    if (!isValidEmail(email) || email.length > REGISTER_EMAIL_MAX_LENGTH) {
       return NextResponse.json(
         { error: "Enter a valid email address." },
         { status: 400, headers: NO_STORE_HEADERS }
@@ -86,6 +90,16 @@ export async function POST(req: Request) {
     if (password.length < 8) {
       return NextResponse.json(
         { error: "Password must be at least 8 characters." },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (
+      password.length > REGISTER_PASSWORD_MAX_LENGTH ||
+      turnstileToken.length > TURNSTILE_TOKEN_MAX_LENGTH
+    ) {
+      return NextResponse.json(
+        { error: "Invalid registration data." },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
