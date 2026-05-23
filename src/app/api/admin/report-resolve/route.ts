@@ -9,6 +9,8 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
 
+const MAX_REPORT_ID_LENGTH = 80;
+
 function isAllowedStatus(value: string) {
   return value === "pending" || value === "resolved" || value === "dismissed";
 }
@@ -28,9 +30,9 @@ export async function POST(req: Request) {
 
     const reportId =
       typeof body?.reportId === "string"
-        ? body.reportId
+        ? body.reportId.trim()
         : typeof body?.id === "string"
-          ? body.id
+          ? body.id.trim()
           : "";
 
     const reportType =
@@ -38,12 +40,14 @@ export async function POST(req: Request) {
         ? body.reportType
         : null;
 
-    const status =
-      typeof body?.status === "string" && isAllowedStatus(body.status)
-        ? body.status
-        : "resolved";
+    const requestedStatus =
+      typeof body?.status === "string" ? body.status.trim() : "";
 
-    if (!reportId) {
+    const status = isAllowedStatus(requestedStatus)
+      ? requestedStatus
+      : "resolved";
+
+    if (!reportId || reportId.length > MAX_REPORT_ID_LENGTH) {
       return NextResponse.json(
         { error: "Invalid reportId" },
         { status: 400, headers: NO_STORE_HEADERS }
