@@ -657,6 +657,8 @@ export default function AuthModal({
         }),
       });
 
+      resetTurnstile();
+
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
@@ -677,6 +679,7 @@ export default function AuthModal({
         goToView("login", normalized);
       }, 900);
     } catch {
+      resetTurnstile();
       setError("Could not reset password.");
     } finally {
       setLoading(false);
