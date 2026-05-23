@@ -2,6 +2,9 @@ import { prisma } from "@/app/lib/prisma";
 import { getSessionToken, hashSessionToken } from "@/app/lib/auth";
 
 const CURRENT_USER_CACHE_TTL_MS = 60 * 1000;
+const CURRENT_USER_CACHE_CLEANUP_EVERY_REQUESTS = 250;
+
+let currentUserCacheCleanupCounter = 0;
 
 type CurrentUser = {
   id: string;
@@ -25,6 +28,25 @@ function getCacheExpiry(sessionExpiresAt: Date) {
     Date.now() + CURRENT_USER_CACHE_TTL_MS,
     sessionExpiresAt.getTime()
   );
+}
+
+function maybeCleanupCurrentUserCache() {
+  currentUserCacheCleanupCounter += 1;
+
+  if (
+    currentUserCacheCleanupCounter % CURRENT_USER_CACHE_CLEANUP_EVERY_REQUESTS !==
+    0
+  ) {
+    return;
+  }
+
+  const now = Date.now();
+
+  for (const [tokenHash, cached] of currentUserCache.entries()) {
+    if (cached.expiresAt <= now) {
+      currentUserCache.delete(tokenHash);
+    }
+  }
 }
 
 async function readCurrentUserFromSession(tokenHash: string) {
@@ -67,6 +89,8 @@ async function readCurrentUserFromSession(tokenHash: string) {
 }
 
 export async function getCurrentUser() {
+  maybeCleanupCurrentUserCache();
+
   const token = await getSessionToken();
 
   if (!token) return null;
