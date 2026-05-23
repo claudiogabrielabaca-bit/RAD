@@ -11,6 +11,8 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const REPLY_MAX_LENGTH = 220;
+const MAX_RATING_ID_LENGTH = 80;
+const MAX_PARENT_REPLY_ID_LENGTH = 80;
 
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
@@ -50,11 +52,12 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => null);
 
-    const ratingId = body?.ratingId;
+    const ratingId =
+      typeof body?.ratingId === "string" ? body.ratingId.trim() : null;
     const text = body?.text;
     const rawParentReplyId = body?.parentReplyId;
 
-    if (!ratingId || typeof ratingId !== "string") {
+    if (!ratingId || ratingId.length > MAX_RATING_ID_LENGTH) {
       return NextResponse.json(
         { error: "Invalid ratingId" },
         { status: 400, headers: NO_STORE_HEADERS }
@@ -79,10 +82,13 @@ export async function POST(req: Request) {
       rawParentReplyId === null || rawParentReplyId === undefined
         ? null
         : typeof rawParentReplyId === "string"
-          ? rawParentReplyId
+          ? rawParentReplyId.trim() || null
           : "__invalid__";
 
-    if (parentReplyId === "__invalid__") {
+    if (
+      parentReplyId === "__invalid__" ||
+      (parentReplyId && parentReplyId.length > MAX_PARENT_REPLY_ID_LENGTH)
+    ) {
       return NextResponse.json(
         { error: "Invalid parentReplyId" },
         { status: 400, headers: NO_STORE_HEADERS }
