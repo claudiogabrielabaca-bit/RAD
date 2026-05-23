@@ -636,6 +636,11 @@ export default function AuthModal({
       return;
     }
 
+    if (!requireTurnstile("reset your password")) {
+      setLoading(false);
+      return;
+    }
+
     try {
       const normalized = normalizeEmail(email);
 
@@ -648,6 +653,7 @@ export default function AuthModal({
           email: normalized,
           code: code.trim(),
           newPassword,
+          turnstileToken,
         }),
       });
 
@@ -1100,6 +1106,12 @@ export default function AuthModal({
                 placeholder="Repeat password"
                 visible={showConfirmPassword}
                 onToggle={() => setShowConfirmPassword((prev) => !prev)}
+              />
+
+              <TurnstileWidget
+                key={`turnstile-${view}-${turnstileResetKey}`}
+                resetKey={turnstileResetKey}
+                onTokenChange={setTurnstileToken}
               />
 
               <div className="pt-1">
