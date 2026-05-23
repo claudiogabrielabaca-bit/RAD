@@ -120,6 +120,7 @@ function Chevron({
 
 function ReplyThreadItem({
   reply,
+  targetReplyId,
   depth,
   maxReplyDepth,
   deletingReplyId,
@@ -138,6 +139,7 @@ function ReplyThreadItem({
   onToggleThread,
 }: {
   reply: ReplyItem;
+  targetReplyId: string | null;
   depth: number;
   maxReplyDepth: number;
   deletingReplyId: string | null;
@@ -165,12 +167,13 @@ function ReplyThreadItem({
   const descendantCount = countDescendantReplies(reply);
   const threadExpanded = !!expandedThreads[reply.id];
   const likePending = pendingLikeReplyIds.has(reply.id);
+  const isTargetReply = !!targetReplyId && reply.id === targetReplyId;
 
   return (
     <div
       id={`reply-${reply.id}`}
       data-reply-id={reply.id}
-      className="border-l border-white/10 pl-4"
+      className={`border-l pl-4 transition ${isTargetReply ? "rounded-r-2xl border-sky-400/35 bg-sky-500/10 py-2 pr-3 shadow-[0_0_0_1px_rgba(56,189,248,0.08)]" : "border-white/10"}`}
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="rounded-md border border-white/8 bg-white/[0.05] px-2 py-0.5 text-xs text-zinc-300">
@@ -291,6 +294,7 @@ function ReplyThreadItem({
             <ReplyThreadItem
               key={childReply.id}
               reply={childReply}
+              targetReplyId={targetReplyId}
               depth={depth + 1}
               maxReplyDepth={maxReplyDepth}
               deletingReplyId={deletingReplyId}
@@ -394,6 +398,25 @@ export default function ReplyList({
       return changed ? next : prev;
     });
   }, [localReplies, targetReplyId]);
+
+  useEffect(() => {
+    if (!targetReplyId) return;
+    if (!topLevelExpanded) return;
+    if (!localReplies.some((reply) => containsReplyId(reply, targetReplyId))) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      const target = document.getElementById(`reply-${targetReplyId}`);
+
+      target?.scrollIntoView({
+        behavior: "auto",
+        block: "center",
+      });
+    }, 80);
+
+    return () => window.clearTimeout(timeout);
+  }, [expandedThreads, localReplies, targetReplyId, topLevelExpanded]);
 
   const totalReplies = useMemo(
     () => countAllReplies(localReplies),
@@ -659,6 +682,7 @@ export default function ReplyList({
               <ReplyThreadItem
                 key={reply.id}
                 reply={reply}
+                targetReplyId={targetReplyId}
                 depth={0}
                 maxReplyDepth={1}
                 deletingReplyId={deletingReplyId}
