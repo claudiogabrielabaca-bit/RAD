@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { clearAdminSessionCookie } from "@/app/lib/admin";
+import { clearAdminSession } from "@/app/lib/admin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,7 +14,7 @@ export async function POST() {
     }
   );
 
-  await clearAdminSessionCookie(res);
+  await clearAdminSession();
 
   return res;
 }
