@@ -282,6 +282,7 @@ model RateLimit {
   updatedAt DateTime @updatedAt
 
   @@unique([action, key])
+  @@index([expiresAt])
 }
 
 model SurpriseDeck {
