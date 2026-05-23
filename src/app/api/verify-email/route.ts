@@ -14,6 +14,9 @@ export const revalidate = 0;
 const CODE_ATTEMPT_LIMIT = 5;
 const INVALID_MESSAGE = "Invalid or expired verification code.";
 
+const VERIFY_EMAIL_MAX_LENGTH = 254;
+const TURNSTILE_TOKEN_MAX_LENGTH = 4096;
+
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
@@ -29,6 +32,16 @@ export async function POST(req: Request) {
     if (!email || !code) {
       return NextResponse.json(
         { error: "Email and verification code are required." },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (
+      email.length > VERIFY_EMAIL_MAX_LENGTH ||
+      turnstileToken.length > TURNSTILE_TOKEN_MAX_LENGTH
+    ) {
+      return NextResponse.json(
+        { error: INVALID_MESSAGE },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
