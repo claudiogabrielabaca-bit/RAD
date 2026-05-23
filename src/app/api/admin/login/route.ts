@@ -12,6 +12,13 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+const ADMIN_LOGIN_MAX_USERNAME_LENGTH = 80;
+const ADMIN_LOGIN_MAX_PASSWORD_LENGTH = 256;
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
@@ -22,7 +29,17 @@ export async function POST(req: Request) {
     if (!username || !password) {
       return NextResponse.json(
         { error: "Username and password are required." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (
+      username.length > ADMIN_LOGIN_MAX_USERNAME_LENGTH ||
+      password.length > ADMIN_LOGIN_MAX_PASSWORD_LENGTH
+    ) {
+      return NextResponse.json(
+        { error: "Invalid admin credentials." },
+        { status: 401, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -52,9 +69,7 @@ export async function POST(req: Request) {
         { error: "Invalid admin credentials." },
         {
           status: 401,
-          headers: {
-            "Cache-Control": "no-store",
-          },
+          headers: NO_STORE_HEADERS,
         }
       );
     }
@@ -62,9 +77,7 @@ export async function POST(req: Request) {
     const res = NextResponse.json(
       { ok: true },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
 
@@ -77,9 +90,7 @@ export async function POST(req: Request) {
       { error: "Server error" },
       {
         status: 500,
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   }
