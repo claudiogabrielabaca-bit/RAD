@@ -1,5 +1,10 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -318,8 +323,22 @@ async function getCachedTopPayload() {
   return topRequestPromise;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const rateLimit = await consumeRateLimit({
+      action: "top",
+      key: buildRateLimitKey(req, "public"),
+      limit: 240,
+      windowMs: 15 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many ranking requests. Please try again later."
+      );
+    }
+
     const payload = await getCachedTopPayload();
 
     return NextResponse.json(payload, {
