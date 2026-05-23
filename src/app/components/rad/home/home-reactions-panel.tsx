@@ -124,6 +124,7 @@ export default function HomeReactionsPanel({
   ) {
     const { mine = false, showSectionLabel } = options;
     const compact = !hasReviewText(item.review);
+    const isTargetReview = !!targetReviewId && item.id === targetReviewId;
 
     return (
       <div
