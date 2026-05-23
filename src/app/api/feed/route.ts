@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/app/lib/prisma";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+const FEED_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const FEED_RATE_LIMIT_LIMIT = 120;
 
 type JsonLike =
   | string
@@ -75,8 +87,22 @@ function isUsableFeedHighlight(item: {
   );
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const rateLimit = await consumeRateLimit({
+      action: "feed",
+      key: buildRateLimitKey(req),
+      limit: FEED_RATE_LIMIT_LIMIT,
+      windowMs: FEED_RATE_LIMIT_WINDOW_MS,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many feed requests. Please try again later."
+      );
+    }
+
     const ratings: FeedRatingRow[] = await prisma.rating.findMany({
       where: {
         review: {
@@ -183,9 +209,7 @@ export async function GET() {
     return NextResponse.json(
       { items },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
@@ -194,9 +218,7 @@ export async function GET() {
       { error: "Server error" },
       {
         status: 500,
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   }
