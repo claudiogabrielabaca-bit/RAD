@@ -20,6 +20,10 @@ export const revalidate = 0;
 const PENDING_LOGIN_COOKIE = "rad_pending_login_email";
 const PENDING_LOGIN_MAX_AGE_SEC = 10 * 60;
 
+const LOGIN_EMAIL_MAX_LENGTH = 254;
+const LOGIN_PASSWORD_MAX_LENGTH = 256;
+const TURNSTILE_TOKEN_MAX_LENGTH = 4096;
+
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
@@ -71,6 +75,17 @@ export async function POST(req: Request) {
       return NextResponse.json(
         { error: "Email and password are required." },
         { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (
+      email.length > LOGIN_EMAIL_MAX_LENGTH ||
+      password.length > LOGIN_PASSWORD_MAX_LENGTH ||
+      turnstileToken.length > TURNSTILE_TOKEN_MAX_LENGTH
+    ) {
+      return NextResponse.json(
+        { error: "Invalid credentials." },
+        { status: 401, headers: NO_STORE_HEADERS }
       );
     }
 
