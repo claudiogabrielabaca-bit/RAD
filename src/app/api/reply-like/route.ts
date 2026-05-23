@@ -12,6 +12,7 @@ const NO_STORE_HEADERS = {
 const SHOULD_LOG_REPLY_LIKE_TIMINGS = process.env.NODE_ENV === "development";
 const SOFT_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const SOFT_RATE_LIMIT_LIMIT = 240;
+const MAX_REPLY_ID_LENGTH = 80;
 
 type PrismaErrorCode = "P2002" | "P2003";
 
@@ -332,15 +333,24 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json().catch(() => null);
-    const replyId = body?.replyId;
+    const replyId =
+      typeof body?.replyId === "string" ? body.replyId.trim() : null;
     const desiredLiked =
       typeof body?.liked === "boolean" ? body.liked : null;
     timing.mark("body");
 
-    if (!replyId || typeof replyId !== "string") {
+    if (!replyId) {
       timing.log("status=400");
       return NextResponse.json(
         { error: "Missing replyId" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (replyId.length > MAX_REPLY_ID_LENGTH) {
+      timing.log("status=400");
+      return NextResponse.json(
+        { error: "Invalid replyId" },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
