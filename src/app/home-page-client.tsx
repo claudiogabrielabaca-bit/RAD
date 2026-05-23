@@ -995,7 +995,7 @@ export default function Page({
 
     const timeout = setTimeout(() => {
       target.scrollIntoView({
-        behavior: "smooth",
+        behavior: "auto",
         block: "center",
       });
 
