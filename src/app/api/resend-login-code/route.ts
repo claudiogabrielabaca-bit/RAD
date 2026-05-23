@@ -15,6 +15,12 @@ export const revalidate = 0;
 const PENDING_LOGIN_COOKIE = "rad_pending_login_email";
 const PENDING_LOGIN_MAX_AGE_SEC = 10 * 60;
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+const RESEND_LOGIN_EMAIL_MAX_LENGTH = 254;
+
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
@@ -62,10 +68,12 @@ export async function POST(req: Request) {
   try {
     const email = await getPendingLoginEmail();
 
-    if (!email) {
+    if (!email || email.length > RESEND_LOGIN_EMAIL_MAX_LENGTH) {
+      await clearPendingLoginEmailCookie();
+
       return NextResponse.json(
         { error: "Start the login flow again." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -100,7 +108,7 @@ export async function POST(req: Request) {
 
       return NextResponse.json(
         { error: "Start the login flow again." },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -160,13 +168,14 @@ This code expires in 10 minutes.`,
         devCode,
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
     console.error("resend-login-code POST error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }
