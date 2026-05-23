@@ -15,6 +15,12 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
 
+const EVENT_MAX_LENGTH = 180;
+const DESCRIPTION_MAX_LENGTH = 1200;
+const SOURCE_MAX_LENGTH = 2048;
+const TYPED_EMAIL_MAX_LENGTH = 254;
+const HONEYPOT_MAX_LENGTH = 200;
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -61,6 +67,10 @@ function normalizeAndValidateSource(input?: string) {
 
   if (!raw) {
     return { ok: false as const, error: "Source is required." };
+  }
+
+  if (raw.length > SOURCE_MAX_LENGTH) {
+    return { ok: false as const, error: "Source is too long." };
   }
 
   let value = raw;
@@ -151,6 +161,13 @@ export async function POST(req: Request) {
       website?: string;
     };
 
+    if (typeof website === "string" && website.length > HONEYPOT_MAX_LENGTH) {
+      return NextResponse.json(
+        { ok: true },
+        { headers: NO_STORE_HEADERS }
+      );
+    }
+
     if (website && website.trim() !== "") {
       return NextResponse.json(
         { ok: true },
@@ -165,16 +182,43 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!event || event.trim().length < 5) {
+    const normalizedEvent = event?.trim() ?? "";
+    const normalizedDescription = description?.trim() ?? "";
+    const normalizedTypedEmail = email?.trim() ?? "";
+
+    if (normalizedEvent.length < 5) {
       return NextResponse.json(
         { error: "Event too short" },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
-    if (!description || description.trim().length < 10) {
+    if (normalizedEvent.length > EVENT_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: `Event is too long. Max ${EVENT_MAX_LENGTH} chars.` },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (normalizedDescription.length < 10) {
       return NextResponse.json(
         { error: "Description too short" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (normalizedDescription.length > DESCRIPTION_MAX_LENGTH) {
+      return NextResponse.json(
+        {
+          error: `Description is too long. Max ${DESCRIPTION_MAX_LENGTH} chars.`,
+        },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (normalizedTypedEmail.length > TYPED_EMAIL_MAX_LENGTH) {
+      return NextResponse.json(
+        { error: `Email is too long. Max ${TYPED_EMAIL_MAX_LENGTH} chars.` },
         { status: 400, headers: NO_STORE_HEADERS }
       );
     }
@@ -198,12 +242,12 @@ export async function POST(req: Request) {
     }
 
     const safeDay = escapeHtml(day);
-    const safeEvent = escapeHtml(event.trim());
-    const safeDescription = escapeHtml(description.trim());
+    const safeEvent = escapeHtml(normalizedEvent);
+    const safeDescription = escapeHtml(normalizedDescription);
     const safeSource = escapeHtml(validatedSource.value);
     const safeUserEmail = escapeHtml(user.email);
     const safeUsername = escapeHtml(user.username);
-    const safeTypedEmail = escapeHtml((email ?? "").trim());
+    const safeTypedEmail = escapeHtml(normalizedTypedEmail);
 
     try {
       const mailResult = await sendMail({
@@ -212,12 +256,12 @@ export async function POST(req: Request) {
         text: [
           "New historical suggestion",
           `Day: ${day}`,
-          `Event: ${event.trim()}`,
-          `Description: ${description.trim()}`,
+          `Event: ${normalizedEvent}`,
+          `Description: ${normalizedDescription}`,
           `Source URL: ${validatedSource.value}`,
           `Logged user: @${user.username}`,
           `Logged user email: ${user.email}`,
-          `Typed email field: ${(email ?? "").trim() || "—"}`,
+          `Typed email field: ${normalizedTypedEmail || "—"}`,
         ].join("\n"),
         html: `
           <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111">
