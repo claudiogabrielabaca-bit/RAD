@@ -267,6 +267,16 @@ export default function AuthModal({
 
         const formEmail = normalizeEmail(initialEmail || email);
 
+        if (meEmail && !formEmail) {
+          setEmail(meEmail);
+          setCurrentUserEmailVerified(
+            typeof json?.user?.emailVerified === "boolean"
+              ? json.user.emailVerified
+              : null
+          );
+          return;
+        }
+
         if (meEmail && formEmail && meEmail === formEmail) {
           setCurrentUserEmailVerified(
             typeof json?.user?.emailVerified === "boolean"
@@ -1131,6 +1141,17 @@ export default function AuthModal({
 
           {view === "verify-email" ? (
             <form onSubmit={handleVerifyEmail} className="mt-6 space-y-5">
+              <div>
+                <label className="mb-2 block text-sm text-zinc-300">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className="w-full rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
+                />
+              </div>
+
               <div className="rounded-2xl border border-white/10 bg-black/25 p-4">
                 <div className="text-xs uppercase tracking-[0.16em] text-zinc-500">
                   Verification status
@@ -1139,7 +1160,9 @@ export default function AuthModal({
                 <div className="mt-2 text-sm text-zinc-200">
                   {currentUserEmailVerified === true
                     ? "Your email is already verified."
-                    : "Your account already exists and you're signed in. You only need to verify your email now."}
+                    : email
+                      ? "Enter the 6-digit code sent to this email."
+                      : "Enter your email and the 6-digit verification code."}
                 </div>
 
                 {email ? (
