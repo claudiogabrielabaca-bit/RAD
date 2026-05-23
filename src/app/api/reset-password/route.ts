@@ -1,6 +1,6 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { hashPassword, verifyAuthCode } from "@/app/lib/auth";
+import { clearSession, hashPassword, verifyAuthCode } from "@/app/lib/auth";
 import { verifyTurnstileToken } from "@/app/lib/turnstile";
 import {
   buildRateLimitKey,
@@ -192,6 +192,8 @@ export async function POST(req: Request) {
     await prisma.session.deleteMany({
       where: { userId: user.id },
     });
+
+    await clearSession();
 
     return NextResponse.json(
       {
