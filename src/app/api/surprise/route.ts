@@ -19,9 +19,13 @@ const NO_STORE_HEADERS = {
 const SURPRISE_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const SURPRISE_RATE_LIMIT_LIMIT = 60;
 const MAX_EXCLUDE_DAYS = 120;
+const MAX_EXCLUDE_DAYS_QUERY_LENGTH = 2400;
 
 function parseExcludeDays(searchParams: URLSearchParams) {
-  const raw = searchParams.get("excludeDays") ?? "";
+  const raw = (searchParams.get("excludeDays") ?? "").slice(
+    0,
+    MAX_EXCLUDE_DAYS_QUERY_LENGTH
+  );
 
   if (!raw.trim()) return [];
 
