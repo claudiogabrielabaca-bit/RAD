@@ -1,9 +1,33 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+const PROFILE_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const PROFILE_RATE_LIMIT_LIMIT = 120;
+
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
+};
+
+const PROFILE_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const PROFILE_RATE_LIMIT_LIMIT = 120;
 
 type RatingRow = {
   id: string;
@@ -31,7 +55,7 @@ type FavoritePreviewRow = {
   articleUrl: string | null;
 };
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const user = await getCurrentUser();
 
@@ -40,10 +64,36 @@ export async function GET() {
         { error: "Unauthorized" },
         {
           status: 401,
-          headers: {
-            "Cache-Control": "no-store",
-          },
+          headers: NO_STORE_HEADERS,
         }
+      );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "profile",
+      key: buildRateLimitKey(req, user.id),
+      limit: PROFILE_RATE_LIMIT_LIMIT,
+      windowMs: PROFILE_RATE_LIMIT_WINDOW_MS,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many profile requests. Please try again later."
+      );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "profile",
+      key: buildRateLimitKey(req, user.id),
+      limit: PROFILE_RATE_LIMIT_LIMIT,
+      windowMs: PROFILE_RATE_LIMIT_WINDOW_MS,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many profile requests. Please try again later."
       );
     }
 
@@ -160,9 +210,7 @@ export async function GET() {
         },
       },
       {
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   } catch (error) {
@@ -171,9 +219,7 @@ export async function GET() {
       { error: "Server error" },
       {
         status: 500,
-        headers: {
-          "Cache-Control": "no-store",
-        },
+        headers: NO_STORE_HEADERS,
       }
     );
   }
