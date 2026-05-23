@@ -2,6 +2,9 @@ import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 
 const MAX_RATE_LIMIT_RETRIES = 3;
+const RATE_LIMIT_CLEANUP_EVERY_REQUESTS = 250;
+
+let rateLimitCleanupCounter = 0;
 
 
 type RateLimitRow = {
@@ -75,6 +78,26 @@ function getPrismaErrorCode(error: unknown): string | null {
 function isRetryableRateLimitError(error: unknown) {
   const code = getPrismaErrorCode(error);
   return code === "P2002" || code === "P2025";
+}
+
+function maybeCleanupExpiredRateLimits() {
+  rateLimitCleanupCounter += 1;
+
+  if (rateLimitCleanupCounter % RATE_LIMIT_CLEANUP_EVERY_REQUESTS !== 0) {
+    return;
+  }
+
+  void prisma.rateLimit
+    .deleteMany({
+      where: {
+        expiresAt: {
+          lt: new Date(),
+        },
+      },
+    })
+    .catch((error: unknown) => {
+      console.error("rate limit cleanup error:", error);
+    });
 }
 
 export function getClientIp(req: Request) {
@@ -203,6 +226,8 @@ export async function consumeRateLimit({
   limit: number;
   windowMs: number;
 }) {
+  maybeCleanupExpiredRateLimits();
+
   for (let attempt = 0; attempt < MAX_RATE_LIMIT_RETRIES; attempt++) {
     try {
       return await prisma.$transaction((tx: RateLimitTransactionClient) =>
