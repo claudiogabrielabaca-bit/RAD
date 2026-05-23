@@ -9,6 +9,8 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
 
+const ADMIN_REPORTS_RESPONSE_LIMIT = 100;
+
 type AdminReportItem = {
   id: string;
   reportType: "review" | "reply";
@@ -156,10 +158,12 @@ export async function GET() {
       parentReviewAuthorEmail: item.reply.rating.user?.email ?? null,
     }));
 
-    const items = [...mappedReviewReports, ...mappedReplyReports].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
+    const items = [...mappedReviewReports, ...mappedReplyReports]
+      .sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+      .slice(0, ADMIN_REPORTS_RESPONSE_LIMIT);
 
     return NextResponse.json(
       {
