@@ -1,6 +1,11 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,6 +13,8 @@ export const revalidate = 0;
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
+
+const MAX_REPLY_ID_LENGTH = 80;
 
 export async function POST(req: Request) {
   try {
@@ -21,12 +28,27 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => null);
-    const replyId = body?.replyId;
+    const replyId =
+      typeof body?.replyId === "string" ? body.replyId.trim() : "";
 
-    if (!replyId || typeof replyId !== "string") {
+    if (!replyId || replyId.length > MAX_REPLY_ID_LENGTH) {
       return NextResponse.json(
         { error: "Invalid replyId" },
         { status: 400, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    const rateLimit = await consumeRateLimit({
+      action: "reply-delete",
+      key: buildRateLimitKey(req, user.id),
+      limit: 20,
+      windowMs: 15 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many delete requests. Please try again later."
       );
     }
 
