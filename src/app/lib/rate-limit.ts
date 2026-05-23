@@ -1,8 +1,10 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
+import { createHash } from "crypto";
 
 const MAX_RATE_LIMIT_RETRIES = 3;
 const RATE_LIMIT_CLEANUP_EVERY_REQUESTS = 250;
+const RATE_LIMIT_KEY_PART_MAX_LENGTH = 256;
 
 let rateLimitCleanupCounter = 0;
 
@@ -80,6 +82,16 @@ function isRetryableRateLimitError(error: unknown) {
   return code === "P2002" || code === "P2025";
 }
 
+function normalizeRateLimitKeyPart(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized.length <= RATE_LIMIT_KEY_PART_MAX_LENGTH) {
+    return normalized || "unknown";
+  }
+
+  return `sha256:${createHash("sha256").update(normalized).digest("hex")}`;
+}
+
 function maybeCleanupExpiredRateLimits() {
   rateLimitCleanupCounter += 1;
 
@@ -103,12 +115,12 @@ function maybeCleanupExpiredRateLimits() {
 export function getClientIp(req: Request) {
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) {
-    return forwarded.split(",")[0]?.trim() || "unknown";
+    return normalizeRateLimitKeyPart(forwarded.split(",")[0] ?? "unknown");
   }
 
   const realIp = req.headers.get("x-real-ip");
   if (realIp) {
-    return realIp.trim();
+    return normalizeRateLimitKeyPart(realIp);
   }
 
   return "unknown";
@@ -116,7 +128,9 @@ export function getClientIp(req: Request) {
 
 export function buildRateLimitKey(req: Request, email?: string) {
   const ip = getClientIp(req);
-  return email ? `${ip}:${email.trim().toLowerCase()}` : ip;
+  const identifier = email ? normalizeRateLimitKeyPart(email) : "";
+
+  return identifier ? `${ip}:${identifier}` : ip;
 }
 
 async function consumeRateLimitInTransaction(
