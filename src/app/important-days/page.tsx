@@ -16,7 +16,12 @@ export default function ImportantDaysPage() {
       <div className="relative mx-auto w-full max-w-[1280px] px-8 pt-40 pb-12 xl:px-10">
         <ImportantDaysStrip
           onSelectDay={(selectedDay) => {
-            router.push(`/day/${encodeURIComponent(selectedDay)}`);
+            router.push(
+              `/?day=${encodeURIComponent(selectedDay)}&focus=highlight`,
+              {
+                scroll: false,
+              }
+            );
           }}
         />
       </div>
