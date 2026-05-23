@@ -4,11 +4,17 @@ import {
   getDayStatsMap,
   normalizeStatsDayList,
 } from "@/app/lib/day-stats";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const MAX_BATCH_DAYS = 120;
+const MAX_RAW_BATCH_DAYS = 240;
 const DAY_STATS_CACHE_TTL_MS = 60 * 1000;
 
 type DayStatsBatchPayload = {
@@ -77,8 +83,33 @@ async function getCachedDayStatsPayload(days: string[]) {
 
 export async function POST(req: Request) {
   try {
+    const rateLimit = await consumeRateLimit({
+      action: "day-stats-batch",
+      key: buildRateLimitKey(req, "public"),
+      limit: 240,
+      windowMs: 15 * 60 * 1000,
+    });
+
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many stats requests. Please try again later."
+      );
+    }
+
     const body = await req.json().catch(() => null);
     const rawDays = Array.isArray(body?.days) ? body.days : [];
+
+    if (rawDays.length > MAX_RAW_BATCH_DAYS) {
+      return NextResponse.json(
+        { error: "Too many days requested. Max 120 days." },
+        {
+          status: 400,
+          headers: NO_STORE_HEADERS,
+        }
+      );
+    }
+
     const days = normalizeStatsDayList(rawDays).slice(0, MAX_BATCH_DAYS);
 
     if (days.length === 0) {
