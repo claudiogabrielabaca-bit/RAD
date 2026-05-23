@@ -56,9 +56,15 @@ export function hashSessionToken(token: string) {
   return createHmac("sha256", getSessionSecret()).update(token).digest("hex");
 }
 
+function isLikelySessionToken(value: string) {
+  return /^[a-f0-9]{64}$/i.test(value);
+}
+
 async function readIncomingSessionToken() {
   const store = await cookies();
-  return store.get(SESSION_COOKIE)?.value ?? "";
+  const token = store.get(SESSION_COOKIE)?.value ?? "";
+
+  return isLikelySessionToken(token) ? token : "";
 }
 
 export function generateNumericCode(length = 6) {
