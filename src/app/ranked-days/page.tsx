@@ -14,7 +14,7 @@ export default function RankedDaysPage() {
                   Ranked Days
                 </h1>
                 <p className="mt-2 text-sm text-zinc-400 sm:text-base">
-                  Community rankings for the most loved and most controversial days.
+                  Community rankings for the most loved and most controversial days. Days need at least 2 votes to appear.
                 </p>
               </div>
 

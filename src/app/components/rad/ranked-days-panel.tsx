@@ -302,7 +302,7 @@ function PodiumSection({
         </div>
       ) : podiumItems.length === 0 ? (
         <div className="rounded-2xl border border-white/8 bg-black/20 p-5 text-sm text-zinc-400">
-          No ranked days yet.
+          No ranked days have enough votes yet.
         </div>
       ) : (
         <div className="space-y-3">
@@ -434,7 +434,7 @@ function RankedListSection({
         </div>
       ) : items.length === 0 ? (
         <div className="rounded-2xl border border-white/8 bg-black/20 p-5 text-sm text-zinc-400">
-          No more ranked days yet.
+          No more days have enough votes yet.
         </div>
       ) : (
         <div className="space-y-3">
