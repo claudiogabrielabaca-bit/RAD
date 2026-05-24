@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
+import { invalidateNotificationsCache } from "@/app/lib/notifications-cache";
 import {
   buildRateLimitKey,
   consumeRateLimit,
@@ -74,9 +75,28 @@ export async function POST(req: Request) {
       );
     }
 
+    const notificationRecipientIds = Array.from(
+      new Set(
+        (
+          await prisma.notification.findMany({
+            where: {
+              reviewId: ratingId,
+            },
+            select: {
+              userId: true,
+            },
+          })
+        ).map((item) => item.userId)
+      )
+    );
+
     await prisma.rating.delete({
       where: { id: ratingId },
     });
+
+    for (const userId of notificationRecipientIds) {
+      invalidateNotificationsCache(userId);
+    }
 
     return NextResponse.json(
       { ok: true },
