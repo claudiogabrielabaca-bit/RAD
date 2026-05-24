@@ -15,6 +15,8 @@ type ScheduledPrefetch = {
   type: "idle" | "timeout";
 };
 
+const MAX_DAY_BUNDLE_CACHE_ENTRIES = 40;
+
 type IdleCapableWindow = Window & {
   requestIdleCallback?: (callback: IdleRequestCallback) => number;
   cancelIdleCallback?: (handle: number) => void;
@@ -164,7 +166,21 @@ export function useHomeDayNavigation(params: {
   }
 
   function cacheBundlePayload(payload: SurpriseResponse) {
+    if (dayBundleCacheRef.current.has(payload.day)) {
+      dayBundleCacheRef.current.delete(payload.day);
+    }
+
     dayBundleCacheRef.current.set(payload.day, payload);
+
+    while (dayBundleCacheRef.current.size > MAX_DAY_BUNDLE_CACHE_ENTRIES) {
+      const oldestDay = dayBundleCacheRef.current.keys().next().value;
+
+      if (!oldestDay) {
+        break;
+      }
+
+      dayBundleCacheRef.current.delete(oldestDay);
+    }
   }
 
   function invalidateDayCache(targetDay?: string) {
