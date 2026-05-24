@@ -206,13 +206,7 @@ async function deleteReplyLikeNotification({
       replyId,
     },
     select: {
-      actorUserId: string;
-}) {
-  const notification = await prisma.notification.findFirst({
-    where: {
-      type: "reply_liked",
-      actorUserId,
- userId: true,
+      userId: true,
     },
   });
 
