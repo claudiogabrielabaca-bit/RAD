@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
+import { invalidateNotificationsCache } from "@/app/lib/notifications-cache";
 import {
   buildRateLimitKey,
   consumeRateLimit,
@@ -178,6 +179,9 @@ export async function POST(req: Request) {
             replyId: reply.id,
             day: rating.day,
           },
+        })
+        .then(() => {
+          invalidateNotificationsCache(notificationRecipientId);
         })
         .catch((notificationError: unknown) => {
           console.error(

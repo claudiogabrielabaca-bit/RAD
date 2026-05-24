@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
+import { invalidateNotificationsCache } from "@/app/lib/notifications-cache";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -175,6 +176,8 @@ async function createReviewLikeNotification({
       day: review.day,
     },
   });
+
+  invalidateNotificationsCache(review.userId);
 }
 
 async function deleteReviewLikeNotification({
@@ -184,6 +187,17 @@ async function deleteReviewLikeNotification({
   ratingId: string;
   actorUserId: string;
 }) {
+  const notification = await prisma.notification.findFirst({
+    where: {
+      type: "review_liked",
+      actorUserId,
+      reviewId: ratingId,
+    },
+    select: {
+      userId: true,
+    },
+  });
+
   await prisma.notification.deleteMany({
     where: {
       type: "review_liked",
@@ -191,6 +205,10 @@ async function deleteReviewLikeNotification({
       reviewId: ratingId,
     },
   });
+
+  if (notification?.userId) {
+    invalidateNotificationsCache(notification.userId);
+  }
 }
 
 function scheduleReviewLikeNotification({
