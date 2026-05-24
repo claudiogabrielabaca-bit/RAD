@@ -10,7 +10,9 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
+  : null;
 
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
@@ -155,6 +157,13 @@ export async function POST(req: Request) {
     if (!toEmail) {
       return NextResponse.json(
         { error: "Bug report inbox is not configured." },
+        { status: 500, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    if (!resend) {
+      return NextResponse.json(
+        { error: "Bug report email service is not configured." },
         { status: 500, headers: NO_STORE_HEADERS }
       );
     }
