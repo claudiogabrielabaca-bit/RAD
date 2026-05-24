@@ -176,7 +176,8 @@ export async function POST(req: Request) {
     const reportsToEmail = process.env.REPORTS_TO_EMAIL?.trim();
 
     if (resend && reportsToEmail) {
-      await resend.emails.send({
+      await resend.emails
+        .send({
         from: "RAD Reports <onboarding@resend.dev>",
         to: reportsToEmail,
         subject: `New review report on RAD - ${escapeHtml(rating.day)}`,
@@ -207,7 +208,10 @@ export async function POST(req: Request) {
             </div>
           </div>
         `,
-      });
+      })
+        .catch((emailError: unknown) => {
+          console.error("review-report email send error:", emailError);
+        });
     }
 
     return NextResponse.json(
