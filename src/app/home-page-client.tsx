@@ -2281,45 +2281,37 @@ export default function Page({
           />
         </div>
 
-        <div className="mt-8">
-          <section className="rounded-[32px] border border-white/8 bg-[#070707] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.42)] sm:p-6 lg:p-7">
+        <div className="mt-12">
+          <section className="rounded-[30px] border border-white/8 bg-white/[0.04] p-7 shadow-[0_20px_70px_rgba(0,0,0,0.36)] backdrop-blur-2xl">
             <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-4 border-b border-white/8 pb-5 lg:flex-row lg:items-end lg:justify-between">
+              <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                  <div className="text-[11px] font-medium uppercase tracking-[0.18em] text-zinc-500">
                     Now exploring
                   </div>
-                  <div className="mt-2 text-3xl font-semibold tracking-[-0.03em] text-white sm:text-4xl">
+                  <div className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
                     {visibleDayLabel}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-                  <div className="rounded-2xl border border-white/8 bg-white/[0.035] px-4 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                      Avg
-                    </div>
-                    <div className="mt-1 text-lg font-semibold text-white">
-                      {data ? formatAvg(data.avg) : "—"}
-                      <span className="text-xs font-normal text-zinc-400">
-                        {" "}
-                        ({data?.count ?? 0})
-                      </span>
-                    </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-xs text-zinc-400">Community avg</div>
+                  <div className="text-lg font-semibold text-white">
+                    {data ? formatAvg(data.avg) : "—"}
+                    <span className="text-xs font-normal text-zinc-300">
+                      {" "}
+                      ({data?.count ?? 0})
+                    </span>
                   </div>
 
-                  <div className="rounded-2xl border border-white/8 bg-white/[0.035] px-4 py-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
-                      Views
-                    </div>
-                    <div className="mt-1 text-lg font-semibold text-white">
-                      {formatCompactViews(data?.views ?? 0)}
-                    </div>
+                  <div className="mt-2 text-xs text-zinc-500">Views</div>
+                  <div className="text-sm font-medium text-zinc-200">
+                    {formatCompactViews(data?.views ?? 0)}
                   </div>
                 </div>
               </div>
 
-              <div className="pt-1">
+              <div className="mt-2 border-t border-white/8 pt-5 sm:pt-6">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                   <div className="flex flex-col gap-3">
                     <div className="flex flex-wrap items-center gap-2">
@@ -2476,7 +2468,7 @@ export default function Page({
                   onMouseEnter={() => setIsHighlightPaused(true)}
                   onMouseLeave={() => setIsHighlightPaused(false)}
                 >
-                  <div className="relative h-[430px] overflow-hidden rounded-[26px] border border-white/8 bg-black/20 sm:h-[500px] lg:h-[580px]">
+                  <div className="relative h-[460px] overflow-hidden rounded-2xl border border-white/8 bg-black/20 sm:h-[540px] lg:h-[640px]">
                     <button
                       type="button"
                       onClick={toggleFavoriteDay}
@@ -2529,7 +2521,7 @@ export default function Page({
                         key={`${day}-${activeHighlightIndex}`}
                         className="rad-fade-swap max-w-[760px]"
                       >
-                        <div className="text-sm font-medium text-zinc-200/90">In this day</div>
+                        <div className="text-sm text-zinc-200/90">In this day</div>
 
                         <div className="mt-1 text-2xl font-semibold text-white sm:text-3xl">
                           {formatDisplayDate(day)}
@@ -2551,12 +2543,12 @@ export default function Page({
                         </div>
 
                         {highlight.title ? (
-                          <h2 className="mt-5 max-w-[16ch] text-[clamp(1.85rem,3.8vw,3.5rem)] font-semibold leading-[0.98] tracking-[-0.035em] text-white">
+                          <h2 className="mt-5 max-w-[13ch] text-[clamp(1.8rem,3.8vw,3.4rem)] font-semibold leading-[1] tracking-tight text-white">
                             {highlight.title}
                           </h2>
                         ) : null}
 
-                        <div className="mt-5 max-w-3xl text-[16px] leading-8 text-zinc-100/88 sm:text-[17px]">
+                        <div className="mt-5 max-w-4xl text-[17px] leading-8 text-zinc-100/90">
                           {highlight.text}
                         </div>
                       </div>
