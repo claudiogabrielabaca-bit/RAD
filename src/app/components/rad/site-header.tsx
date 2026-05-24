@@ -39,6 +39,7 @@ type NotificationsResponse = {
 
 const NOTIFICATIONS_MUTED_STORAGE_KEY = "rad:notifications-muted";
 const NOTIFICATIONS_CLIENT_CACHE_TTL_MS = 12 * 1000;
+const NOTIFICATIONS_POLL_INTERVAL_MS = 30 * 1000;
 
 type NotificationsClientCache = {
   userId: string;
@@ -606,6 +607,20 @@ export default function SiteHeader() {
     setNotifications([]);
     setUnreadNotifications(0);
   }, [currentUser?.id]);
+
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    void loadNotifications({ force: true });
+
+    const interval = window.setInterval(() => {
+      void loadNotifications({ force: true });
+    }, NOTIFICATIONS_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [currentUser?.id, loadNotifications]);
 
   useEffect(() => {
     if (!menuOpen && !notificationsOpen) return;
