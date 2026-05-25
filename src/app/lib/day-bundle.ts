@@ -1,5 +1,5 @@
 import { prisma } from "@/app/lib/prisma";
-import { getCurrentUser } from "@/app/lib/current-user";
+import { getCurrentUser, getCurrentUserWithin } from "@/app/lib/current-user";
 import { getAnonLabel } from "@/app/lib/anon-label";
 import { ensureHighlightsForDay } from "@/app/lib/highlight-service";
 import type { HighlightResponse, ReplyItem } from "@/app/lib/rad-types";
@@ -8,6 +8,7 @@ const DAY_BUNDLE_REVIEW_LIMIT = 50;
 const DAY_BUNDLE_REPLY_LIMIT_PER_REVIEW = 25;
 const VIEWER_RELATION_EMPTY_ID = "__rad_no_current_user__";
 const ANONYMOUS_DAY_BUNDLE_CACHE_TTL_MS = 60 * 1000;
+const DAY_BUNDLE_CURRENT_USER_TIMEOUT_MS = 900;
 const SHOULD_LOG_DAY_BUNDLE_TIMINGS =
   process.env.NODE_ENV === "development" ||
   process.env.RAD_LOG_DAY_BUNDLE_TIMINGS === "1";
@@ -443,7 +444,7 @@ export async function buildDayCommunityBundle(day: string) {
 
 export async function buildDayBundle(day: string) {
   const currentUserStartedAt = Date.now();
-  const user = await getCurrentUser();
+  const user = await getCurrentUserWithin(DAY_BUNDLE_CURRENT_USER_TIMEOUT_MS);
 
   if (!user) {
     return getAnonymousDayBundle(day);

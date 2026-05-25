@@ -116,3 +116,24 @@ export async function getCurrentUser() {
 
   return request;
 }
+
+export async function getCurrentUserWithin(timeoutMs: number) {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return getCurrentUser();
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    return await Promise.race([
+      getCurrentUser(),
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => resolve(null), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
