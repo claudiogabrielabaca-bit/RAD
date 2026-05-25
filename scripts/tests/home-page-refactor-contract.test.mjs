@@ -12,6 +12,7 @@ const favoriteDayHook = fs.readFileSync("src/app/hooks/use-home-favorite-day.ts"
 const reviewDerivedStateHook = fs.readFileSync("src/app/hooks/use-home-review-derived-state.ts", "utf8");
 const highlightCarouselHook = fs.readFileSync("src/app/hooks/use-home-highlight-carousel.ts", "utf8");
 const reviewReportHook = fs.readFileSync("src/app/hooks/use-home-review-report.ts", "utf8");
+const suggestEventHook = fs.readFileSync("src/app/hooks/use-home-suggest-event.ts", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(homePage, /useHomeAuthState\(\{ router, pathname, searchParams \}\)/);
@@ -132,4 +133,22 @@ test("home page delegates review report state to a dedicated hook", () => {
   assert.match(reviewReportHook, /const reportReview = useCallback/);
   assert.match(reviewReportHook, /const submitReviewReport = useCallback/);
   assert.match(reviewReportHook, /fetch\("\/api\/review-report"/);
+});
+
+test("home page delegates suggest event state to a dedicated hook", () => {
+  assert.match(homePage, /useHomeSuggestEvent\(\{ day \}\)/);
+  assert.match(homePage, /onClick=\{openSuggestModal\}/);
+  assert.match(homePage, /onClick=\{closeSuggestModal\}/);
+  assert.doesNotMatch(homePage, /const \[showSuggestModal/);
+  assert.doesNotMatch(homePage, /const \[suggestEvent/);
+  assert.doesNotMatch(homePage, /const \[suggestDescription/);
+  assert.doesNotMatch(homePage, /const \[suggestSource/);
+  assert.doesNotMatch(homePage, /const \[suggestEmail/);
+  assert.doesNotMatch(homePage, /const \[suggestSending/);
+  assert.doesNotMatch(homePage, /async function submitSuggestion\(\)/);
+  assert.match(suggestEventHook, /export function useHomeSuggestEvent/);
+  assert.match(suggestEventHook, /const \[showSuggestModal, setShowSuggestModal\] = useState\(false\)/);
+  assert.match(suggestEventHook, /const \[suggestEvent, setSuggestEvent\] = useState\(""\)/);
+  assert.match(suggestEventHook, /const submitSuggestion = useCallback/);
+  assert.match(suggestEventHook, /fetch\("\/api\/suggest-event"/);
 });

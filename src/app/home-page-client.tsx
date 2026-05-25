@@ -9,6 +9,7 @@ import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
 import { useHomeReviewDerivedState } from "@/app/hooks/use-home-review-derived-state";
 import { useHomeHighlightCarousel } from "@/app/hooks/use-home-highlight-carousel";
 import { useHomeReviewReport } from "@/app/hooks/use-home-review-report";
+import { useHomeSuggestEvent } from "@/app/hooks/use-home-suggest-event";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -189,14 +190,6 @@ export default function Page({
     "helpful"
   );
 
-  const [showSuggestModal, setShowSuggestModal] = useState(false);
-  const [suggestEvent, setSuggestEvent] = useState("");
-  const [suggestDescription, setSuggestDescription] = useState("");
-  const [suggestSource, setSuggestSource] = useState("");
-  const [suggestEmail, setSuggestEmail] = useState("");
-  const [suggestSending, setSuggestSending] = useState(false);
-  const [suggestToast, setSuggestToast] = useState("");
-
   const [socialPostOpen, setSocialPostOpen] = useState(false);
 
   const [isDayTransitioning, setIsDayTransitioning] = useState(false);
@@ -324,6 +317,23 @@ export default function Page({
     setToast,
     showToast,
   });
+
+  const {
+    showSuggestModal,
+    suggestEvent,
+    suggestDescription,
+    suggestSource,
+    suggestEmail,
+    suggestSending,
+    suggestToast,
+    setSuggestEvent,
+    setSuggestDescription,
+    setSuggestSource,
+    setSuggestEmail,
+    openSuggestModal,
+    closeSuggestModal,
+    submitSuggestion,
+  } = useHomeSuggestEvent({ day });
 
   useHomeDayViewTracking({
     day,
@@ -1748,65 +1758,6 @@ export default function Page({
     }
   }
 
-  async function submitSuggestion() {
-    if (!suggestEvent.trim()) {
-      setSuggestToast("Write an event title.");
-      return;
-    }
-
-    if (!suggestDescription.trim()) {
-      setSuggestToast("Write a short description.");
-      return;
-    }
-
-    if (!suggestSource.trim()) {
-      setSuggestToast("Source is required.");
-      return;
-    }
-
-    setSuggestSending(true);
-    setSuggestToast("");
-
-    try {
-      const res = await fetch("/api/suggest-event", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          day,
-          event: suggestEvent.trim(),
-          description: suggestDescription.trim(),
-          source: suggestSource.trim(),
-          email: suggestEmail.trim(),
-          website: "",
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        setSuggestToast(json?.error ?? "Could not send suggestion.");
-        return;
-      }
-
-      setSuggestToast("Suggestion sent");
-      setSuggestEvent("");
-      setSuggestDescription("");
-      setSuggestSource("");
-      setSuggestEmail("");
-
-      setTimeout(() => {
-        setShowSuggestModal(false);
-        setSuggestToast("");
-      }, 900);
-    } catch {
-      setSuggestToast("Could not send suggestion.");
-    } finally {
-      setSuggestSending(false);
-    }
-  }
-
   return (
     <main className="min-h-screen bg-[#050505] text-[17px] text-zinc-100">
       <div className="mx-auto max-w-[1280px] px-8 py-12 xl:px-10">
@@ -2147,7 +2098,7 @@ export default function Page({
 
                         <button
                           type="button"
-                          onClick={() => setShowSuggestModal(true)}
+                          onClick={openSuggestModal}
                           className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/10 bg-white/[0.055] px-4 text-sm font-medium text-white transition hover:border-white/16 hover:bg-white/[0.085]"
                         >
                           <span
@@ -2284,7 +2235,7 @@ export default function Page({
 
               <button
                 type="button"
-                onClick={() => setShowSuggestModal(false)}
+                onClick={closeSuggestModal}
                 className="rounded-lg border border-white/10 px-3 py-1.5 text-sm text-zinc-300 transition hover:bg-white/5"
               >
                 Close
