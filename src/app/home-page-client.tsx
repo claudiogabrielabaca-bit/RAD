@@ -8,6 +8,7 @@ import { useHomeDeleteActions } from "@/app/hooks/use-home-delete-actions";
 import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
 import { useHomeReviewDerivedState } from "@/app/hooks/use-home-review-derived-state";
 import { useHomeHighlightCarousel } from "@/app/hooks/use-home-highlight-carousel";
+import { useHomeReviewReport } from "@/app/hooks/use-home-review-report";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -178,17 +179,6 @@ export default function Page({
   >({});
 
   const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
-  const [reportingReviewId, setReportingReviewId] = useState<string | null>(
-    null
-  );
-  const [reportReviewModalOpen, setReportReviewModalOpen] = useState(false);
-  const [reportReviewTargetId, setReportReviewTargetId] = useState<
-    string | null
-  >(null);
-  const [reportReviewReason, setReportReviewReason] = useState(
-    "Spam or abusive content"
-  );
-  const [reportReviewError, setReportReviewError] = useState("");
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
   const [replyTextByRating, setReplyTextByRating] = useState<
     Record<string, string>
@@ -314,6 +304,24 @@ export default function Page({
     setLoadingFavoriteDay,
     openAuthModal,
     requireVerifiedEmail,
+    showToast,
+  });
+
+  const {
+    reportingReviewId,
+    reportReviewModalOpen,
+    reportReviewReason,
+    reportReviewError,
+    setReportReviewReason,
+    reportReview,
+    closeReviewReportModal,
+    submitReviewReport,
+  } = useHomeReviewReport({
+    currentUser,
+    openAuthModal,
+    requireVerifiedEmail,
+    handleProtectedActionStatus,
+    setToast,
     showToast,
   });
 
@@ -1463,69 +1471,6 @@ export default function Page({
     }
   }
 
-  function reportReview(ratingId: string) {
-    if (!currentUser) {
-      openAuthModal("login");
-      return;
-    }
-
-    if (requireVerifiedEmail()) return;
-
-    setReportReviewTargetId(ratingId);
-    setReportReviewReason("Spam or abusive content");
-    setReportReviewError("");
-    setReportReviewModalOpen(true);
-  }
-
-  async function submitReviewReport() {
-    if (!reportReviewTargetId) return;
-
-    const reason = reportReviewReason.trim();
-
-    if (reason.length < 3) {
-      setReportReviewError("Report reason must be at least 3 characters.");
-      return;
-    }
-
-    setReportingReviewId(reportReviewTargetId);
-    setReportReviewError("");
-    setToast("");
-
-    try {
-      const res = await fetch("/api/review-report", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ratingId: reportReviewTargetId,
-          reason,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (handleProtectedActionStatus(res.status)) {
-        setReportReviewModalOpen(false);
-        return;
-      }
-
-      if (!res.ok) {
-        setReportReviewError(json?.error ?? "Could not report review.");
-        return;
-      }
-
-      setReportReviewModalOpen(false);
-      setReportReviewTargetId(null);
-      setReportReviewReason("Spam or abusive content");
-      showToast("Review reported.");
-    } catch {
-      setReportReviewError("Could not report review.");
-    } finally {
-      setReportingReviewId(null);
-    }
-  }
-
   async function toggleLike(ratingId: string) {
     if (!currentUser) {
       openAuthModal("login");
@@ -2420,12 +2365,7 @@ export default function Page({
         subtitle="Tell us why you are reporting this review."
         value={reportReviewReason}
         onChange={setReportReviewReason}
-        onClose={() => {
-          if (reportingReviewId) return;
-          setReportReviewModalOpen(false);
-          setReportReviewTargetId(null);
-          setReportReviewError("");
-        }}
+        onClose={closeReviewReportModal}
         onSubmit={submitReviewReport}
         submitting={!!reportingReviewId}
         error={reportReviewError}

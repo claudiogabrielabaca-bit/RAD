@@ -11,6 +11,7 @@ const dayViewTrackingHook = fs.readFileSync("src/app/hooks/use-home-day-view-tra
 const favoriteDayHook = fs.readFileSync("src/app/hooks/use-home-favorite-day.ts", "utf8");
 const reviewDerivedStateHook = fs.readFileSync("src/app/hooks/use-home-review-derived-state.ts", "utf8");
 const highlightCarouselHook = fs.readFileSync("src/app/hooks/use-home-highlight-carousel.ts", "utf8");
+const reviewReportHook = fs.readFileSync("src/app/hooks/use-home-review-report.ts", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(homePage, /useHomeAuthState\(\{ router, pathname, searchParams \}\)/);
@@ -114,4 +115,21 @@ test("home page delegates highlight carousel state to a dedicated hook", () => {
   assert.match(highlightCarouselHook, /const transitionToHighlight = useCallback/);
   assert.match(highlightCarouselHook, /const goToPrevHighlight = useCallback/);
   assert.match(highlightCarouselHook, /const goToNextHighlight = useCallback/);
+});
+
+test("home page delegates review report state to a dedicated hook", () => {
+  assert.match(homePage, /useHomeReviewReport\(\{/);
+  assert.match(homePage, /onClose=\{closeReviewReportModal\}/);
+  assert.doesNotMatch(homePage, /setReportingReviewId/);
+  assert.doesNotMatch(homePage, /setReportReviewModalOpen/);
+  assert.doesNotMatch(homePage, /setReportReviewTargetId/);
+  assert.doesNotMatch(homePage, /setReportReviewError/);
+  assert.doesNotMatch(homePage, /function reportReview\(/);
+  assert.doesNotMatch(homePage, /async function submitReviewReport\(\)/);
+  assert.match(reviewReportHook, /export function useHomeReviewReport/);
+  assert.match(reviewReportHook, /const \[reportingReviewId, setReportingReviewId\]/);
+  assert.match(reviewReportHook, /const \[reportReviewModalOpen, setReportReviewModalOpen\]/);
+  assert.match(reviewReportHook, /const reportReview = useCallback/);
+  assert.match(reviewReportHook, /const submitReviewReport = useCallback/);
+  assert.match(reviewReportHook, /fetch\("\/api\/review-report"/);
 });
