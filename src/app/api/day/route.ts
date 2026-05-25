@@ -1,208 +1,58 @@
-import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/app/lib/current-user";
-import { getAnonLabel } from "@/app/lib/anon-label";
-import type { ReplyItem } from "@/app/lib/rad-types";
+import { buildDayCommunityBundle } from "@/app/lib/day-bundle";
 import { isValidDayString } from "@/app/lib/day";
+import {
+  buildRateLimitKey,
+  consumeRateLimit,
+  createRateLimitResponse,
+} from "@/app/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type CurrentUser = Awaited<ReturnType<typeof getCurrentUser>>;
-
-type ReplyRecord = {
-  id: string;
-  ratingId: string;
-  anonId: string | null;
-  userId: string | null;
-  parentReplyId: string | null;
-  text: string;
-  createdAt: Date;
-  user: {
-    username: string;
-  } | null;
-  likes: { id: string; userId: string | null }[];
-  reports: { id: string; userId: string | null }[];
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store",
 };
 
-type RatingRecord = {
-  id: string;
-  stars: number;
-  review: string;
-  createdAt: Date;
-  anonId: string | null;
-  userId: string | null;
-  user: {
-    username: string;
-  } | null;
-  likes: { id: string; userId: string | null }[];
-  replies: ReplyRecord[];
-};
-
-type ReviewItem = {
-  id: string;
-  stars: number;
-  review: string;
-  createdAt: string;
-  likesCount: number;
-  likedByMe: boolean;
-  isMine: boolean;
-  authorLabel: string;
-  replies: ReplyItem[];
-};
-
-function buildReplyTree(replies: ReplyRecord[], user: CurrentUser): ReplyItem[] {
-  const nodes: ReplyItem[] = replies.map((reply: ReplyRecord) => ({
-    id: reply.id,
-    ratingId: reply.ratingId,
-    parentReplyId: reply.parentReplyId,
-    text: reply.text,
-    createdAt: reply.createdAt.toISOString(),
-    isMine: user ? reply.userId === user.id : false,
-    authorLabel: reply.user?.username
-      ? `@${reply.user.username}`
-      : reply.anonId
-        ? getAnonLabel(reply.anonId)
-        : "User",
-    likesCount: reply.likes.length,
-    likedByMe: user
-      ? reply.likes.some((like: { id: string; userId: string | null }) => like.userId === user.id)
-      : false,
-    reportedByMe: user
-      ? reply.reports.some((report: { id: string; userId: string | null }) => report.userId === user.id)
-      : false,
-    replies: [] as ReplyItem[],
-  }));
-
-  const byId = new Map<string, ReplyItem>(nodes.map((node: ReplyItem) => [node.id, node]));
-  const roots: ReplyItem[] = [];
-
-  for (const node of nodes) {
-    if (node.parentReplyId) {
-      const parent = byId.get(node.parentReplyId);
-
-      if (parent) {
-        parent.replies.push(node);
-        continue;
-      }
-    }
-
-    roots.push(node);
-  }
-
-  return roots;
-}
+const LEGACY_DAY_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
+const LEGACY_DAY_RATE_LIMIT_LIMIT = 120;
 
 export async function GET(req: Request) {
   try {
-    const user = await getCurrentUser();
     const { searchParams } = new URL(req.url);
     const day = searchParams.get("day");
 
     if (!isValidDayString(day)) {
-      return NextResponse.json({ error: "Invalid day" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid day" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
-    const [ratings, stats]: [RatingRecord[], { views: number } | null] = await Promise.all([
-      prisma.rating.findMany({
-        where: { day },
-        orderBy: { createdAt: "desc" },
-        include: {
-          likes: {
-            select: {
-              id: true,
-              userId: true,
-            },
-          },
-          replies: {
-            orderBy: {
-              createdAt: "asc",
-            },
-            include: {
-              likes: {
-                select: {
-                  id: true,
-                  userId: true,
-                },
-              },
-              reports: {
-                select: {
-                  id: true,
-                  userId: true,
-                },
-              },
-              user: {
-                select: {
-                  username: true,
-                },
-              },
-            },
-          },
-          user: {
-            select: {
-              username: true,
-            },
-          },
-        },
-      }),
-      prisma.dayStats.findUnique({
-        where: { day },
-        select: { views: true },
-      }),
-    ]);
+    const rateLimit = await consumeRateLimit({
+      action: "day-legacy",
+      key: buildRateLimitKey(req),
+      limit: LEGACY_DAY_RATE_LIMIT_LIMIT,
+      windowMs: LEGACY_DAY_RATE_LIMIT_WINDOW_MS,
+    });
 
-    const count = ratings.length;
-    const avg =
-      count === 0
-        ? 0
-        : ratings.reduce(
-            (acc: number, r: RatingRecord) => acc + r.stars,
-            0
-          ) / count;
+    if (!rateLimit.ok) {
+      return createRateLimitResponse(
+        rateLimit.retryAfterSec,
+        "Too many day requests. Please try again later."
+      );
+    }
 
-    const reviews: ReviewItem[] = ratings
-      .map((r: RatingRecord) => ({
-        id: r.id,
-        stars: r.stars,
-        review: r.review,
-        createdAt: r.createdAt.toISOString(),
-        likesCount: r.likes.length,
-        likedByMe: user
-          ? r.likes.some((like: { id: string; userId: string | null }) => like.userId === user.id)
-          : false,
-        isMine: user ? r.userId === user.id : false,
-        authorLabel: r.user?.username
-          ? `@${r.user.username}`
-          : r.anonId
-            ? getAnonLabel(r.anonId)
-            : "User",
-        replies: buildReplyTree(r.replies, user),
-      }))
-      .sort((a: ReviewItem, b: ReviewItem) => {
-        if (a.isMine && !b.isMine) return -1;
-        if (!a.isMine && b.isMine) return 1;
+    const payload = await buildDayCommunityBundle(day);
 
-        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return bTime - aTime;
-      });
-
-    return NextResponse.json(
-      {
-        day,
-        avg,
-        count,
-        views: stats?.views ?? 0,
-        reviews,
-      },
-      {
-        headers: {
-          "Cache-Control": "no-store",
-        },
-      }
-    );
+    return NextResponse.json(payload.dayData, {
+      headers: NO_STORE_HEADERS,
+    });
   } catch (error) {
     console.error("day GET error:", error);
-    return NextResponse.json({ error: "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Server error" },
+      { status: 500, headers: NO_STORE_HEADERS }
+    );
   }
 }

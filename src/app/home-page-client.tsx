@@ -850,22 +850,23 @@ export default function Page({
     });
   }, [searchParams, day, pathname, router, loadingDay, data]);
 
-  async function loadDay(d: string) {
+  async function refreshDayCommunity(d: string) {
     const requestId = ++dayRequestRef.current;
     setLoadingDay(true);
     setToast("");
 
     try {
-      const res = await fetch(`/api/day?day=${encodeURIComponent(d)}`, {
-        cache: "no-store",
+      const payload = await navigationActionsRef.current.fetchDayBundle(d, {
+        communityOnly: true,
       });
 
-      if (!res.ok) throw new Error("Failed to load day");
-
-      const json = (await res.json()) as DayResponse;
-
       if (requestId !== dayRequestRef.current) return;
-      setData(json);
+
+      setData(payload.dayData);
+
+      if (typeof payload.isFavoriteDay === "boolean") {
+        setIsFavoriteDay(payload.isFavoriteDay);
+      }
     } catch {
       if (requestId !== dayRequestRef.current) return;
       showToast("Error cargando el día.");
@@ -1486,7 +1487,7 @@ export default function Page({
           return withUpdatedReviews(prev, nextReviews);
         });
       } else {
-        await loadDay(day);
+        await refreshDayCommunity(day);
       }
 
       showToast("Review saved.");
@@ -2571,7 +2572,7 @@ export default function Page({
         onAuthSuccess={(user) => {
           setCurrentUser(user ?? null);
           void refreshFavoriteDayStatus(day);
-          loadDay(day);
+          void refreshDayCommunity(day);
         }}
       />
     </main>
