@@ -1,6 +1,7 @@
 "use client";
 
 import { useHomeAuthState } from "@/app/hooks/use-home-auth-state";
+import { useHomeDayBackHistory } from "@/app/hooks/use-home-day-back-history";
 import { useHomeDeleteActions } from "@/app/hooks/use-home-delete-actions";
 import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
@@ -36,15 +37,12 @@ import type {
   SurpriseResponse,
 } from "@/app/lib/rad-types";
 import {
-  DAY_BACK_HISTORY_MAX,
   SURPRISE_HISTORY_MAX,
   getRecentSurpriseHistory,
   rememberSurpriseDay,
   getTodayHistoryMonthDay,
   rememberTodayHistoryDay,
   clearTodayHistory,
-  getStoredDayBackHistory,
-  setStoredDayBackHistory,
   buildRandomRequestUrl,
   buildTodayInHistoryRequestUrl,
   getDayWithOffset,
@@ -125,9 +123,15 @@ export default function Page({
   const highlightTransitionRequestRef = useRef(0);
   const pendingHighlightIndexRef = useRef(0);
 
-  const dayBackHistoryRef = useRef<string[]>([]);
-  const isGoingBackRef = useRef(false);
   const currentVisibleDayRef = useRef(initialBundle?.day ?? "");
+
+  const {
+    dayBackHistoryRef,
+    isGoingBackRef,
+    canGoBack,
+    pushCurrentDayToBackHistory,
+    goBackToLastViewed,
+  } = useHomeDayBackHistory();
 
   const initialHighlightItems = initialBundle?.highlightData?.highlights?.length
     ? initialBundle.highlightData.highlights
@@ -139,8 +143,6 @@ export default function Page({
   const [hasPickedInitialDay, setHasPickedInitialDay] = useState(
     !!initialBundle
   );
-  const [canGoBack, setCanGoBack] = useState(false);
-
   const [selectedYear, setSelectedYear] = useState(
     initialBundle?.day?.slice(0, 4) ?? today.slice(0, 4)
   );
@@ -233,46 +235,6 @@ export default function Page({
   const navigationDay = isValidDayString(day) ? day : today;
   const visibleDayLabel =
     hasPickedInitialDay && isValidDayString(day) ? day : "Finding a day...";
-
-
-  function syncDayBackHistory(nextHistory: string[]) {
-    const safe = nextHistory
-      .filter((item) => isValidDayString(item))
-      .slice(-DAY_BACK_HISTORY_MAX);
-
-    dayBackHistoryRef.current = safe;
-    setCanGoBack(safe.length > 0);
-    setStoredDayBackHistory(safe);
-  }
-
-  function pushCurrentDayToBackHistory(currentDay: string, nextDay: string) {
-    if (!isValidDayString(currentDay) || !isValidDayString(nextDay)) return;
-    if (currentDay === nextDay) return;
-
-    const currentHistory = [...dayBackHistoryRef.current];
-    const lastItem = currentHistory[currentHistory.length - 1];
-
-    if (lastItem === currentDay) return;
-
-    syncDayBackHistory([...currentHistory, currentDay]);
-  }
-
-  async function goBackToLastViewed() {
-    const currentHistory = [...dayBackHistoryRef.current];
-    const previousDay = currentHistory[currentHistory.length - 1];
-
-    if (!previousDay) return;
-
-    syncDayBackHistory(currentHistory.slice(0, -1));
-
-    isGoingBackRef.current = true;
-
-    try {
-      await openDay(previousDay, { scrollToHighlight: false });
-    } finally {
-      isGoingBackRef.current = false;
-    }
-  }
 
 
   const {
@@ -562,12 +524,6 @@ export default function Page({
   useEffect(() => {
     refreshCurrentUser();
   }, [refreshCurrentUser]);
-
-  useEffect(() => {
-    const storedHistory = getStoredDayBackHistory();
-    dayBackHistoryRef.current = storedHistory;
-    setCanGoBack(storedHistory.length > 0);
-  }, []);
 
   const resetUserScopedNavigationState = useCallback(() => {
     dayBundleCacheRef.current.clear();
@@ -2238,7 +2194,9 @@ export default function Page({
 
                       <button
                         type="button"
-                        onClick={goBackToLastViewed}
+                        onClick={() => {
+                          void goBackToLastViewed(openDay);
+                        }}
                         disabled={!canGoBack}
                         className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.045] px-4 py-2.5 text-sm font-medium text-zinc-100 transition hover:border-white/16 hover:bg-white/[0.075] disabled:cursor-not-allowed disabled:opacity-40"
                       >

@@ -6,6 +6,7 @@ const homePage = fs.readFileSync("src/app/home-page-client.tsx", "utf8");
 const authHook = fs.readFileSync("src/app/hooks/use-home-auth-state.ts", "utf8");
 const reviewState = fs.readFileSync("src/app/lib/home-page-review-state.ts", "utf8");
 const constants = fs.readFileSync("src/app/lib/home-page-client-constants.ts", "utf8");
+const dayBackHistoryHook = fs.readFileSync("src/app/hooks/use-home-day-back-history.ts", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(homePage, /useHomeAuthState\(\{ router, pathname, searchParams \}\)/);
@@ -32,4 +33,20 @@ test("home page uses shared constants instead of local magic numbers", () => {
   assert.doesNotMatch(homePage, /const REVIEW_MAX_LENGTH = 280/);
   assert.match(constants, /export const REVIEW_MAX_LENGTH = 280/);
   assert.match(constants, /export const HIGHLIGHT_SCROLL_OFFSET = 365/);
+});
+
+
+test("home page delegates day back history state to a dedicated hook", () => {
+  assert.match(homePage, /useHomeDayBackHistory\(\)/);
+  assert.match(homePage, /void goBackToLastViewed\(openDay\);/);
+  assert.doesNotMatch(homePage, /function syncDayBackHistory/);
+  assert.doesNotMatch(homePage, /function pushCurrentDayToBackHistory/);
+  assert.doesNotMatch(homePage, /async function goBackToLastViewed/);
+  assert.doesNotMatch(homePage, /getStoredDayBackHistory/);
+  assert.doesNotMatch(homePage, /setStoredDayBackHistory/);
+  assert.doesNotMatch(homePage, /DAY_BACK_HISTORY_MAX/);
+  assert.match(dayBackHistoryHook, /export function useHomeDayBackHistory/);
+  assert.match(dayBackHistoryHook, /getStoredDayBackHistory/);
+  assert.match(dayBackHistoryHook, /setStoredDayBackHistory/);
+  assert.match(dayBackHistoryHook, /DAY_BACK_HISTORY_MAX/);
 });
