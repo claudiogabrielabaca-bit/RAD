@@ -16,11 +16,12 @@ test("today in history route does not shrink the persisted pool during reads", (
   assert.match(route, /read-route-does-not-mutate-pool/);
 });
 
-test("today in history bundle validation can inspect more than one live candidate", () => {
+test("today in history bundle validation stays cache-first and bounded", () => {
   const route = read("src/app/api/today-valid-day/route.ts");
 
   assert.match(route, /const MAX_BUNDLE_ATTEMPTS = 12/);
-  assert.match(route, /const MAX_LIVE_HIGHLIGHT_CHECKS = MAX_BUNDLE_ATTEMPTS/);
+  assert.match(route, /const MAX_LIVE_HIGHLIGHT_CHECKS = 2/);
+  assert.doesNotMatch(route, /const MAX_LIVE_HIGHLIGHT_CHECKS = MAX_BUNDLE_ATTEMPTS/);
   assert.doesNotMatch(route, /const MAX_LIVE_HIGHLIGHT_CHECKS = 1/);
 });
 

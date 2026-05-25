@@ -21,7 +21,7 @@ const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date."
 const MAX_BUNDLE_ATTEMPTS = 12;
 const MAX_EXCLUDE_DAYS = 1000;
 const MAX_EXCLUDE_DAYS_QUERY_LENGTH = 20000;
-const MAX_LIVE_HIGHLIGHT_CHECKS = MAX_BUNDLE_ATTEMPTS;
+const MAX_LIVE_HIGHLIGHT_CHECKS = 2;
 
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",

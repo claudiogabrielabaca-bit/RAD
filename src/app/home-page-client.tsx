@@ -1020,7 +1020,7 @@ export default function Page({
 
       for (let attempt = 0; attempt < 6; attempt += 1) {
         const { res, json } = await requestTodayHistory(
-          FORCE_FRESH_MODE || attempt > 0
+          FORCE_FRESH_MODE
         );
 
         if (transitionIdRef.current !== transitionId) return;
