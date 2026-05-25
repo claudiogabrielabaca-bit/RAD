@@ -6,6 +6,7 @@ import { useHomeFavoriteDay } from "@/app/hooks/use-home-favorite-day";
 import { useHomeDayViewTracking } from "@/app/hooks/use-home-day-view-tracking";
 import { useHomeDeleteActions } from "@/app/hooks/use-home-delete-actions";
 import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
+import { useHomeReviewDerivedState } from "@/app/hooks/use-home-review-derived-state";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -27,7 +28,6 @@ import {
   getDaysInMonth,
   formatDisplayDate,
   formatCompactViews,
-  hasReviewText,
   isValidDayString,
   formatMonthDayLabel,
 } from "@/app/lib/home-page-utils";
@@ -1414,47 +1414,14 @@ export default function Page({
   const shownStars = hoverStars || stars;
   const activeBadges = getHighlightBadges(highlight);
 
-  const allReviews = useMemo(() => data?.reviews ?? [], [data?.reviews]);
-
-  const myReview = useMemo(() => allReviews.find((r) => r.isMine), [allReviews]);
-
-  useEffect(() => {
-    if (!myReview) {
-      setStars(0);
-      setHoverStars(0);
-      setReview("");
-      return;
-    }
-
-    setStars(myReview.stars);
-    setHoverStars(0);
-    setReview(myReview.review);
-  }, [myReview]);
-
-  const otherReviews = useMemo(
-    () => allReviews.filter((r) => !r.isMine),
-    [allReviews]
-  );
-
-  const sortedOtherReviews = useMemo(() => {
-    return [...otherReviews].sort((a, b) => {
-      if (reviewsSort === "helpful") {
-        if (b.likesCount !== a.likesCount) return b.likesCount - a.likesCount;
-
-        const aHasText = hasReviewText(a.review) ? 1 : 0;
-        const bHasText = hasReviewText(b.review) ? 1 : 0;
-        if (bHasText !== aHasText) return bHasText - aHasText;
-
-        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return bTime - aTime;
-      }
-
-      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return bTime - aTime;
+  const { allReviews, myReview, otherReviews, sortedOtherReviews } =
+    useHomeReviewDerivedState({
+      data,
+      reviewsSort,
+      setStars,
+      setHoverStars,
+      setReview,
     });
-  }, [otherReviews, reviewsSort]);
 
   async function submit() {
     if (!currentUser) {

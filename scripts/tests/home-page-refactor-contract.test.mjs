@@ -9,6 +9,7 @@ const constants = fs.readFileSync("src/app/lib/home-page-client-constants.ts", "
 const dayBackHistoryHook = fs.readFileSync("src/app/hooks/use-home-day-back-history.ts", "utf8");
 const dayViewTrackingHook = fs.readFileSync("src/app/hooks/use-home-day-view-tracking.ts", "utf8");
 const favoriteDayHook = fs.readFileSync("src/app/hooks/use-home-favorite-day.ts", "utf8");
+const reviewDerivedStateHook = fs.readFileSync("src/app/hooks/use-home-review-derived-state.ts", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(homePage, /useHomeAuthState\(\{ router, pathname, searchParams \}\)/);
@@ -81,4 +82,17 @@ test("home page delegates day view tracking to a dedicated hook", () => {
   assert.match(dayViewTrackingHook, /DAY_VIEW_TRACKING_DELAY_MS/);
   assert.match(dayViewTrackingHook, /navigator\.sendBeacon/);
   assert.match(dayViewTrackingHook, /keepalive: true/);
+});
+
+test("home page delegates review derived state and sorting to a dedicated hook", () => {
+  assert.match(homePage, /useHomeReviewDerivedState\(\{/);
+  assert.match(homePage, /const \{ allReviews, myReview, otherReviews, sortedOtherReviews \} =/);
+  assert.doesNotMatch(homePage, /const allReviews = useMemo\(\(\) => data\?\.reviews \?\? \[\]/);
+  assert.doesNotMatch(homePage, /const sortedOtherReviews = useMemo\(\(\) => \{/);
+  assert.doesNotMatch(homePage, /hasReviewText/);
+  assert.match(reviewDerivedStateHook, /export function useHomeReviewDerivedState/);
+  assert.match(reviewDerivedStateHook, /const allReviews = useMemo/);
+  assert.match(reviewDerivedStateHook, /const myReview = useMemo/);
+  assert.match(reviewDerivedStateHook, /const sortedOtherReviews = useMemo/);
+  assert.match(reviewDerivedStateHook, /hasReviewText/);
 });
