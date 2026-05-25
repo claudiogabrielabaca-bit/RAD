@@ -2,68 +2,138 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import type {
+  AdminRecentReviewItem,
+  AdminReportItem,
+  AdminReportStatus,
+  AdminStatsPayload,
+} from "@/app/lib/admin-control-room";
 
-type AdminReport = {
-  id: string;
-  ratingId: string;
-  reason: string;
-  status: "pending" | "resolved" | "ignored";
-  createdAt: string;
-  updatedAt: string;
-  reportAuthorLabel: string;
-  rating: {
-    id: string;
-    day: string;
-    stars: number;
-    review: string;
-    authorLabel: string;
-    createdAt: string;
-  } | null;
-};
+type StatusFilter = "all" | AdminReportStatus;
 
-type AdminStats = {
-  totalReports: number;
-  pendingReports: number;
-  resolvedReports: number;
-  ignoredReports: number;
-  totalUsers: number;
-  totalReviews: number;
-  reviewsToday: number;
-  reportsToday: number;
-};
+const emptyStats: AdminStatsPayload = {
+  generatedAt: "",
 
-type RecentReview = {
-  id: string;
-  day: string;
-  stars: number;
-  review: string;
-  authorLabel: string;
-  createdAt: string;
-  reportsCount: number;
-  pendingReportsCount: number;
-  repliesCount: number;
-  likesCount: number;
-};
+  usersCount: 0,
+  reviewsCount: 0,
+  repliesCount: 0,
 
-type StatusFilter = "all" | "pending" | "resolved" | "ignored";
+  reviewReportsCount: 0,
+  replyReportsCount: 0,
+  totalReportsCount: 0,
 
-const emptyStats: AdminStats = {
+  pendingReviewReportsCount: 0,
+  pendingReplyReportsCount: 0,
+  totalPendingReportsCount: 0,
+
+  resolvedReviewReportsCount: 0,
+  resolvedReplyReportsCount: 0,
+  totalResolvedReportsCount: 0,
+
+  dismissedReviewReportsCount: 0,
+  dismissedReplyReportsCount: 0,
+  totalDismissedReportsCount: 0,
+
+  reviewsToday: 0,
+  reportsToday: 0,
+
+  totalUsers: 0,
+  totalReviews: 0,
+  totalReplies: 0,
   totalReports: 0,
   pendingReports: 0,
   resolvedReports: 0,
+  dismissedReports: 0,
   ignoredReports: 0,
-  totalUsers: 0,
-  totalReviews: 0,
-  reviewsToday: 0,
-  reportsToday: 0,
+  reportsCount: 0,
+  pendingReportsCount: 0,
+  resolvedReportsCount: 0,
 };
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function readReportsPayload(value: unknown): AdminReportItem[] {
+  if (!isObject(value)) return [];
+
+  const reports = Array.isArray(value.reports)
+    ? value.reports
+    : Array.isArray(value.items)
+      ? value.items
+      : [];
+
+  return reports as AdminReportItem[];
+}
+
+function readReviewsPayload(value: unknown): AdminRecentReviewItem[] {
+  if (!isObject(value)) return [];
+
+  const reviews = Array.isArray(value.reviews)
+    ? value.reviews
+    : Array.isArray(value.items)
+      ? value.items
+      : [];
+
+  return reviews as AdminRecentReviewItem[];
+}
+
+function readStatsPayload(value: unknown): AdminStatsPayload {
+  if (!isObject(value)) return emptyStats;
+
+  const maybeStats = isObject(value.stats) ? value.stats : value;
+
+  return {
+    ...emptyStats,
+    ...maybeStats,
+  } as AdminStatsPayload;
+}
+
+function formatDateTime(value: string) {
+  if (!value) return "-";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleString();
+}
+
+function statusLabel(status: AdminReportStatus) {
+  if (status === "dismissed") return "Dismissed";
+  return status[0].toUpperCase() + status.slice(1);
+}
+
+function statusClassName(status: AdminReportStatus) {
+  if (status === "pending") {
+    return "border-amber-400/20 bg-amber-500/10 text-amber-300";
+  }
+
+  if (status === "resolved") {
+    return "border-emerald-400/20 bg-emerald-500/10 text-emerald-300";
+  }
+
+  return "border-zinc-400/20 bg-zinc-500/10 text-zinc-300";
+}
+
+function reportTypeClassName(reportType: AdminReportItem["reportType"]) {
+  if (reportType === "reply") {
+    return "border-violet-400/20 bg-violet-500/10 text-violet-300";
+  }
+
+  return "border-sky-400/20 bg-sky-500/10 text-sky-300";
+}
+
+function normalizeDisplayText(value: string | null) {
+  const text = value?.trim();
+  return text ? text : "No written text";
+}
 
 export default function RadControlRoomPage() {
   const router = useRouter();
 
-  const [reports, setReports] = useState<AdminReport[]>([]);
-  const [recentReviews, setRecentReviews] = useState<RecentReview[]>([]);
-  const [stats, setStats] = useState<AdminStats>(emptyStats);
+  const [reports, setReports] = useState<AdminReportItem[]>([]);
+  const [recentReviews, setRecentReviews] = useState<AdminRecentReviewItem[]>([]);
+  const [stats, setStats] = useState<AdminStatsPayload>(emptyStats);
 
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
@@ -99,23 +169,36 @@ export default function RadControlRoomPage() {
       ]);
 
       if (!reportsRes.ok) {
-        setToast(reportsJson?.error ?? "Could not load reports");
+        setToast(
+          isObject(reportsJson) && typeof reportsJson.error === "string"
+            ? reportsJson.error
+            : "Could not load reports"
+        );
         return;
       }
 
       if (!statsRes.ok) {
-        setToast(statsJson?.error ?? "Could not load stats");
+        setToast(
+          isObject(statsJson) && typeof statsJson.error === "string"
+            ? statsJson.error
+            : "Could not load stats"
+        );
         return;
       }
 
       if (!recentReviewsRes.ok) {
-        setToast(recentReviewsJson?.error ?? "Could not load recent reviews");
+        setToast(
+          isObject(recentReviewsJson) &&
+            typeof recentReviewsJson.error === "string"
+            ? recentReviewsJson.error
+            : "Could not load recent reviews"
+        );
         return;
       }
 
-      setReports(reportsJson?.reports ?? []);
-      setStats(statsJson?.stats ?? emptyStats);
-      setRecentReviews(recentReviewsJson?.reviews ?? []);
+      setReports(readReportsPayload(reportsJson));
+      setStats(readStatsPayload(statsJson));
+      setRecentReviews(readReviewsPayload(recentReviewsJson));
     } catch {
       setToast("Could not load admin data");
     } finally {
@@ -124,10 +207,10 @@ export default function RadControlRoomPage() {
   }, [router]);
 
   async function updateReportStatus(
-    reportId: string,
-    status: "pending" | "resolved" | "ignored"
+    report: AdminReportItem,
+    status: AdminReportStatus
   ) {
-    const key = `report:${reportId}:${status}`;
+    const key = `report:${report.id}:${status}`;
     setActionKey(key);
     setToast("");
 
@@ -137,18 +220,26 @@ export default function RadControlRoomPage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ reportId, status }),
+        body: JSON.stringify({
+          reportId: report.id,
+          reportType: report.reportType,
+          status,
+        }),
       });
 
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setToast(json?.error ?? "Could not update report");
+        setToast(
+          isObject(json) && typeof json.error === "string"
+            ? json.error
+            : "Could not update report"
+        );
         return;
       }
 
       await loadAll();
-      setToast(`Report marked as ${status}`);
+      setToast(`Report marked as ${statusLabel(status).toLowerCase()}`);
     } catch {
       setToast("Could not update report");
     } finally {
@@ -179,7 +270,11 @@ export default function RadControlRoomPage() {
       const json = await res.json().catch(() => null);
 
       if (!res.ok) {
-        setToast(json?.error ?? "Could not delete review");
+        setToast(
+          isObject(json) && typeof json.error === "string"
+            ? json.error
+            : "Could not delete review"
+        );
         return;
       }
 
@@ -210,13 +305,19 @@ export default function RadControlRoomPage() {
 
       const haystack = [
         report.id,
+        report.reportType,
         report.ratingId,
+        report.replyId ?? "",
         report.reason,
         report.status,
-        report.reportAuthorLabel,
-        report.rating?.day ?? "",
-        report.rating?.authorLabel ?? "",
-        report.rating?.review ?? "",
+        report.day,
+        report.reviewText ?? "",
+        report.replyText ?? "",
+        report.reportedBy ?? "",
+        report.reportedByEmail ?? "",
+        report.targetAuthor ?? "",
+        report.targetAuthorEmail ?? "",
+        report.parentReviewAuthor ?? "",
       ]
         .join(" ")
         .toLowerCase();
@@ -256,6 +357,7 @@ export default function RadControlRoomPage() {
       | "text-emerald-300"
       | "text-zinc-300"
       | "text-sky-300"
+      | "text-violet-300"
   ) {
     return (
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -274,7 +376,7 @@ export default function RadControlRoomPage() {
           <div>
             <h1 className="text-3xl font-semibold">RAD Control Room</h1>
             <p className="mt-1 text-sm text-zinc-400">
-              Review moderation, reports and live overview
+              Review moderation, reply reports and live overview
             </p>
           </div>
 
@@ -298,14 +400,18 @@ export default function RadControlRoomPage() {
         </div>
 
         <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          {statCard("Total reports", stats.totalReports, "text-white")}
-          {statCard("Pending reports", stats.pendingReports, "text-amber-300")}
-          {statCard("Total users", stats.totalUsers, "text-sky-300")}
-          {statCard("Total reviews", stats.totalReviews, "text-emerald-300")}
+          {statCard("Total reports", stats.totalReportsCount, "text-white")}
+          {statCard(
+            "Pending reports",
+            stats.totalPendingReportsCount,
+            "text-amber-300"
+          )}
+          {statCard("Resolved", stats.totalResolvedReportsCount, "text-emerald-300")}
+          {statCard("Dismissed", stats.totalDismissedReportsCount, "text-zinc-300")}
+          {statCard("Total users", stats.usersCount, "text-sky-300")}
+          {statCard("Total reviews", stats.reviewsCount, "text-emerald-300")}
+          {statCard("Replies", stats.repliesCount, "text-violet-300")}
           {statCard("Reports today", stats.reportsToday, "text-zinc-300")}
-          {statCard("Reviews today", stats.reviewsToday, "text-zinc-300")}
-          {statCard("Resolved", stats.resolvedReports, "text-emerald-300")}
-          {statCard("Ignored", stats.ignoredReports, "text-zinc-300")}
         </div>
 
         {toast ? (
@@ -356,15 +462,13 @@ export default function RadControlRoomPage() {
                         {review.stars}/5
                       </span>
                       <span className="text-xs text-zinc-500">
-                        {new Date(review.createdAt).toLocaleString()}
+                        {formatDateTime(review.createdAt)}
                       </span>
                     </div>
 
                     <div className="mt-3 text-sm">
-                      <div>
-                        <span className="text-zinc-400">Author:</span>{" "}
-                        <span className="text-white">{review.authorLabel}</span>
-                      </div>
+                      <span className="text-zinc-400">Author:</span>{" "}
+                      <span className="text-white">{review.authorLabel}</span>
                     </div>
 
                     <div className="mt-3 rounded-xl border border-white/10 bg-[#0d1420] p-4 text-sm text-zinc-200">
@@ -409,7 +513,7 @@ export default function RadControlRoomPage() {
             <div>
               <h2 className="text-xl font-semibold text-white">Reports</h2>
               <p className="mt-1 text-sm text-zinc-400">
-                Moderation queue with filters and review context
+                Moderation queue for reviews and replies
               </p>
             </div>
 
@@ -422,7 +526,7 @@ export default function RadControlRoomPage() {
           </div>
 
           <div className="mb-5 flex flex-wrap items-center gap-2">
-            {(["all", "pending", "resolved", "ignored"] as const).map(
+            {(["all", "pending", "resolved", "dismissed"] as const).map(
               (status) => (
                 <button
                   key={status}
@@ -434,7 +538,7 @@ export default function RadControlRoomPage() {
                       : "bg-black/20 text-zinc-300 hover:bg-black/30"
                   }`}
                 >
-                  {status[0].toUpperCase() + status.slice(1)}
+                  {status === "all" ? "All" : statusLabel(status)}
                 </button>
               )
             )}
@@ -449,36 +553,44 @@ export default function RadControlRoomPage() {
           ) : (
             <div className="space-y-4">
               {filteredReports.map((report) => {
-                const deleteKey = report.rating ? `delete:${report.rating.id}` : "";
+                const deleteKey = `delete:${report.ratingId}`;
                 const isDeleting = actionKey === deleteKey;
                 const isResolving = actionKey === `report:${report.id}:resolved`;
-                const isIgnoring = actionKey === `report:${report.id}:ignored`;
+                const isDismissing = actionKey === `report:${report.id}:dismissed`;
                 const isPending = actionKey === `report:${report.id}:pending`;
+                const reportedText =
+                  report.reportType === "reply"
+                    ? normalizeDisplayText(report.replyText)
+                    : normalizeDisplayText(report.reviewText);
 
                 return (
                   <div
-                    key={report.id}
+                    key={`${report.reportType}:${report.id}`}
                     className="rounded-2xl border border-white/10 bg-black/20 p-5"
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <span
-                        className={`rounded-md border px-2 py-1 text-xs ${
-                          report.status === "pending"
-                            ? "border-amber-400/20 bg-amber-500/10 text-amber-300"
-                            : report.status === "resolved"
-                            ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-300"
-                            : "border-zinc-400/20 bg-zinc-500/10 text-zinc-300"
-                        }`}
+                        className={`rounded-md border px-2 py-1 text-xs ${statusClassName(
+                          report.status
+                        )}`}
                       >
-                        {report.status}
+                        {statusLabel(report.status)}
+                      </span>
+
+                      <span
+                        className={`rounded-md border px-2 py-1 text-xs ${reportTypeClassName(
+                          report.reportType
+                        )}`}
+                      >
+                        {report.reportType === "reply" ? "Reply" : "Review"}
                       </span>
 
                       <span className="text-xs text-zinc-400">
-                        Reported: {new Date(report.createdAt).toLocaleString()}
+                        Reported: {formatDateTime(report.createdAt)}
                       </span>
 
                       <span className="text-xs text-zinc-500">
-                        Updated: {new Date(report.updatedAt).toLocaleString()}
+                        Updated: {formatDateTime(report.updatedAt)}
                       </span>
                     </div>
 
@@ -486,9 +598,7 @@ export default function RadControlRoomPage() {
                       <div className="space-y-2 text-sm">
                         <div>
                           <span className="text-zinc-400">Day:</span>{" "}
-                          <span className="text-white">
-                            {report.rating?.day ?? "-"}
-                          </span>
+                          <span className="text-white">{report.day}</span>
                         </div>
 
                         <div>
@@ -501,6 +611,13 @@ export default function RadControlRoomPage() {
                           <span className="text-white">{report.ratingId}</span>
                         </div>
 
+                        {report.replyId ? (
+                          <div>
+                            <span className="text-zinc-400">Reply ID:</span>{" "}
+                            <span className="text-white">{report.replyId}</span>
+                          </div>
+                        ) : null}
+
                         <div>
                           <span className="text-zinc-400">Report ID:</span>{" "}
                           <span className="text-white">{report.id}</span>
@@ -509,49 +626,70 @@ export default function RadControlRoomPage() {
 
                       <div className="space-y-2 text-sm">
                         <div>
-                          <span className="text-zinc-400">Review author:</span>{" "}
+                          <span className="text-zinc-400">Target author:</span>{" "}
                           <span className="text-white">
-                            {report.rating?.authorLabel ?? "-"}
+                            {report.targetAuthor ?? "-"}
                           </span>
                         </div>
+
+                        {report.reportType === "reply" ? (
+                          <div>
+                            <span className="text-zinc-400">
+                              Parent review author:
+                            </span>{" "}
+                            <span className="text-white">
+                              {report.parentReviewAuthor ?? "-"}
+                            </span>
+                          </div>
+                        ) : null}
 
                         <div>
                           <span className="text-zinc-400">Reported by:</span>{" "}
                           <span className="text-white">
-                            {report.reportAuthorLabel}
+                            {report.reportedBy ?? "-"}
                           </span>
                         </div>
 
                         <div>
                           <span className="text-zinc-400">Stars:</span>{" "}
                           <span className="text-white">
-                            {report.rating ? `${report.rating.stars}/5` : "-"}
+                            {typeof report.reviewStars === "number"
+                              ? `${report.reviewStars}/5`
+                              : "-"}
                           </span>
                         </div>
                       </div>
                     </div>
 
+                    {report.reportType === "reply" ? (
+                      <div className="mt-4 rounded-xl border border-white/10 bg-[#101826] p-4 text-sm text-zinc-300">
+                        <div className="mb-2 text-xs uppercase tracking-[0.14em] text-zinc-500">
+                          Parent review
+                        </div>
+                        {normalizeDisplayText(report.reviewText)}
+                      </div>
+                    ) : null}
+
                     <div className="mt-4 rounded-xl border border-white/10 bg-[#0d1420] p-4 text-sm text-zinc-200">
-                      {report.rating?.review?.trim()
-                        ? report.rating.review
-                        : "No written review"}
+                      <div className="mb-2 text-xs uppercase tracking-[0.14em] text-zinc-500">
+                        Reported {report.reportType}
+                      </div>
+                      {reportedText}
                     </div>
 
                     <div className="mt-4 flex flex-wrap items-center gap-2">
-                      {report.rating?.day ? (
-                        <a
-                          href={`/?day=${encodeURIComponent(report.rating.day)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="rounded-lg bg-sky-500/20 px-3 py-2 text-xs font-medium text-sky-300 transition hover:bg-sky-500/30"
-                        >
-                          Open day
-                        </a>
-                      ) : null}
+                      <a
+                        href={`/?day=${encodeURIComponent(report.day)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg bg-sky-500/20 px-3 py-2 text-xs font-medium text-sky-300 transition hover:bg-sky-500/30"
+                      >
+                        Open day
+                      </a>
 
                       <button
                         type="button"
-                        onClick={() => updateReportStatus(report.id, "resolved")}
+                        onClick={() => updateReportStatus(report, "resolved")}
                         disabled={!!actionKey}
                         className="rounded-lg bg-emerald-500/20 px-3 py-2 text-xs font-medium text-emerald-300 transition hover:bg-emerald-500/30 disabled:opacity-50"
                       >
@@ -560,32 +698,30 @@ export default function RadControlRoomPage() {
 
                       <button
                         type="button"
-                        onClick={() => updateReportStatus(report.id, "ignored")}
+                        onClick={() => updateReportStatus(report, "dismissed")}
                         disabled={!!actionKey}
                         className="rounded-lg bg-amber-500/20 px-3 py-2 text-xs font-medium text-amber-300 transition hover:bg-amber-500/30 disabled:opacity-50"
                       >
-                        {isIgnoring ? "Updating..." : "Ignore"}
+                        {isDismissing ? "Updating..." : "Dismiss"}
                       </button>
 
                       <button
                         type="button"
-                        onClick={() => updateReportStatus(report.id, "pending")}
+                        onClick={() => updateReportStatus(report, "pending")}
                         disabled={!!actionKey}
                         className="rounded-lg bg-zinc-500/20 px-3 py-2 text-xs font-medium text-zinc-300 transition hover:bg-zinc-500/30 disabled:opacity-50"
                       >
                         {isPending ? "Updating..." : "Back to pending"}
                       </button>
 
-                      {report.rating ? (
-                        <button
-                          type="button"
-                          onClick={() => deleteReviewAsAdmin(report.rating!.id)}
-                          disabled={!!actionKey}
-                          className="rounded-lg bg-red-500/20 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-500/30 disabled:opacity-50"
-                        >
-                          {isDeleting ? "Deleting..." : "Delete review"}
-                        </button>
-                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => deleteReviewAsAdmin(report.ratingId)}
+                        disabled={!!actionKey}
+                        className="rounded-lg bg-red-500/20 px-3 py-2 text-xs font-medium text-red-300 transition hover:bg-red-500/30 disabled:opacity-50"
+                      >
+                        {isDeleting ? "Deleting..." : "Delete review"}
+                      </button>
                     </div>
                   </div>
                 );
@@ -597,5 +733,3 @@ export default function RadControlRoomPage() {
     </main>
   );
 }
-
-

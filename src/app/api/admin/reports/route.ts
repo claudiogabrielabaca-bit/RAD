@@ -1,6 +1,11 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "@/app/lib/admin";
+import {
+  type AdminReportItem,
+  formatAdminUserLabel,
+  normalizeAdminReportStatus,
+} from "@/app/lib/admin-control-room";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,27 +15,6 @@ const NO_STORE_HEADERS = {
 };
 
 const ADMIN_REPORTS_RESPONSE_LIMIT = 100;
-
-type AdminReportItem = {
-  id: string;
-  reportType: "review" | "reply";
-  status: string;
-  reason: string;
-  createdAt: string;
-  updatedAt: string;
-  day: string;
-  ratingId: string;
-  replyId: string | null;
-  reviewStars: number | null;
-  reviewText: string | null;
-  replyText: string | null;
-  reportedBy: string | null;
-  reportedByEmail: string | null;
-  targetAuthor: string | null;
-  targetAuthorEmail: string | null;
-  parentReviewAuthor: string | null;
-  parentReviewAuthorEmail: string | null;
-};
 
 export async function GET() {
   try {
@@ -48,7 +32,7 @@ export async function GET() {
         orderBy: {
           createdAt: "desc",
         },
-        take: 100,
+        take: ADMIN_REPORTS_RESPONSE_LIMIT,
         include: {
           user: {
             select: {
@@ -77,7 +61,7 @@ export async function GET() {
         orderBy: {
           createdAt: "desc",
         },
-        take: 100,
+        take: ADMIN_REPORTS_RESPONSE_LIMIT,
         include: {
           user: {
             select: {
@@ -116,49 +100,80 @@ export async function GET() {
       }),
     ]);
 
-    const mappedReviewReports: AdminReportItem[] = reviewReports.map((item) => ({
-      id: item.id,
-      reportType: "review",
-      status: item.status,
-      reason: item.reason,
-      createdAt: item.createdAt.toISOString(),
-      updatedAt: item.updatedAt.toISOString(),
-      day: item.rating.day,
-      ratingId: item.rating.id,
-      replyId: null,
-      reviewStars: item.rating.stars,
-      reviewText: item.rating.review,
-      replyText: null,
-      reportedBy: item.user?.username ?? null,
-      reportedByEmail: item.user?.email ?? null,
-      targetAuthor: item.rating.user?.username ?? null,
-      targetAuthorEmail: item.rating.user?.email ?? null,
-      parentReviewAuthor: item.rating.user?.username ?? null,
-      parentReviewAuthorEmail: item.rating.user?.email ?? null,
-    }));
+    const mappedReviewReports: AdminReportItem[] = reviewReports.map((item) => {
+      const reportedBy = formatAdminUserLabel({
+        username: item.user?.username,
+        email: item.user?.email,
+        fallback: null,
+      });
+      const targetAuthor = formatAdminUserLabel({
+        username: item.rating.user?.username,
+        email: item.rating.user?.email,
+        fallback: null,
+      });
 
-    const mappedReplyReports: AdminReportItem[] = replyReports.map((item) => ({
-      id: item.id,
-      reportType: "reply",
-      status: item.status,
-      reason: item.reason,
-      createdAt: item.createdAt.toISOString(),
-      updatedAt: item.updatedAt.toISOString(),
-      day: item.reply.rating.day,
-      ratingId: item.reply.rating.id,
-      replyId: item.reply.id,
-      reviewStars: item.reply.rating.stars,
-      reviewText: item.reply.rating.review,
-      replyText: item.reply.text,
-      reportedBy: item.user?.username ?? null,
-      reportedByEmail: item.user?.email ?? null,
-      targetAuthor: item.reply.user?.username ?? null,
-      targetAuthorEmail: item.reply.user?.email ?? null,
-      parentReviewAuthor: item.reply.rating.user?.username ?? null,
-      parentReviewAuthorEmail: item.reply.rating.user?.email ?? null,
-    }));
+      return {
+        id: item.id,
+        reportType: "review",
+        status: normalizeAdminReportStatus(item.status),
+        reason: item.reason,
+        createdAt: item.createdAt.toISOString(),
+        updatedAt: item.updatedAt.toISOString(),
+        day: item.rating.day,
+        ratingId: item.rating.id,
+        replyId: null,
+        reviewStars: item.rating.stars,
+        reviewText: item.rating.review,
+        replyText: null,
+        reportedBy,
+        reportedByEmail: item.user?.email ?? null,
+        targetAuthor,
+        targetAuthorEmail: item.rating.user?.email ?? null,
+        parentReviewAuthor: targetAuthor,
+        parentReviewAuthorEmail: item.rating.user?.email ?? null,
+      };
+    });
 
-    const items = [...mappedReviewReports, ...mappedReplyReports]
+    const mappedReplyReports: AdminReportItem[] = replyReports.map((item) => {
+      const reportedBy = formatAdminUserLabel({
+        username: item.user?.username,
+        email: item.user?.email,
+        fallback: null,
+      });
+      const targetAuthor = formatAdminUserLabel({
+        username: item.reply.user?.username,
+        email: item.reply.user?.email,
+        fallback: null,
+      });
+      const parentReviewAuthor = formatAdminUserLabel({
+        username: item.reply.rating.user?.username,
+        email: item.reply.rating.user?.email,
+        fallback: null,
+      });
+
+      return {
+        id: item.id,
+        reportType: "reply",
+        status: normalizeAdminReportStatus(item.status),
+        reason: item.reason,
+        createdAt: item.createdAt.toISOString(),
+        updatedAt: item.updatedAt.toISOString(),
+        day: item.reply.rating.day,
+        ratingId: item.reply.rating.id,
+        replyId: item.reply.id,
+        reviewStars: item.reply.rating.stars,
+        reviewText: item.reply.rating.review,
+        replyText: item.reply.text,
+        reportedBy,
+        reportedByEmail: item.user?.email ?? null,
+        targetAuthor,
+        targetAuthorEmail: item.reply.user?.email ?? null,
+        parentReviewAuthor,
+        parentReviewAuthorEmail: item.reply.rating.user?.email ?? null,
+      };
+    });
+
+    const reports = [...mappedReviewReports, ...mappedReplyReports]
       .sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -168,8 +183,8 @@ export async function GET() {
     return NextResponse.json(
       {
         ok: true,
-        items,
-        reports: items,
+        reports,
+        items: reports,
       },
       {
         headers: NO_STORE_HEADERS,

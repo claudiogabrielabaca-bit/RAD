@@ -1,6 +1,10 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "@/app/lib/admin";
+import {
+  normalizeAdminReportStatus,
+  parseAdminReportType,
+} from "@/app/lib/admin-control-room";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,10 +14,6 @@ const NO_STORE_HEADERS = {
 };
 
 const MAX_REPORT_ID_LENGTH = 80;
-
-function isAllowedStatus(value: string) {
-  return value === "pending" || value === "resolved" || value === "dismissed";
-}
 
 export async function POST(req: Request) {
   try {
@@ -35,17 +35,8 @@ export async function POST(req: Request) {
           ? body.id.trim()
           : "";
 
-    const reportType =
-      body?.reportType === "review" || body?.reportType === "reply"
-        ? body.reportType
-        : null;
-
-    const requestedStatus =
-      typeof body?.status === "string" ? body.status.trim() : "";
-
-    const status = isAllowedStatus(requestedStatus)
-      ? requestedStatus
-      : "resolved";
+    const reportType = parseAdminReportType(body?.reportType);
+    const status = normalizeAdminReportStatus(body?.status ?? "resolved");
 
     if (!reportId || reportId.length > MAX_REPORT_ID_LENGTH) {
       return NextResponse.json(
@@ -59,10 +50,6 @@ export async function POST(req: Request) {
         where: { id: reportId },
         select: {
           id: true,
-          status: true,
-          ratingId: true,
-          createdAt: true,
-          updatedAt: true,
         },
       });
 
@@ -91,6 +78,7 @@ export async function POST(req: Request) {
           reportType: "review",
           report: {
             ...updated,
+            status: normalizeAdminReportStatus(updated.status),
             createdAt: updated.createdAt.toISOString(),
             updatedAt: updated.updatedAt.toISOString(),
           },
@@ -106,10 +94,6 @@ export async function POST(req: Request) {
         where: { id: reportId },
         select: {
           id: true,
-          status: true,
-          replyId: true,
-          createdAt: true,
-          updatedAt: true,
         },
       });
 
@@ -138,6 +122,7 @@ export async function POST(req: Request) {
           reportType: "reply",
           report: {
             ...updated,
+            status: normalizeAdminReportStatus(updated.status),
             createdAt: updated.createdAt.toISOString(),
             updatedAt: updated.updatedAt.toISOString(),
           },
@@ -174,6 +159,7 @@ export async function POST(req: Request) {
           reportType: "review",
           report: {
             ...updated,
+            status: normalizeAdminReportStatus(updated.status),
             createdAt: updated.createdAt.toISOString(),
             updatedAt: updated.updatedAt.toISOString(),
           },
@@ -210,6 +196,7 @@ export async function POST(req: Request) {
           reportType: "reply",
           report: {
             ...updated,
+            status: normalizeAdminReportStatus(updated.status),
             createdAt: updated.createdAt.toISOString(),
             updatedAt: updated.updatedAt.toISOString(),
           },

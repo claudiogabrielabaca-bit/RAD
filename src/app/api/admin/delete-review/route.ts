@@ -1,6 +1,6 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { isAdminAuthenticated } from "@/app/lib/admin";
+import { requireAdminSession } from "@/app/lib/admin";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -13,9 +13,9 @@ const MAX_RATING_ID_LENGTH = 80;
 
 export async function POST(req: Request) {
   try {
-    const isAdmin = await isAdminAuthenticated();
+    const adminSession = await requireAdminSession();
 
-    if (!isAdmin) {
+    if (!adminSession) {
       return NextResponse.json(
         { error: "Not found" },
         { status: 404, headers: NO_STORE_HEADERS }

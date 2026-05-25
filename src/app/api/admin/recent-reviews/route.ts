@@ -1,6 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
-import { isAdminAuthenticated } from "@/app/lib/admin";
+import { requireAdminSession } from "@/app/lib/admin";
+import { formatAdminUserLabel } from "@/app/lib/admin-control-room";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -9,10 +10,7 @@ const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
 };
 
-type RatingAuthor = {
-  user?: { username: string } | null;
-  anonId?: string | null;
-};
+const RECENT_REVIEWS_LIMIT = 24;
 
 type RecentReviewRating = {
   id: string;
@@ -21,7 +19,7 @@ type RecentReviewRating = {
   review: string;
   anonId: string | null;
   createdAt: Date;
-  user: { username: string } | null;
+  user: { username: string; email: string } | null;
   _count: {
     reports: number;
     replies: number;
@@ -29,17 +27,11 @@ type RecentReviewRating = {
   };
 };
 
-function getRatingAuthorLabel(rating: RatingAuthor) {
-  if (rating.user?.username) return `@${rating.user.username}`;
-  if (rating.anonId) return rating.anonId;
-  return "Unknown";
-}
-
 export async function GET() {
   try {
-    const isAdmin = await isAdminAuthenticated();
+    const adminSession = await requireAdminSession();
 
-    if (!isAdmin) {
+    if (!adminSession) {
       return NextResponse.json(
         { error: "Not found" },
         { status: 404, headers: NO_STORE_HEADERS }
@@ -48,7 +40,7 @@ export async function GET() {
 
     const ratings: RecentReviewRating[] = await prisma.rating.findMany({
       orderBy: { createdAt: "desc" },
-      take: 24,
+      take: RECENT_REVIEWS_LIMIT,
       select: {
         id: true,
         day: true,
@@ -59,6 +51,7 @@ export async function GET() {
         user: {
           select: {
             username: true,
+            email: true,
           },
         },
         _count: {
@@ -71,7 +64,7 @@ export async function GET() {
       },
     });
 
-    const ratingIds = ratings.map((rating: RecentReviewRating) => rating.id);
+    const ratingIds = ratings.map((rating) => rating.id);
 
     const pendingReportRows: Array<{ ratingId: string }> = ratingIds.length
       ? await prisma.reviewReport.findMany({
@@ -96,12 +89,16 @@ export async function GET() {
       );
     }
 
-    const reviews = ratings.map((rating: RecentReviewRating) => ({
+    const reviews = ratings.map((rating) => ({
       id: rating.id,
       day: rating.day,
       stars: rating.stars,
       review: rating.review,
-      authorLabel: getRatingAuthorLabel(rating),
+      authorLabel: formatAdminUserLabel({
+        username: rating.user?.username,
+        email: rating.user?.email,
+        fallback: rating.anonId ?? "Anonymous",
+      }),
       createdAt: rating.createdAt.toISOString(),
       reportsCount: rating._count.reports,
       pendingReportsCount: pendingReportsMap.get(rating.id) ?? 0,
@@ -110,7 +107,11 @@ export async function GET() {
     }));
 
     return NextResponse.json(
-      { reviews },
+      {
+        ok: true,
+        reviews,
+        items: reviews,
+      },
       {
         headers: NO_STORE_HEADERS,
       }

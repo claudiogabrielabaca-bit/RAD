@@ -12,11 +12,17 @@
     "lint": "eslint",
     "prisma:validate": "prisma validate",
     "scripts:check": "tsc -p tsconfig.scripts.json --noEmit",
-    "check": "npm run lint && npm run prisma:validate && npm run build",
-    "check:full": "npm run lint && npm run prisma:validate && npm run build && npm run scripts:check",
+    "check": "npm run lint && npm run prisma:validate && npm run test:contracts && npm run build",
+    "check:full": "npm run lint && npm run prisma:validate && npm run test:contracts && npm run build && npm run scripts:check",
     "audit:prod": "npm audit --omit=dev",
     "audit:signatures": "npm audit signatures",
-    "release:check": "npm run check:full && npm run audit:signatures && npm run audit:prod"
+    "release:check": "npm run repo:audit && npm run check:full && npm run audit:signatures && npm run audit:prod",
+    "test": "npm run test:contracts",
+    "test:contracts": "node --test scripts/tests/*.test.mjs",
+    "repo:audit": "node scripts/audit-repo-cleanliness.mjs",
+    "repo:quarantine": "powershell -ExecutionPolicy Bypass -File scripts/quarantine-local-artifacts.ps1",
+    "repo:make-zip": "powershell -ExecutionPolicy Bypass -File scripts/make-safe-zip.ps1",
+    "check:clean": "npm run repo:audit && npm run check"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
