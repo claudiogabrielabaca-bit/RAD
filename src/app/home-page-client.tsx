@@ -2,6 +2,7 @@
 
 import { useHomeAuthState } from "@/app/hooks/use-home-auth-state";
 import { useHomeDayBackHistory } from "@/app/hooks/use-home-day-back-history";
+import { useHomeFavoriteDay } from "@/app/hooks/use-home-favorite-day";
 import { useHomeDeleteActions } from "@/app/hooks/use-home-delete-actions";
 import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
@@ -32,7 +33,6 @@ import {
 import { getTodayDayString } from "@/app/lib/day";
 import type {
   DayResponse,
-  FavoriteDayResponse,
   HighlightItem,
   SurpriseResponse,
 } from "@/app/lib/rad-types";
@@ -112,10 +112,6 @@ export default function Page({
   const consumedNotificationJumpKeyRef = useRef("");
   const didInitDayRef = useRef(false);
   const dayViewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const favoriteStatusTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null
-  );
-
   const dayRequestRef = useRef(0);
   const skipNextAutoDayLoadRef = useRef(false);
   const communityBundleLoadedDayRef = useRef("");
@@ -288,6 +284,21 @@ export default function Page({
     setIsDayTransitioning,
     setMinimumTransitionDone,
     minTransitionMs: MIN_DAY_TRANSITION_MS,
+  });
+
+  const { toggleFavoriteDay, refreshFavoriteDayStatus } = useHomeFavoriteDay({
+    day,
+    currentUser,
+    hasPickedInitialDay,
+    initialBundle,
+    dayBundleCacheRef,
+    isFavoriteDay,
+    loadingFavoriteDay,
+    setIsFavoriteDay,
+    setLoadingFavoriteDay,
+    openAuthModal,
+    requireVerifiedEmail,
+    showToast,
   });
 
   const navigationActionsRef = useRef({
@@ -862,81 +873,6 @@ export default function Page({
     }
   }
 
-  const loadFavoriteDayStatus = useCallback(
-    async (d: string) => {
-      if (!currentUser) {
-        setIsFavoriteDay(false);
-        return;
-      }
-
-      setLoadingFavoriteDay(true);
-
-      try {
-        const res = await fetch(
-          `/api/favorite-day?day=${encodeURIComponent(d)}`,
-          {
-            cache: "no-store",
-          }
-        );
-
-        if (!res.ok) throw new Error("Failed to load favorite day status");
-
-        const json = (await res.json()) as FavoriteDayResponse;
-        setIsFavoriteDay(!!json.isFavorite);
-      } catch {
-        setIsFavoriteDay(false);
-      } finally {
-        setLoadingFavoriteDay(false);
-      }
-    },
-    [currentUser]
-  );
-
-  async function toggleFavoriteDay() {
-    if (!currentUser) {
-      openAuthModal("login");
-      return;
-    }
-
-    if (requireVerifiedEmail()) return;
-    if (loadingFavoriteDay) return;
-
-    const previousFavorite = isFavoriteDay;
-    const optimisticFavorite = !previousFavorite;
-
-    setToast("");
-    setIsFavoriteDay(optimisticFavorite);
-    setLoadingFavoriteDay(true);
-
-    try {
-      const res = await fetch("/api/favorite-day", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          day,
-          isFavorite: optimisticFavorite,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        setIsFavoriteDay(previousFavorite);
-        showToast(json?.error ?? "Could not update favorite day.");
-        return;
-      }
-
-      setIsFavoriteDay(!!json?.isFavorite);
-    } catch {
-      setIsFavoriteDay(previousFavorite);
-      showToast("Could not update favorite day.");
-    } finally {
-      setLoadingFavoriteDay(false);
-    }
-  }
-
   async function goToSurpriseDay(scrollToResult = false) {
     beginDayTransition();
     const transitionId = transitionIdRef.current;
@@ -1230,52 +1166,6 @@ export default function Page({
     initialBundle?.publicInitialOnly,
     pathname,
     transitionIdRef,
-  ]);
-
-  useEffect(() => {
-    if (!hasPickedInitialDay) return;
-
-    const cachedPayload = dayBundleCacheRef.current.get(day);
-
-    const bundledFavoriteStatus =
-      cachedPayload?.day === day &&
-      typeof cachedPayload.isFavoriteDay === "boolean"
-        ? cachedPayload.isFavoriteDay
-        : initialBundle?.day === day &&
-            typeof initialBundle.isFavoriteDay === "boolean"
-          ? initialBundle.isFavoriteDay
-          : null;
-
-    if (typeof bundledFavoriteStatus === "boolean") {
-      setIsFavoriteDay(bundledFavoriteStatus);
-      setLoadingFavoriteDay(false);
-      return;
-    }
-
-    const shouldWaitForFullPublicBundle =
-      initialBundle?.day === day &&
-      !!initialBundle.publicInitialOnly &&
-      !cachedPayload;
-
-    if (shouldWaitForFullPublicBundle) {
-      setLoadingFavoriteDay(false);
-      return;
-    }
-
-    if (favoriteStatusTimeoutRef.current) {
-      clearTimeout(favoriteStatusTimeoutRef.current);
-    }
-
-    favoriteStatusTimeoutRef.current = setTimeout(() => {
-      favoriteStatusTimeoutRef.current = null;
-      void loadFavoriteDayStatus(day);
-    }, 900);
-  }, [
-    day,
-    dayBundleCacheRef,
-    hasPickedInitialDay,
-    initialBundle,
-    loadFavoriteDayStatus,
   ]);
 
   useEffect(() => {
@@ -2709,7 +2599,7 @@ export default function Page({
         }}
         onAuthSuccess={(user) => {
           setCurrentUser(user ?? null);
-          loadFavoriteDayStatus(day);
+          void refreshFavoriteDayStatus(day);
           loadDay(day);
         }}
       />

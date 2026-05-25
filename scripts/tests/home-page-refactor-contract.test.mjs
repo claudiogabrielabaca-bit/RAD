@@ -7,6 +7,7 @@ const authHook = fs.readFileSync("src/app/hooks/use-home-auth-state.ts", "utf8")
 const reviewState = fs.readFileSync("src/app/lib/home-page-review-state.ts", "utf8");
 const constants = fs.readFileSync("src/app/lib/home-page-client-constants.ts", "utf8");
 const dayBackHistoryHook = fs.readFileSync("src/app/hooks/use-home-day-back-history.ts", "utf8");
+const favoriteDayHook = fs.readFileSync("src/app/hooks/use-home-favorite-day.ts", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(homePage, /useHomeAuthState\(\{ router, pathname, searchParams \}\)/);
@@ -49,4 +50,20 @@ test("home page delegates day back history state to a dedicated hook", () => {
   assert.match(dayBackHistoryHook, /getStoredDayBackHistory/);
   assert.match(dayBackHistoryHook, /setStoredDayBackHistory/);
   assert.match(dayBackHistoryHook, /DAY_BACK_HISTORY_MAX/);
+});
+
+test("home page delegates favorite day behavior to a dedicated hook", () => {
+  assert.match(homePage, /useHomeFavoriteDay\(\{/);
+  assert.match(homePage, /const \{ toggleFavoriteDay, refreshFavoriteDayStatus \} = useHomeFavoriteDay/);
+  assert.match(homePage, /void refreshFavoriteDayStatus\(day\);/);
+  assert.doesNotMatch(homePage, /FavoriteDayResponse/);
+  assert.doesNotMatch(homePage, /favoriteStatusTimeoutRef/);
+  assert.doesNotMatch(homePage, /loadFavoriteDayStatus/);
+  assert.doesNotMatch(homePage, /async function toggleFavoriteDay/);
+  assert.match(favoriteDayHook, /export function useHomeFavoriteDay/);
+  assert.match(favoriteDayHook, /loadFavoriteDayStatus/);
+  assert.match(favoriteDayHook, /toggleFavoriteDay/);
+  assert.match(favoriteDayHook, /refreshFavoriteDayStatus/);
+  assert.match(favoriteDayHook, /favoriteStatusTimeoutRef/);
+  assert.match(favoriteDayHook, /\/api\/favorite-day/);
 });
