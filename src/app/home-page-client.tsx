@@ -1,11 +1,12 @@
 "use client";
 
+import { useHomeAuthState } from "@/app/hooks/use-home-auth-state";
 import { useHomeDeleteActions } from "@/app/hooks/use-home-delete-actions";
 import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import AuthModal, { type AuthView } from "@/app/components/rad/auth-modal";
+import AuthModal from "@/app/components/rad/auth-modal";
 import CosmicLoading from "@/app/components/rad/cosmic-loading";
 import HighlightHeroImage from "@/app/components/rad/highlight-hero-image";
 import { decodeHtml } from "@/app/lib/html";
@@ -50,22 +51,17 @@ import {
   getDayWithYearShift,
 } from "@/app/lib/home-page-history";
 import { YEARS, MONTHS } from "@/app/lib/home-page-discover";
-import { type CurrentUser } from "@/app/lib/home-page-auth";
 import {
-  fetchCurrentUserClientCached,
-  setCurrentUserClientCache,
-} from "@/app/lib/current-user-client";
-
-const REVIEW_MAX_LENGTH = 280;
-const REPLY_MAX_LENGTH = 220;
-const HIGHLIGHT_SCROLL_OFFSET = 365;
-const DAY_VIEW_TRACKING_DELAY_MS = 8000;
-const FORCE_FRESH_MODE = false;
-const LAST_DAY_STORAGE_KEY = "rad:lastDay";
-
-const MIN_DAY_TRANSITION_MS = 1000;
-const HERO_IMAGE_REVEAL_DELAY_MS = 150;
-
+  DAY_VIEW_TRACKING_DELAY_MS,
+  FORCE_FRESH_MODE,
+  HERO_IMAGE_REVEAL_DELAY_MS,
+  HIGHLIGHT_SCROLL_OFFSET,
+  LAST_DAY_STORAGE_KEY,
+  MIN_DAY_TRANSITION_MS,
+  REPLY_MAX_LENGTH,
+  REVIEW_MAX_LENGTH,
+} from "@/app/lib/home-page-client-constants";
+import { removeReplyFromTree, withUpdatedReviews } from "@/app/lib/home-page-review-state";
 
 type TodayInHistoryResponse = SurpriseResponse & {
   restartedRound?: boolean;
@@ -75,56 +71,6 @@ type InitialBundle = SurpriseResponse & {
   publicInitialOnly?: boolean;
 };
 
-function getAuthViewFromQuery(value: string | null): AuthView | null {
-  switch (value) {
-    case "login":
-    case "login-code":
-    case "register":
-    case "forgot-password":
-    case "reset-password":
-    case "verify-email":
-      return value;
-    default:
-      return null;
-  }
-}
-
-function recomputeDayStats(reviews: DayResponse["reviews"]) {
-  const count = reviews.length;
-  const avg =
-    count > 0
-      ? reviews.reduce((sum, item) => sum + item.stars, 0) / count
-      : 0;
-
-  return { avg, count };
-}
-
-function withUpdatedReviews(
-  prev: DayResponse,
-  reviews: DayResponse["reviews"]
-): DayResponse {
-  const { avg, count } = recomputeDayStats(reviews);
-
-  return {
-    ...prev,
-    reviews,
-    avg,
-    count,
-  };
-}
-
-function removeReplyFromTree(
-  replies: DayResponse["reviews"][number]["replies"],
-  replyId: string
-): DayResponse["reviews"][number]["replies"] {
-  return replies
-    .filter((reply) => reply.id !== replyId)
-    .map((reply) => ({
-      ...reply,
-      replies: removeReplyFromTree(reply.replies ?? [], replyId),
-    }));
-}
-
 export default function Page({
   initialBundle = null,
 }: {
@@ -133,6 +79,22 @@ export default function Page({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+
+  const {
+    currentUser,
+    setCurrentUser,
+    authModalOpen,
+    authView,
+    authEmail,
+    setAuthView,
+    setAuthEmail,
+    openAuthModal,
+    closeAuthModal,
+    refreshCurrentUser,
+    requireVerifiedEmail,
+    handleProtectedActionStatus,
+    requireReplyInteraction,
+  } = useHomeAuthState({ router, pathname, searchParams });
 
   const minDay = "1800-01-01";
   const today = useMemo(() => getTodayDayString(), []);
@@ -189,12 +151,6 @@ export default function Page({
     initialBundle?.day?.slice(8, 10) ?? today.slice(8, 10)
   );
 
-  const [currentUser, setCurrentUser] = useState<CurrentUser>(null);
-  const [, setLoadingCurrentUser] = useState(true);
-
-  const [authModalOpen, setAuthModalOpen] = useState(false);
-  const [authView, setAuthView] = useState<AuthView>("login");
-  const [authEmail, setAuthEmail] = useState("");
 
   const [data, setData] = useState<DayResponse | null>(
     initialBundle?.dayData ?? null
@@ -278,36 +234,6 @@ export default function Page({
   const visibleDayLabel =
     hasPickedInitialDay && isValidDayString(day) ? day : "Finding a day...";
 
-  function openAuthModal(view: AuthView = "login", nextEmail = "") {
-    setAuthView(view);
-    setAuthEmail(nextEmail);
-    setAuthModalOpen(true);
-  }
-
-  function closeAuthModal() {
-    setAuthModalOpen(false);
-  }
-
-  useEffect(() => {
-    const requestedAuthView = getAuthViewFromQuery(searchParams.get("auth"));
-
-    if (!requestedAuthView) return;
-
-    const requestedEmail = searchParams.get("email") ?? "";
-
-    setAuthView(requestedAuthView);
-    setAuthEmail(requestedEmail);
-    setAuthModalOpen(true);
-
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("auth");
-    params.delete("email");
-
-    const query = params.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, {
-      scroll: false,
-    });
-  }, [pathname, router, searchParams]);
 
   function syncDayBackHistory(nextHistory: string[]) {
     const safe = nextHistory
@@ -348,65 +274,6 @@ export default function Page({
     }
   }
 
-  async function refreshCurrentUser() {
-    try {
-      const user = await fetchCurrentUserClientCached();
-      setCurrentUser(user);
-    } catch {
-      setCurrentUserClientCache(null);
-      setCurrentUser(null);
-    } finally {
-      setLoadingCurrentUser(false);
-    }
-  }
-
-  function requireVerifiedEmail() {
-    if (!currentUser) {
-      openAuthModal("login");
-      return true;
-    }
-
-    if (currentUser.emailVerified === false) {
-      openAuthModal("verify-email", currentUser.email);
-      return true;
-    }
-
-    return false;
-  }
-
-  function handleProtectedActionStatus(status: number) {
-    if (status === 401) {
-      setCurrentUser(null);
-      openAuthModal("login");
-      return true;
-    }
-
-    if (status === 403) {
-      if (currentUser?.email) {
-        openAuthModal("verify-email", currentUser.email);
-      } else {
-        openAuthModal("login");
-      }
-
-      return true;
-    }
-
-    return false;
-  }
-
-  function requireReplyInteraction() {
-    if (!currentUser) {
-      openAuthModal("login");
-      return true;
-    }
-
-    if (currentUser.emailVerified === false) {
-      openAuthModal("verify-email", currentUser.email);
-      return true;
-    }
-
-    return false;
-  }
 
   const {
     pendingDeleteAction,
@@ -694,7 +561,7 @@ export default function Page({
 
   useEffect(() => {
     refreshCurrentUser();
-  }, []);
+  }, [refreshCurrentUser]);
 
   useEffect(() => {
     const storedHistory = getStoredDayBackHistory();
@@ -2875,7 +2742,7 @@ export default function Page({
         view={authView}
         initialEmail={authEmail}
         onClose={closeAuthModal}
-        onChangeView={(view: AuthView, nextEmail?: string) => {
+        onChangeView={(view, nextEmail) => {
           setAuthView(view);
 
           if (typeof nextEmail === "string") {
@@ -2884,7 +2751,6 @@ export default function Page({
         }}
         onAuthSuccess={(user) => {
           setCurrentUser(user ?? null);
-          setLoadingCurrentUser(false);
           loadFavoriteDayStatus(day);
           loadDay(day);
         }}
