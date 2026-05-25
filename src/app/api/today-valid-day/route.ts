@@ -21,7 +21,7 @@ const EMPTY_FALLBACK_TEXT = "No exact historical match was found for this date."
 const MAX_BUNDLE_ATTEMPTS = 12;
 const MAX_EXCLUDE_DAYS = 1000;
 const MAX_EXCLUDE_DAYS_QUERY_LENGTH = 20000;
-const MAX_LIVE_HIGHLIGHT_CHECKS = 1;
+const MAX_LIVE_HIGHLIGHT_CHECKS = MAX_BUNDLE_ATTEMPTS;
 
 const NO_STORE_HEADERS = {
   "Cache-Control": "no-store",
@@ -311,34 +311,24 @@ async function removeDayFromTodayPool(day: string) {
 
   const monthDay = day.slice(5, 10);
 
-  const row = await prisma.todayHistoryPool.findUnique({
-    where: { monthDay },
-    select: {
-      validDays: true,
-    },
-  });
-
-  const currentDays = normalizePoolDays(row?.validDays);
-  const nextDays = currentDays.filter((candidate) => candidate !== day);
-
-  if (nextDays.length === currentDays.length) return;
-
-  await prisma.todayHistoryPool.update({
-    where: { monthDay },
-    data: {
-      validDays: nextDays,
-      validCount: nextDays.length,
-    },
-  });
-
-  logTodayValidDayWarning("today-valid-day removed unusable day from pool:", {
+  /*
+   * Important:
+   * This is a read endpoint. It must not shrink TodayHistoryPool.
+   *
+   * A cached highlight can be temporarily unusable because of cache gaps,
+   * upstream fetch failures, local Railway latency, or fallback text.
+   * Removing the day here permanently reduces Today in History variety and
+   * is the reason the feature can collapse to only 2 or 3 visible days.
+   *
+   * Pool repair/backfill belongs in scripts/build-today-history-pools.ts,
+   * not in /api/today-valid-day.
+   */
+  logTodayValidDayWarning("today-valid-day kept candidate in pool:", {
     day,
     monthDay,
-    previousCount: currentDays.length,
-    nextCount: nextDays.length,
+    reason: "read-route-does-not-mutate-pool",
   });
 }
-
 export async function GET(req: Request) {
   try {
     const rateLimit = await consumeRateLimit({
