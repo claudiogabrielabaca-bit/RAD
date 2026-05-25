@@ -10,6 +10,7 @@ const dayBackHistoryHook = fs.readFileSync("src/app/hooks/use-home-day-back-hist
 const dayViewTrackingHook = fs.readFileSync("src/app/hooks/use-home-day-view-tracking.ts", "utf8");
 const favoriteDayHook = fs.readFileSync("src/app/hooks/use-home-favorite-day.ts", "utf8");
 const reviewDerivedStateHook = fs.readFileSync("src/app/hooks/use-home-review-derived-state.ts", "utf8");
+const highlightCarouselHook = fs.readFileSync("src/app/hooks/use-home-highlight-carousel.ts", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(homePage, /useHomeAuthState\(\{ router, pathname, searchParams \}\)/);
@@ -95,4 +96,22 @@ test("home page delegates review derived state and sorting to a dedicated hook",
   assert.match(reviewDerivedStateHook, /const myReview = useMemo/);
   assert.match(reviewDerivedStateHook, /const sortedOtherReviews = useMemo/);
   assert.match(reviewDerivedStateHook, /hasReviewText/);
+});
+
+test("home page delegates highlight carousel state to a dedicated hook", () => {
+  assert.match(homePage, /useHomeHighlightCarousel\(\{/);
+  assert.doesNotMatch(homePage, /pendingHighlightIndexRef/);
+  assert.doesNotMatch(homePage, /highlightTransitionRequestRef/);
+  assert.doesNotMatch(homePage, /isHighlightPaused/);
+  assert.doesNotMatch(homePage, /setIsHighlightPaused/);
+  assert.doesNotMatch(homePage, /const isHighlightSwitchLocked/);
+  assert.doesNotMatch(homePage, /const transitionToHighlight = useCallback/);
+  assert.match(highlightCarouselHook, /export function useHomeHighlightCarousel/);
+  assert.match(highlightCarouselHook, /const highlightTransitionRequestRef = useRef\(0\)/);
+  assert.match(highlightCarouselHook, /const pendingHighlightIndexRef = useRef\(0\)/);
+  assert.match(highlightCarouselHook, /const \[activeHighlightIndex, setActiveHighlightIndex\] = useState\(0\)/);
+  assert.match(highlightCarouselHook, /const \[isHighlightPaused, setIsHighlightPaused\] = useState\(false\)/);
+  assert.match(highlightCarouselHook, /const transitionToHighlight = useCallback/);
+  assert.match(highlightCarouselHook, /const goToPrevHighlight = useCallback/);
+  assert.match(highlightCarouselHook, /const goToNextHighlight = useCallback/);
 });

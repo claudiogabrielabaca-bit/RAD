@@ -7,6 +7,7 @@ import { useHomeDayViewTracking } from "@/app/hooks/use-home-day-view-tracking";
 import { useHomeDeleteActions } from "@/app/hooks/use-home-delete-actions";
 import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
 import { useHomeReviewDerivedState } from "@/app/hooks/use-home-review-derived-state";
+import { useHomeHighlightCarousel } from "@/app/hooks/use-home-highlight-carousel";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -115,9 +116,6 @@ export default function Page({
   const skipNextAutoDayLoadRef = useRef(false);
   const communityBundleLoadedDayRef = useRef("");
 
-  const highlightTransitionRequestRef = useRef(0);
-  const pendingHighlightIndexRef = useRef(0);
-
   const currentVisibleDayRef = useRef(initialBundle?.day ?? "");
 
   const {
@@ -159,8 +157,6 @@ export default function Page({
   );
   const [highlights, setHighlights] =
     useState<HighlightItem[]>(initialHighlightItems);
-  const [activeHighlightIndex, setActiveHighlightIndex] = useState(0);
-  const [isHighlightPaused, setIsHighlightPaused] = useState(false);
   const [loadingHighlight, setLoadingHighlight] = useState(false);
   const [
     preferImmediateHighlightImageSwap,
@@ -244,6 +240,27 @@ export default function Page({
     showToast,
     deleteReview,
     deleteReply,
+  });
+
+  const {
+    activeHighlightIndex,
+    setActiveHighlightIndex,
+    canSwitchHighlights,
+    transitionToHighlight,
+    goToPrevHighlight,
+    goToNextHighlight,
+    pauseHighlightCarousel,
+    resumeHighlightCarousel,
+  } = useHomeHighlightCarousel({
+    day,
+    highlights,
+    hasPickedInitialDay,
+    isDayTransitioning,
+    minimumTransitionDone,
+    loadingDay,
+    preferImmediateHighlightImageSwap,
+    setHighlight,
+    setPreferImmediateHighlightImageSwap,
   });
 
   const {
@@ -466,54 +483,6 @@ export default function Page({
       finishDayTransition(transitionId);
     }
   }
-
-  const isHighlightSwitchLocked =
-    !hasPickedInitialDay ||
-    isDayTransitioning ||
-    !minimumTransitionDone ||
-    loadingDay;
-
-  const canSwitchHighlights =
-    highlights.length > 1 && !isHighlightSwitchLocked;
-
-  const transitionToHighlight = useCallback(
-    async (nextIndex: number) => {
-      if (!canSwitchHighlights) return;
-      if (nextIndex < 0 || nextIndex >= highlights.length) return;
-
-      const currentPendingIndex = pendingHighlightIndexRef.current;
-
-      if (
-        nextIndex === activeHighlightIndex &&
-        nextIndex === currentPendingIndex
-      ) {
-        return;
-      }
-
-      pendingHighlightIndexRef.current = nextIndex;
-      highlightTransitionRequestRef.current += 1;
-
-      setPreferImmediateHighlightImageSwap(false);
-      setActiveHighlightIndex(nextIndex);
-    },
-    [activeHighlightIndex, canSwitchHighlights, highlights.length]
-  );
-
-  useEffect(() => {
-    pendingHighlightIndexRef.current = activeHighlightIndex;
-  }, [activeHighlightIndex]);
-
-  useEffect(() => {
-    if (!isHighlightSwitchLocked) return;
-
-    highlightTransitionRequestRef.current += 1;
-    pendingHighlightIndexRef.current = activeHighlightIndex;
-  }, [activeHighlightIndex, isHighlightSwitchLocked]);
-
-  useEffect(() => {
-    highlightTransitionRequestRef.current += 1;
-    pendingHighlightIndexRef.current = activeHighlightIndex;
-  }, [day, highlights, activeHighlightIndex]);
 
   function clearMinTransitionTimer() {
     if (minTransitionTimerRef.current) {
@@ -1287,41 +1256,6 @@ export default function Page({
     }
   }, [loadingHighlight, highlight]);
 
-  useEffect(() => {
-    if (!canSwitchHighlights || isHighlightPaused) return;
-
-    const interval = setInterval(() => {
-      const nextIndex =
-        activeHighlightIndex + 1 >= highlights.length
-          ? 0
-          : activeHighlightIndex + 1;
-
-      void transitionToHighlight(nextIndex);
-    }, 6000);
-
-    return () => clearInterval(interval);
-  }, [
-    canSwitchHighlights,
-    highlights,
-    isHighlightPaused,
-    activeHighlightIndex,
-    transitionToHighlight,
-  ]);
-
-  useEffect(() => {
-    setHighlight(highlights[activeHighlightIndex] ?? null);
-  }, [activeHighlightIndex, highlights]);
-
-  useEffect(() => {
-    if (!preferImmediateHighlightImageSwap) return;
-
-    const raf = requestAnimationFrame(() => {
-      setPreferImmediateHighlightImageSwap(false);
-    });
-
-    return () => cancelAnimationFrame(raf);
-  }, [activeHighlightIndex, preferImmediateHighlightImageSwap]);
-
   function goToManualDay() {
     const nextDay = `${selectedYear}-${selectedMonth}-${selectedDay}`;
     void openPickDate(nextDay, { scrollToHighlight: true });
@@ -1361,24 +1295,6 @@ export default function Page({
 
   function goToNextYear() {
     shiftYearBy(1);
-  }
-
-  function goToPrevHighlight() {
-    if (!canSwitchHighlights) return;
-
-    const baseIndex = pendingHighlightIndexRef.current;
-    const nextIndex = baseIndex === 0 ? highlights.length - 1 : baseIndex - 1;
-
-    void transitionToHighlight(nextIndex);
-  }
-
-  function goToNextHighlight() {
-    if (!canSwitchHighlights) return;
-
-    const baseIndex = pendingHighlightIndexRef.current;
-    const nextIndex = baseIndex === highlights.length - 1 ? 0 : baseIndex + 1;
-
-    void transitionToHighlight(nextIndex);
   }
 
   const isAtMinDay = !isValidDayString(day) || navigationDay <= minDay;
@@ -2154,8 +2070,8 @@ export default function Page({
                 <div
                   ref={highlightBlockRef}
                   className="mt-6 space-y-3"
-                  onMouseEnter={() => setIsHighlightPaused(true)}
-                  onMouseLeave={() => setIsHighlightPaused(false)}
+                  onMouseEnter={pauseHighlightCarousel}
+                  onMouseLeave={resumeHighlightCarousel}
                 >
                   <div className="relative h-[460px] overflow-hidden rounded-2xl border border-white/8 bg-black/20 sm:h-[540px] lg:h-[640px]">
                     <button
