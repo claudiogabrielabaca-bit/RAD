@@ -1,4 +1,5 @@
 import { prisma } from "@/app/lib/prisma";
+import { refreshDayRatingAggregate } from "@/app/lib/rating-aggregates";
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "@/app/lib/admin";
 
@@ -51,6 +52,8 @@ export async function POST(req: Request) {
     await prisma.rating.delete({
       where: { id: ratingId },
     });
+
+    await refreshDayRatingAggregate(rating.day);
 
     return NextResponse.json(
       {

@@ -272,6 +272,18 @@ model DayStats {
   updatedAt DateTime @updatedAt
 }
 
+model DayRatingAggregate {
+  day          String   @id
+  ratingsCount Int      @default(0)
+  starsSum     Int      @default(0)
+  avgStars     Float    @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([ratingsCount, avgStars], name: "day_rating_aggregate_top_idx")
+  @@index([avgStars, ratingsCount], name: "day_rating_aggregate_avg_count_idx")
+}
+
 model RateLimit {
   id        String   @id @default(cuid())
   action    String

@@ -1,4 +1,5 @@
 import { prisma } from "@/app/lib/prisma";
+import { refreshDayRatingAggregate } from "@/app/lib/rating-aggregates";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
 import { isValidDayString } from "@/app/lib/day";
@@ -111,6 +112,7 @@ export async function POST(req: Request) {
         review: text,
       },
     });
+    await refreshDayRatingAggregate(day);
 
     return NextResponse.json(
       { ok: true },

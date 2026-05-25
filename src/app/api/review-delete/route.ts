@@ -1,4 +1,5 @@
 import { prisma } from "@/app/lib/prisma";
+import { refreshDayRatingAggregate } from "@/app/lib/rating-aggregates";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
 import { invalidateNotificationsCache } from "@/app/lib/notifications-cache";
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
       where: { id: ratingId },
       select: {
         id: true,
+        day: true,
         userId: true,
       },
     });
@@ -93,6 +95,8 @@ export async function POST(req: Request) {
     await prisma.rating.delete({
       where: { id: ratingId },
     });
+
+    await refreshDayRatingAggregate(review.day);
 
     for (const userId of notificationRecipientIds) {
       invalidateNotificationsCache(userId);
