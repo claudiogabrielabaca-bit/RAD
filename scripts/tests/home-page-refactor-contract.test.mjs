@@ -86,7 +86,7 @@ test("home page delegates day view tracking to a dedicated hook", () => {
 
 test("home page delegates review derived state and sorting to a dedicated hook", () => {
   assert.match(homePage, /useHomeReviewDerivedState\(\{/);
-  assert.match(homePage, /const \{ allReviews, myReview, otherReviews, sortedOtherReviews \} =/);
+  assert.match(homePage, /const\s+\{\s*myReview,\s*otherReviews,\s*sortedOtherReviews\s*\}\s*=/);
   assert.doesNotMatch(homePage, /const allReviews = useMemo\(\(\) => data\?\.reviews \?\? \[\]/);
   assert.doesNotMatch(homePage, /const sortedOtherReviews = useMemo\(\(\) => \{/);
   assert.doesNotMatch(homePage, /hasReviewText/);

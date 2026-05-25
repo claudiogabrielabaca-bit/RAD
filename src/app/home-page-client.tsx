@@ -1414,7 +1414,7 @@ export default function Page({
   const shownStars = hoverStars || stars;
   const activeBadges = getHighlightBadges(highlight);
 
-  const { allReviews, myReview, otherReviews, sortedOtherReviews } =
+  const { myReview, otherReviews, sortedOtherReviews } =
     useHomeReviewDerivedState({
       data,
       reviewsSort,
