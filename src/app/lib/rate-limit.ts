@@ -1,13 +1,22 @@
 import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { createHash } from "crypto";
+import { isIP } from "node:net";
 
 const MAX_RATE_LIMIT_RETRIES = 3;
 const RATE_LIMIT_CLEANUP_EVERY_REQUESTS = 250;
 const RATE_LIMIT_KEY_PART_MAX_LENGTH = 256;
+const UNKNOWN_CLIENT_IP = "unknown";
+const RATE_LIMIT_HASH_PREFIX = "sha256:";
+
+const TRUSTED_SINGLE_IP_HEADERS = [
+  "cf-connecting-ip",
+  "true-client-ip",
+  "x-real-ip",
+  "x-client-ip",
+];
 
 let rateLimitCleanupCounter = 0;
-
 
 type RateLimitRow = {
   id: string;
@@ -82,14 +91,74 @@ function isRetryableRateLimitError(error: unknown) {
   return code === "P2002" || code === "P2025";
 }
 
-function normalizeRateLimitKeyPart(value: string) {
-  const normalized = value.trim().toLowerCase();
+function sha256(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
 
-  if (normalized.length <= RATE_LIMIT_KEY_PART_MAX_LENGTH) {
-    return normalized || "unknown";
+function sanitizeRateLimitKeyPart(value: string) {
+  const normalized = value.trim().toLowerCase().replace(/[\r\n\t\0]/g, "");
+  return normalized || UNKNOWN_CLIENT_IP;
+}
+
+function normalizeRateLimitKeyPart(value: string) {
+  const normalized = sanitizeRateLimitKeyPart(value);
+
+  if (normalized.length > RATE_LIMIT_KEY_PART_MAX_LENGTH) {
+    return `${RATE_LIMIT_HASH_PREFIX}${sha256(normalized)}`;
   }
 
-  return `sha256:${createHash("sha256").update(normalized).digest("hex")}`;
+  return `${RATE_LIMIT_HASH_PREFIX}${sha256(normalized)}`;
+}
+
+function stripIpPort(candidate: string) {
+  let value = candidate.trim().replace(/^"|"$/g, "");
+
+  const bracketedIpv6 = value.match(/^\[([^\]]+)\](?::\d+)?$/);
+  if (bracketedIpv6?.[1]) {
+    return bracketedIpv6[1];
+  }
+
+  if (/^\d{1,3}(?:\.\d{1,3}){3}:\d+$/.test(value)) {
+    value = value.replace(/:\d+$/, "");
+  }
+
+  return value;
+}
+
+function normalizeClientIpCandidate(candidate: string | null) {
+  if (!candidate) return null;
+
+  const value = stripIpPort(candidate);
+
+  if (!isIP(value)) {
+    return null;
+  }
+
+  return value.toLowerCase();
+}
+
+function getFirstValidIpFromHeaderValue(value: string | null) {
+  if (!value) return null;
+
+  for (const candidate of value.split(",")) {
+    const ip = normalizeClientIpCandidate(candidate);
+    if (ip) return ip;
+  }
+
+  return null;
+}
+
+function getTrustedSingleHeaderIp(headers: Headers) {
+  for (const headerName of TRUSTED_SINGLE_IP_HEADERS) {
+    const ip = getFirstValidIpFromHeaderValue(headers.get(headerName));
+    if (ip) return ip;
+  }
+
+  return null;
+}
+
+function shouldTrustForwardedForHeader() {
+  return process.env.RAD_TRUST_X_FORWARDED_FOR !== "0";
 }
 
 function maybeCleanupExpiredRateLimits() {
@@ -113,24 +182,27 @@ function maybeCleanupExpiredRateLimits() {
 }
 
 export function getClientIp(req: Request) {
-  const forwarded = req.headers.get("x-forwarded-for");
-  if (forwarded) {
-    return normalizeRateLimitKeyPart(forwarded.split(",")[0] ?? "unknown");
+  const trustedHeaderIp = getTrustedSingleHeaderIp(req.headers);
+  if (trustedHeaderIp) return trustedHeaderIp;
+
+  if (shouldTrustForwardedForHeader()) {
+    const forwardedForIp = getFirstValidIpFromHeaderValue(
+      req.headers.get("x-forwarded-for")
+    );
+
+    if (forwardedForIp) return forwardedForIp;
   }
 
-  const realIp = req.headers.get("x-real-ip");
-  if (realIp) {
-    return normalizeRateLimitKeyPart(realIp);
-  }
-
-  return "unknown";
+  return UNKNOWN_CLIENT_IP;
 }
 
-export function buildRateLimitKey(req: Request, email?: string) {
-  const ip = getClientIp(req);
-  const identifier = email ? normalizeRateLimitKeyPart(email) : "";
+export function buildRateLimitKey(req: Request, identifier?: string) {
+  const ipPart = normalizeRateLimitKeyPart(`ip:${getClientIp(req)}`);
+  const identifierPart = identifier
+    ? normalizeRateLimitKeyPart(`id:${identifier}`)
+    : "";
 
-  return identifier ? `${ip}:${identifier}` : ip;
+  return identifierPart ? `${ipPart}:${identifierPart}` : ipPart;
 }
 
 async function consumeRateLimitInTransaction(
