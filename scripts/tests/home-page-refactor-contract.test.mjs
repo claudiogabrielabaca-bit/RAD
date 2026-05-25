@@ -7,6 +7,7 @@ const authHook = fs.readFileSync("src/app/hooks/use-home-auth-state.ts", "utf8")
 const reviewState = fs.readFileSync("src/app/lib/home-page-review-state.ts", "utf8");
 const constants = fs.readFileSync("src/app/lib/home-page-client-constants.ts", "utf8");
 const dayBackHistoryHook = fs.readFileSync("src/app/hooks/use-home-day-back-history.ts", "utf8");
+const dayViewTrackingHook = fs.readFileSync("src/app/hooks/use-home-day-view-tracking.ts", "utf8");
 const favoriteDayHook = fs.readFileSync("src/app/hooks/use-home-favorite-day.ts", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
@@ -66,4 +67,16 @@ test("home page delegates favorite day behavior to a dedicated hook", () => {
   assert.match(favoriteDayHook, /refreshFavoriteDayStatus/);
   assert.match(favoriteDayHook, /favoriteStatusTimeoutRef/);
   assert.match(favoriteDayHook, /\/api\/favorite-day/);
+});
+
+
+test("home page delegates day view tracking to a dedicated hook", () => {
+  assert.match(homePage, /useHomeDayViewTracking\(\{\n    day,\n    hasPickedInitialDay,\n  \}\);/);
+  assert.doesNotMatch(homePage, /dayViewTimeoutRef/);
+  assert.doesNotMatch(homePage, /navigator\.sendBeacon/);
+  assert.doesNotMatch(homePage, /DAY_VIEW_TRACKING_DELAY_MS/);
+  assert.match(dayViewTrackingHook, /export function useHomeDayViewTracking/);
+  assert.match(dayViewTrackingHook, /DAY_VIEW_TRACKING_DELAY_MS/);
+  assert.match(dayViewTrackingHook, /navigator\.sendBeacon/);
+  assert.match(dayViewTrackingHook, /keepalive: true/);
 });

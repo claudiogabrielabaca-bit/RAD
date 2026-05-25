@@ -3,6 +3,7 @@
 import { useHomeAuthState } from "@/app/hooks/use-home-auth-state";
 import { useHomeDayBackHistory } from "@/app/hooks/use-home-day-back-history";
 import { useHomeFavoriteDay } from "@/app/hooks/use-home-favorite-day";
+import { useHomeDayViewTracking } from "@/app/hooks/use-home-day-view-tracking";
 import { useHomeDeleteActions } from "@/app/hooks/use-home-delete-actions";
 import { useHomeDayNavigation } from "@/app/hooks/use-home-day-navigation";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
@@ -50,7 +51,6 @@ import {
 } from "@/app/lib/home-page-history";
 import { YEARS, MONTHS } from "@/app/lib/home-page-discover";
 import {
-  DAY_VIEW_TRACKING_DELAY_MS,
   FORCE_FRESH_MODE,
   HERO_IMAGE_REVEAL_DELAY_MS,
   HIGHLIGHT_SCROLL_OFFSET,
@@ -111,7 +111,6 @@ export default function Page({
   const consumedProfileJumpRef = useRef(false);
   const consumedNotificationJumpKeyRef = useRef("");
   const didInitDayRef = useRef(false);
-  const dayViewTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dayRequestRef = useRef(0);
   const skipNextAutoDayLoadRef = useRef(false);
   const communityBundleLoadedDayRef = useRef("");
@@ -299,6 +298,11 @@ export default function Page({
     openAuthModal,
     requireVerifiedEmail,
     showToast,
+  });
+
+  useHomeDayViewTracking({
+    day,
+    hasPickedInitialDay,
   });
 
   const navigationActionsRef = useRef({
@@ -1053,39 +1057,6 @@ export default function Page({
     const transitionId = transitionIdRef.current;
 
     async function run() {
-      if (dayViewTimeoutRef.current) {
-        clearTimeout(dayViewTimeoutRef.current);
-      }
-
-      dayViewTimeoutRef.current = setTimeout(() => {
-        dayViewTimeoutRef.current = null;
-
-        if (cancelled || document.visibilityState !== "visible") {
-          return;
-        }
-
-        const payload = JSON.stringify({ day });
-
-        if (navigator.sendBeacon) {
-          const blob = new Blob([payload], {
-            type: "application/json",
-          });
-
-          if (navigator.sendBeacon("/api/day-view", blob)) {
-            return;
-          }
-        }
-
-        fetch("/api/day-view", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: payload,
-          keepalive: true,
-        }).catch(() => {});
-      }, DAY_VIEW_TRACKING_DELAY_MS);
-
       if (skipNextAutoDayLoadRef.current) {
         skipNextAutoDayLoadRef.current = false;
 
