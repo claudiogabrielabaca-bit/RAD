@@ -32,3 +32,11 @@ test("rate limit header parsing strips common port forms and control characters"
   assert.match(rateLimit, /bracketedIpv6/);
   assert.match(rateLimit, /replace\(\/\[\\r\\n\\t\\0\]\/g, ""\)/);
 });
+
+test("rate limit does not use Prisma interactive transactions on hot paths", () => {
+  assert.doesNotMatch(rateLimit, /prisma\.\$transaction/);
+  assert.match(rateLimit, /consumeRateLimitOnce/);
+  assert.match(rateLimit, /MAX_RATE_LIMIT_RETRIES/);
+  assert.match(rateLimit, /P2002/);
+  assert.match(rateLimit, /P2025/);
+});

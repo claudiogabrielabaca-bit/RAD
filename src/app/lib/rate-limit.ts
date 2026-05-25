@@ -28,45 +28,6 @@ type RateLimitRow = {
   updatedAt: Date;
 };
 
-type RateLimitUpdateData = {
-  count?:
-    | number
-    | {
-        increment: number;
-      };
-  expiresAt?: Date;
-};
-
-type RateLimitTransactionClient = {
-  rateLimit: {
-    findUnique(args: {
-      where: {
-        action_key: {
-          action: string;
-          key: string;
-        };
-      };
-    }): Promise<RateLimitRow | null>;
-    create(args: {
-      data: {
-        action: string;
-        key: string;
-        count: number;
-        expiresAt: Date;
-      };
-    }): Promise<unknown>;
-    update(args: {
-      where: {
-        action_key: {
-          action: string;
-          key: string;
-        };
-      };
-      data: RateLimitUpdateData;
-    }): Promise<RateLimitRow>;
-  };
-};
-
 type ConsumeRateLimitResult = {
   ok: boolean;
   remaining: number;
@@ -205,24 +166,33 @@ export function buildRateLimitKey(req: Request, identifier?: string) {
   return identifierPart ? `${ipPart}:${identifierPart}` : ipPart;
 }
 
-async function consumeRateLimitInTransaction(
-  tx: RateLimitTransactionClient,
-  {
-    action,
-    key,
-    limit,
-    windowMs,
-  }: {
-    action: string;
-    key: string;
-    limit: number;
-    windowMs: number;
-  }
-): Promise<ConsumeRateLimitResult> {
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + windowMs);
+function buildAllowedResult(limit: number, count: number): ConsumeRateLimitResult {
+  return {
+    ok: true,
+    remaining: Math.max(0, limit - count),
+    retryAfterSec: 0,
+  };
+}
 
-  const existing = await tx.rateLimit.findUnique({
+function buildLimitedResult(expiresAt: Date): ConsumeRateLimitResult {
+  return {
+    ok: false,
+    remaining: 0,
+    retryAfterSec: Math.max(
+      1,
+      Math.ceil((expiresAt.getTime() - Date.now()) / 1000)
+    ),
+  };
+}
+
+async function readRateLimitRow({
+  action,
+  key,
+}: {
+  action: string;
+  key: string;
+}): Promise<RateLimitRow | null> {
+  return prisma.rateLimit.findUnique({
     where: {
       action_key: {
         action,
@@ -230,57 +200,62 @@ async function consumeRateLimitInTransaction(
       },
     },
   });
+}
 
-  if (!existing) {
-    await tx.rateLimit.create({
-      data: {
+async function createRateLimitRow({
+  action,
+  key,
+  expiresAt,
+}: {
+  action: string;
+  key: string;
+  expiresAt: Date;
+}) {
+  await prisma.rateLimit.create({
+    data: {
+      action,
+      key,
+      count: 1,
+      expiresAt,
+    },
+  });
+
+  return buildAllowedResult(0, 1);
+}
+
+async function resetExpiredRateLimitRow({
+  action,
+  key,
+  expiresAt,
+}: {
+  action: string;
+  key: string;
+  expiresAt: Date;
+}) {
+  const updated = await prisma.rateLimit.update({
+    where: {
+      action_key: {
         action,
         key,
-        count: 1,
-        expiresAt,
       },
-    });
+    },
+    data: {
+      count: 1,
+      expiresAt,
+    },
+  });
 
-    return {
-      ok: true,
-      remaining: Math.max(0, limit - 1),
-      retryAfterSec: 0,
-    };
-  }
+  return updated;
+}
 
-  if (existing.expiresAt <= now) {
-    await tx.rateLimit.update({
-      where: {
-        action_key: {
-          action,
-          key,
-        },
-      },
-      data: {
-        count: 1,
-        expiresAt,
-      },
-    });
-
-    return {
-      ok: true,
-      remaining: Math.max(0, limit - 1),
-      retryAfterSec: 0,
-    };
-  }
-
-  if (existing.count >= limit) {
-    return {
-      ok: false,
-      remaining: 0,
-      retryAfterSec: Math.max(
-        1,
-        Math.ceil((existing.expiresAt.getTime() - Date.now()) / 1000)
-      ),
-    };
-  }
-
-  const updated = await tx.rateLimit.update({
+async function incrementRateLimitRow({
+  action,
+  key,
+}: {
+  action: string;
+  key: string;
+}) {
+  return prisma.rateLimit.update({
     where: {
       action_key: {
         action,
@@ -293,12 +268,40 @@ async function consumeRateLimitInTransaction(
       },
     },
   });
+}
 
-  return {
-    ok: true,
-    remaining: Math.max(0, limit - updated.count),
-    retryAfterSec: 0,
-  };
+async function consumeRateLimitOnce({
+  action,
+  key,
+  limit,
+  windowMs,
+}: {
+  action: string;
+  key: string;
+  limit: number;
+  windowMs: number;
+}): Promise<ConsumeRateLimitResult> {
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + windowMs);
+
+  const existing = await readRateLimitRow({ action, key });
+
+  if (!existing) {
+    await createRateLimitRow({ action, key, expiresAt });
+    return buildAllowedResult(limit, 1);
+  }
+
+  if (existing.expiresAt <= now) {
+    const updated = await resetExpiredRateLimitRow({ action, key, expiresAt });
+    return buildAllowedResult(limit, updated.count);
+  }
+
+  if (existing.count >= limit) {
+    return buildLimitedResult(existing.expiresAt);
+  }
+
+  const updated = await incrementRateLimitRow({ action, key });
+  return buildAllowedResult(limit, updated.count);
 }
 
 export async function consumeRateLimit({
@@ -316,14 +319,12 @@ export async function consumeRateLimit({
 
   for (let attempt = 0; attempt < MAX_RATE_LIMIT_RETRIES; attempt++) {
     try {
-      return await prisma.$transaction((tx: RateLimitTransactionClient) =>
-        consumeRateLimitInTransaction(tx, {
-          action,
-          key,
-          limit,
-          windowMs,
-        })
-      );
+      return await consumeRateLimitOnce({
+        action,
+        key,
+        limit,
+        windowMs,
+      });
     } catch (error) {
       const shouldRetry =
         attempt < MAX_RATE_LIMIT_RETRIES - 1 &&
