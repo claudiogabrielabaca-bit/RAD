@@ -1,4 +1,5 @@
 import { prisma } from "@/app/lib/prisma";
+import { logAdminAuditEvent } from "@/app/lib/admin-audit-log";
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "@/app/lib/admin";
 import {
@@ -72,6 +73,18 @@ export async function POST(req: Request) {
         },
       });
 
+      await logAdminAuditEvent({
+        adminUsername: adminSession.username,
+        action: "admin_review_report_status_changed",
+        targetType: "review_report",
+        targetId: updated.id,
+        metadata: {
+          reportId: updated.id,
+          ratingId: updated.ratingId,
+          status: normalizeAdminReportStatus(updated.status),
+        },
+      });
+
       return NextResponse.json(
         {
           ok: true,
@@ -116,6 +129,18 @@ export async function POST(req: Request) {
         },
       });
 
+      await logAdminAuditEvent({
+        adminUsername: adminSession.username,
+        action: "admin_reply_report_status_changed",
+        targetType: "reply_report",
+        targetId: updated.id,
+        metadata: {
+          reportId: updated.id,
+          replyId: updated.replyId,
+          status: normalizeAdminReportStatus(updated.status),
+        },
+      });
+
       return NextResponse.json(
         {
           ok: true,
@@ -153,6 +178,18 @@ export async function POST(req: Request) {
         },
       });
 
+      await logAdminAuditEvent({
+        adminUsername: adminSession.username,
+        action: "admin_review_report_status_changed",
+        targetType: "review_report",
+        targetId: updated.id,
+        metadata: {
+          reportId: updated.id,
+          ratingId: updated.ratingId,
+          status: normalizeAdminReportStatus(updated.status),
+        },
+      });
+
       return NextResponse.json(
         {
           ok: true,
@@ -187,6 +224,18 @@ export async function POST(req: Request) {
           replyId: true,
           createdAt: true,
           updatedAt: true,
+        },
+      });
+
+      await logAdminAuditEvent({
+        adminUsername: adminSession.username,
+        action: "admin_reply_report_status_changed",
+        targetType: "reply_report",
+        targetId: updated.id,
+        metadata: {
+          reportId: updated.id,
+          replyId: updated.replyId,
+          status: normalizeAdminReportStatus(updated.status),
         },
       });
 

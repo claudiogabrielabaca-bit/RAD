@@ -343,6 +343,22 @@ model Notification {
   @@index([replyId])
 }
 
+model AdminAuditLog {
+  id            String   @id @default(cuid())
+  adminUsername String
+  action        String
+  targetType    String
+  targetId      String?
+  day           String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([adminUsername, createdAt], name: "admin_audit_admin_created_at_idx")
+  @@index([action, createdAt], name: "admin_audit_action_created_at_idx")
+  @@index([targetType, targetId], name: "admin_audit_target_idx")
+  @@index([day], name: "admin_audit_day_idx")
+}
+
 enum NotificationType {
   review_liked
   review_replied

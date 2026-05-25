@@ -1,4 +1,5 @@
 import { prisma } from "@/app/lib/prisma";
+import { logAdminAuditEvent } from "@/app/lib/admin-audit-log";
 import { refreshDayRatingAggregate } from "@/app/lib/rating-aggregates";
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "@/app/lib/admin";
@@ -54,6 +55,17 @@ export async function POST(req: Request) {
     });
 
     await refreshDayRatingAggregate(rating.day);
+
+    await logAdminAuditEvent({
+      adminUsername: adminSession.username,
+      action: "admin_review_deleted",
+      targetType: "review",
+      targetId: rating.id,
+      day: rating.day,
+      metadata: {
+        ratingId: rating.id,
+      },
+    });
 
     return NextResponse.json(
       {
