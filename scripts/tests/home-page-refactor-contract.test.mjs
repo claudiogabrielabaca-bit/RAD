@@ -19,7 +19,9 @@ test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(authHook, /fetchCurrentUserClientCached/);
   assert.match(authHook, /handleProtectedActionStatus/);
   assert.match(authHook, /requireVerifiedEmail/);
-  assert.match(homePage, /refreshCurrentUser\(\);\n  \}, \[refreshCurrentUser\]\);/);
+  assert.match(homePage, /void refreshCurrentUser\(\)/);
+  assert.match(homePage, /requestIdleCallback/);
+  assert.match(homePage, /setTimeout\(run,\s*1200\)/);
 });
 
 test("home page keeps review mutation helpers outside the client component", () => {
