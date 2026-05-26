@@ -11,6 +11,7 @@ import { useHomeHighlightCarousel } from "@/app/hooks/use-home-highlight-carouse
 import { useHomeReviewReport } from "@/app/hooks/use-home-review-report";
 import { useHomeSuggestEvent } from "@/app/hooks/use-home-suggest-event";
 import { useHomeReplyComposer } from "@/app/hooks/use-home-reply-composer";
+import { useHomeDeleteMutations } from "@/app/hooks/use-home-delete-mutations";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -62,7 +63,7 @@ import {
   MIN_DAY_TRANSITION_MS,
   REVIEW_MAX_LENGTH,
 } from "@/app/lib/home-page-client-constants";
-import { removeReplyFromTree, withUpdatedReviews } from "@/app/lib/home-page-review-state";
+import { withUpdatedReviews } from "@/app/lib/home-page-review-state";
 
 type TodayInHistoryResponse = SurpriseResponse & {
   restartedRound?: boolean;
@@ -179,8 +180,6 @@ export default function Page({
     Record<string, boolean>
   >({});
 
-  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
-  const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
   const [reviewsSort, setReviewsSort] = useState<"helpful" | "newest">(
     "helpful"
   );
@@ -205,20 +204,6 @@ export default function Page({
   const visibleDayLabel =
     hasPickedInitialDay && isValidDayString(day) ? day : "Finding a day...";
 
-
-  const {
-    pendingDeleteAction,
-    openDeleteReviewModal,
-    openDeleteReplyModal,
-    closeDeleteModal,
-    handleConfirmDelete,
-  } = useHomeDeleteActions({
-    deletingReviewId,
-    deletingReplyId,
-    showToast,
-    deleteReview,
-    deleteReply,
-  });
 
   const {
     activeHighlightIndex,
@@ -1371,6 +1356,34 @@ export default function Page({
       setReview,
     });
 
+  const { deletingReviewId, deletingReplyId, deleteReview, deleteReply } =
+    useHomeDeleteMutations({
+      day,
+      myReviewId: myReview?.id ?? null,
+      handleProtectedActionStatus,
+      invalidateDayCache,
+      setStars,
+      setHoverStars,
+      setReview,
+      setToast,
+      showToast,
+      setData,
+    });
+
+  const {
+    pendingDeleteAction,
+    openDeleteReviewModal,
+    openDeleteReplyModal,
+    closeDeleteModal,
+    handleConfirmDelete,
+  } = useHomeDeleteActions({
+    deletingReviewId,
+    deletingReplyId,
+    showToast,
+    deleteReview,
+    deleteReply,
+  });
+
   async function submit() {
     if (!currentUser) {
       openAuthModal("login");
@@ -1445,53 +1458,6 @@ export default function Page({
       showToast("Error guardando.");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function deleteReview(ratingId: string) {
-    setDeletingReviewId(ratingId);
-    setToast("");
-
-    try {
-      const res = await fetch("/api/review-delete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ ratingId }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (handleProtectedActionStatus(res.status)) {
-        return;
-      }
-
-      if (!res.ok) {
-        showToast(json?.error ?? "Could not delete review.");
-        return;
-      }
-
-      if (myReview?.id === ratingId) {
-        setStars(0);
-        setHoverStars(0);
-        setReview("");
-      }
-
-      invalidateDayCache(day);
-
-      setData((prev) => {
-        if (!prev) return prev;
-
-        const nextReviews = prev.reviews.filter((item) => item.id !== ratingId);
-        return withUpdatedReviews(prev, nextReviews);
-      });
-
-      showToast("Review deleted.");
-    } catch {
-      showToast("Could not delete review.");
-    } finally {
-      setDeletingReviewId(null);
     }
   }
 
@@ -1601,57 +1567,6 @@ export default function Page({
       });
 
       showToast("Error dando like.");
-    }
-  }
-
-  async function deleteReply(replyId?: string | null) {
-    if (!replyId || typeof replyId !== "string") {
-      showToast("Invalid replyId.");
-      return;
-    }
-
-    setDeletingReplyId(replyId);
-    setToast("");
-
-    try {
-      const res = await fetch("/api/reply-delete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ replyId }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (handleProtectedActionStatus(res.status)) {
-        return;
-      }
-
-      if (!res.ok) {
-        showToast(json?.error ?? "Could not delete reply.");
-        return;
-      }
-
-      invalidateDayCache(day);
-
-      setData((prev) => {
-        if (!prev) return prev;
-
-        return {
-          ...prev,
-          reviews: prev.reviews.map((item) => ({
-            ...item,
-            replies: removeReplyFromTree(item.replies ?? [], replyId),
-          })),
-        };
-      });
-
-      showToast("Reply deleted.");
-    } catch {
-      showToast("Could not delete reply.");
-    } finally {
-      setDeletingReplyId(null);
     }
   }
 

@@ -14,6 +14,7 @@ const highlightCarouselHook = fs.readFileSync("src/app/hooks/use-home-highlight-
 const reviewReportHook = fs.readFileSync("src/app/hooks/use-home-review-report.ts", "utf8");
 const suggestEventHook = fs.readFileSync("src/app/hooks/use-home-suggest-event.ts", "utf8");
 const replyComposerHook = fs.readFileSync("src/app/hooks/use-home-reply-composer.ts", "utf8");
+const deleteMutationsHook = fs.readFileSync("src/app/hooks/use-home-delete-mutations.ts", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(homePage, /useHomeAuthState\(\{ router, pathname, searchParams \}\)/);
@@ -170,4 +171,26 @@ test("home page delegates reply composer state to a dedicated hook", () => {
   assert.match(replyComposerHook, /const submitReply = useCallback/);
   assert.match(replyComposerHook, /fetch\("\/api\/review-reply"/);
   assert.match(replyComposerHook, /REPLY_MAX_LENGTH/);
+});
+
+test("home page delegates delete mutations to a dedicated hook", () => {
+  assert.match(homePage, /useHomeDeleteMutations\(\{/);
+  assert.match(homePage, /useHomeDeleteActions\(\{/);
+  assert.doesNotMatch(homePage, /const \[deletingReviewId/);
+  assert.doesNotMatch(homePage, /const \[deletingReplyId/);
+  assert.doesNotMatch(homePage, /setDeletingReviewId/);
+  assert.doesNotMatch(homePage, /setDeletingReplyId/);
+  assert.doesNotMatch(homePage, /async function deleteReview/);
+  assert.doesNotMatch(homePage, /async function deleteReply/);
+  assert.doesNotMatch(homePage, /fetch\("\/api\/review-delete"/);
+  assert.doesNotMatch(homePage, /fetch\("\/api\/reply-delete"/);
+  assert.doesNotMatch(homePage, /removeReplyFromTree/);
+  assert.match(deleteMutationsHook, /export function useHomeDeleteMutations/);
+  assert.match(deleteMutationsHook, /const \[deletingReviewId, setDeletingReviewId\]/);
+  assert.match(deleteMutationsHook, /const \[deletingReplyId, setDeletingReplyId\]/);
+  assert.match(deleteMutationsHook, /const deleteReview = useCallback/);
+  assert.match(deleteMutationsHook, /const deleteReply = useCallback/);
+  assert.match(deleteMutationsHook, /fetch\("\/api\/review-delete"/);
+  assert.match(deleteMutationsHook, /fetch\("\/api\/reply-delete"/);
+  assert.match(deleteMutationsHook, /removeReplyFromTree/);
 });
