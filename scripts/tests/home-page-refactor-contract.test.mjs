@@ -13,6 +13,7 @@ const reviewDerivedStateHook = fs.readFileSync("src/app/hooks/use-home-review-de
 const highlightCarouselHook = fs.readFileSync("src/app/hooks/use-home-highlight-carousel.ts", "utf8");
 const reviewReportHook = fs.readFileSync("src/app/hooks/use-home-review-report.ts", "utf8");
 const suggestEventHook = fs.readFileSync("src/app/hooks/use-home-suggest-event.ts", "utf8");
+const replyComposerHook = fs.readFileSync("src/app/hooks/use-home-reply-composer.ts", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(homePage, /useHomeAuthState\(\{ router, pathname, searchParams \}\)/);
@@ -151,4 +152,22 @@ test("home page delegates suggest event state to a dedicated hook", () => {
   assert.match(suggestEventHook, /const \[suggestEvent, setSuggestEvent\] = useState\(""\)/);
   assert.match(suggestEventHook, /const submitSuggestion = useCallback/);
   assert.match(suggestEventHook, /fetch\("\/api\/suggest-event"/);
+});
+
+test("home page delegates reply composer state to a dedicated hook", () => {
+  assert.match(homePage, /useHomeReplyComposer\(\{/);
+  assert.doesNotMatch(homePage, /const \[replyingToId/);
+  assert.doesNotMatch(homePage, /const \[replyTextByRating/);
+  assert.doesNotMatch(homePage, /const \[sendingReplyId/);
+  assert.doesNotMatch(homePage, /setSendingReplyId/);
+  assert.doesNotMatch(homePage, /async function submitReply/);
+  assert.doesNotMatch(homePage, /fetch\("\/api\/review-reply"/);
+  assert.doesNotMatch(homePage, /REPLY_MAX_LENGTH/);
+  assert.match(replyComposerHook, /export function useHomeReplyComposer/);
+  assert.match(replyComposerHook, /const \[replyingToId, setReplyingToId\]/);
+  assert.match(replyComposerHook, /const \[replyTextByRating, setReplyTextByRating\]/);
+  assert.match(replyComposerHook, /const \[sendingReplyId, setSendingReplyId\]/);
+  assert.match(replyComposerHook, /const submitReply = useCallback/);
+  assert.match(replyComposerHook, /fetch\("\/api\/review-reply"/);
+  assert.match(replyComposerHook, /REPLY_MAX_LENGTH/);
 });

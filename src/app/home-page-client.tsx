@@ -10,6 +10,7 @@ import { useHomeReviewDerivedState } from "@/app/hooks/use-home-review-derived-s
 import { useHomeHighlightCarousel } from "@/app/hooks/use-home-highlight-carousel";
 import { useHomeReviewReport } from "@/app/hooks/use-home-review-report";
 import { useHomeSuggestEvent } from "@/app/hooks/use-home-suggest-event";
+import { useHomeReplyComposer } from "@/app/hooks/use-home-reply-composer";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -59,7 +60,6 @@ import {
   HIGHLIGHT_SCROLL_OFFSET,
   LAST_DAY_STORAGE_KEY,
   MIN_DAY_TRANSITION_MS,
-  REPLY_MAX_LENGTH,
   REVIEW_MAX_LENGTH,
 } from "@/app/lib/home-page-client-constants";
 import { removeReplyFromTree, withUpdatedReviews } from "@/app/lib/home-page-review-state";
@@ -180,11 +180,6 @@ export default function Page({
   >({});
 
   const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
-  const [replyingToId, setReplyingToId] = useState<string | null>(null);
-  const [replyTextByRating, setReplyTextByRating] = useState<
-    Record<string, string>
-  >({});
-  const [sendingReplyId, setSendingReplyId] = useState<string | null>(null);
   const [deletingReplyId, setDeletingReplyId] = useState<string | null>(null);
   const [reviewsSort, setReviewsSort] = useState<"helpful" | "newest">(
     "helpful"
@@ -316,6 +311,25 @@ export default function Page({
     handleProtectedActionStatus,
     setToast,
     showToast,
+  });
+
+  const {
+    replyingToId,
+    replyTextByRating,
+    sendingReplyId,
+    setReplyingToId,
+    setReplyTextByRating,
+    submitReply,
+  } = useHomeReplyComposer({
+    day,
+    currentUser,
+    openAuthModal,
+    requireVerifiedEmail,
+    handleProtectedActionStatus,
+    setToast,
+    showToast,
+    setData,
+    invalidateDayCache,
   });
 
   const {
@@ -1587,86 +1601,6 @@ export default function Page({
       });
 
       showToast("Error dando like.");
-    }
-  }
-
-  async function submitReply(ratingId: string) {
-    if (!currentUser) {
-      openAuthModal("login");
-      return;
-    }
-
-    if (requireVerifiedEmail()) return;
-
-    const text = (replyTextByRating[ratingId] ?? "").trim();
-
-    if (!text) {
-      showToast("Reply cannot be empty.");
-      return;
-    }
-
-    if (text.length > REPLY_MAX_LENGTH) {
-      showToast(`Reply is too long (max ${REPLY_MAX_LENGTH} chars).`);
-      return;
-    }
-
-    setSendingReplyId(ratingId);
-    setToast("");
-
-    try {
-      const res = await fetch("/api/review-reply", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ratingId,
-          text,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (handleProtectedActionStatus(res.status)) {
-        return;
-      }
-
-      if (!res.ok) {
-        showToast(json?.error ?? "Could not send reply.");
-        return;
-      }
-
-      setReplyTextByRating((prev) => ({
-        ...prev,
-        [ratingId]: "",
-      }));
-      setReplyingToId(null);
-
-      invalidateDayCache(day);
-
-      if (json?.reply) {
-        setData((prev) => {
-          if (!prev) return prev;
-
-          return {
-            ...prev,
-            reviews: prev.reviews.map((item) =>
-              item.id === ratingId
-                ? {
-                    ...item,
-                    replies: [...(item.replies ?? []), json.reply],
-                  }
-                : item
-            ),
-          };
-        });
-      }
-
-      showToast("Reply sent.");
-    } catch {
-      showToast("Could not send reply.");
-    } finally {
-      setSendingReplyId(null);
     }
   }
 
