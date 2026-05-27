@@ -13,6 +13,7 @@ import { useHomeSuggestEvent } from "@/app/hooks/use-home-suggest-event";
 import { useHomeReplyComposer } from "@/app/hooks/use-home-reply-composer";
 import { useHomeDeleteMutations } from "@/app/hooks/use-home-delete-mutations";
 import { useHomeReviewLike } from "@/app/hooks/use-home-review-like";
+import { useHomeRatingSubmit } from "@/app/hooks/use-home-rating-submit";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -28,7 +29,6 @@ import {
   getBadgeStyle,
   getBadgeLabel,
   getHighlightBadges,
-  clamp,
   formatAvg,
   pad2,
   getDaysInMonth,
@@ -64,7 +64,6 @@ import {
   MIN_DAY_TRANSITION_MS,
   REVIEW_MAX_LENGTH,
 } from "@/app/lib/home-page-client-constants";
-import { withUpdatedReviews } from "@/app/lib/home-page-review-state";
 
 type TodayInHistoryResponse = SurpriseResponse & {
   restartedRound?: boolean;
@@ -174,7 +173,6 @@ export default function Page({
   const [hoverStars, setHoverStars] = useState<number>(0);
   const [review, setReview] = useState<string>("");
 
-  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string>("");
 
   const [expandedReviews, setExpandedReviews] = useState<
@@ -1395,82 +1393,22 @@ export default function Page({
     showToast,
   });
 
-  async function submit() {
-    if (!currentUser) {
-      openAuthModal("login");
-      return;
-    }
-
-    if (requireVerifiedEmail()) return;
-
-    const s = clamp(hoverStars || stars, 1, 5);
-
-    if (!s) {
-      showToast("Elegí de 1 a 5 estrellas.");
-      return;
-    }
-
-    if (review.length > REVIEW_MAX_LENGTH) {
-      showToast(`Review is too long (max ${REVIEW_MAX_LENGTH} chars).`);
-      return;
-    }
-
-    const trimmedReview = review.trim();
-
-    setSaving(true);
-    setToast("");
-
-    try {
-      const res = await fetch(`/api/rate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          day,
-          stars: s,
-          review: trimmedReview,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (handleProtectedActionStatus(res.status)) {
-        return;
-      }
-
-      if (!res.ok) {
-        showToast(json?.error ?? "Error saving review.");
-        return;
-      }
-
-      invalidateDayCache(day);
-
-      if (myReview) {
-        setData((prev) => {
-          if (!prev) return prev;
-
-          const nextReviews = prev.reviews.map((item) =>
-            item.id === myReview.id
-              ? {
-                  ...item,
-                  stars: s,
-                  review: trimmedReview,
-                }
-              : item
-          );
-
-          return withUpdatedReviews(prev, nextReviews);
-        });
-      } else {
-        await refreshDayCommunity(day);
-      }
-
-      showToast("Review saved.");
-    } catch {
-      showToast("Error guardando.");
-    } finally {
-      setSaving(false);
-    }
-  }
+  const { saving, submit } = useHomeRatingSubmit({
+    day,
+    currentUser,
+    hoverStars,
+    stars,
+    review,
+    myReviewId: myReview?.id ?? null,
+    openAuthModal,
+    requireVerifiedEmail,
+    handleProtectedActionStatus,
+    invalidateDayCache,
+    refreshDayCommunity,
+    setToast,
+    showToast,
+    setData,
+  });
 
   async function shareCurrentDay() {
     const displayDate = formatDisplayDate(day);

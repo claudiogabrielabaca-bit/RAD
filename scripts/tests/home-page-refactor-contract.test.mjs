@@ -16,6 +16,7 @@ const suggestEventHook = fs.readFileSync("src/app/hooks/use-home-suggest-event.t
 const replyComposerHook = fs.readFileSync("src/app/hooks/use-home-reply-composer.ts", "utf8");
 const deleteMutationsHook = fs.readFileSync("src/app/hooks/use-home-delete-mutations.ts", "utf8");
 const reviewLikeHook = fs.readFileSync("src/app/hooks/use-home-review-like.ts", "utf8");
+const ratingSubmitHook = fs.readFileSync("src/app/hooks/use-home-rating-submit.ts", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(homePage, /useHomeAuthState\(\{ router, pathname, searchParams \}\)/);
@@ -32,7 +33,7 @@ test("home page delegates auth modal/session state to a dedicated hook", () => {
 });
 
 test("home page keeps review mutation helpers outside the client component", () => {
-  assert.match(homePage, /from "@\/app\/lib\/home-page-review-state"/);
+  assert.doesNotMatch(homePage, /from "@\/app\/lib\/home-page-review-state"/);
   assert.doesNotMatch(homePage, /function withUpdatedReviews/);
   assert.doesNotMatch(homePage, /function removeReplyFromTree/);
   assert.match(reviewState, /export function withUpdatedReviews/);
@@ -208,4 +209,23 @@ test("home page delegates review like behavior to a dedicated hook", () => {
   assert.match(reviewLikeHook, /fetch\("\/api\/review-like"/);
   assert.match(reviewLikeHook, /optimisticLiked/);
   assert.match(reviewLikeHook, /optimisticLikesCount/);
+});
+
+test("home page delegates rating submit behavior to a dedicated hook", () => {
+  assert.match(homePage, /useHomeRatingSubmit\(\{/);
+  assert.match(homePage, /onSubmit=\{submit\}/);
+  assert.match(homePage, /saving=\{saving\}/);
+  assert.doesNotMatch(homePage, /const \[saving, setSaving\]/);
+  assert.doesNotMatch(homePage, /setSaving\(/);
+  assert.doesNotMatch(homePage, /async function submit/);
+  assert.doesNotMatch(homePage, /fetch\(\`\/api\/rate\`/);
+  assert.doesNotMatch(homePage, /withUpdatedReviews/);
+  assert.doesNotMatch(homePage, /const s = clamp/);
+  assert.match(ratingSubmitHook, /export function useHomeRatingSubmit/);
+  assert.match(ratingSubmitHook, /const \[saving, setSaving\]/);
+  assert.match(ratingSubmitHook, /const submit = useCallback/);
+  assert.match(ratingSubmitHook, /fetch\(\`\/api\/rate\`/);
+  assert.match(ratingSubmitHook, /withUpdatedReviews/);
+  assert.match(ratingSubmitHook, /const s = clamp/);
+  assert.match(ratingSubmitHook, /refreshDayCommunity\(day\)/);
 });
