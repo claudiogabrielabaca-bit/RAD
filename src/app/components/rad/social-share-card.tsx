@@ -21,6 +21,16 @@ function normalizeText(value?: string | null) {
   return (value ?? "").replace(/\s+/g, " ").trim();
 }
 
+function normalizeReviewText(value?: string | null) {
+  return (value ?? "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .join("\n")
+    .trim();
+}
+
 function getBadgeLabel(value?: string | null) {
   switch (value) {
     case "selected":
@@ -195,7 +205,7 @@ export default function SocialShareCard({
   const description =
     normalizeText(highlight.text) || "No description available.";
   const reviewText =
-    normalizeText(review?.review) || "Rated this day on rateanyday.com.";
+    normalizeReviewText(review?.review) || "Rated this day on Rateanyday.com.";
   const author = review?.authorLabel || (username ? `@${username}` : "@you");
 
   const titleConfig = getTitleConfig(title.length);
@@ -225,22 +235,36 @@ export default function SocialShareCard({
       <div className="grid h-full grid-rows-[minmax(0,1fr)_auto]">
         <div className="relative min-h-0 overflow-hidden border-b border-white/10 bg-black">
           {highlight.image ? (
-            <Image
-              src={highlight.image}
-              alt={title}
-              fill
-          unoptimized
-              sizes="1080px"
-              className="object-cover"
-              draggable={false}
-              priority
-            />
+            <>
+              <Image
+                src={highlight.image}
+                alt=""
+                fill
+                unoptimized
+                sizes="1080px"
+                className="scale-110 object-cover opacity-80 blur-md saturate-125"
+                draggable={false}
+                priority
+                aria-hidden="true"
+              />
+              <div className="absolute inset-0 bg-black/28" aria-hidden="true" />
+              <Image
+                src={highlight.image}
+                alt={title}
+                fill
+                unoptimized
+                sizes="1080px"
+                className="object-contain drop-shadow-[0_22px_70px_rgba(0,0,0,0.62)]"
+                draggable={false}
+                priority
+              />
+            </>
           ) : (
             <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_34%),linear-gradient(180deg,#1a1a1a_0%,#090909_100%)]" />
           )}
 
-          <div className="absolute inset-0 bg-gradient-to-r from-black/84 via-black/58 to-black/18" />
-          <div className="absolute inset-0 bg-gradient-to-b from-black/16 via-transparent to-black/66" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/72 via-black/34 to-black/10" />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/8 via-transparent to-black/62" />
 
           <div className="relative z-10 flex h-full flex-col justify-end p-[56px]">
             <div className="text-[20px] font-medium text-zinc-200/90">
@@ -297,7 +321,16 @@ export default function SocialShareCard({
             </span>
           </div>
 
-          <div className={reviewClass}>{reviewText}</div>
+          <div
+            className={reviewClass}
+            style={{
+              whiteSpace: "pre-wrap",
+              overflowWrap: "anywhere",
+              wordBreak: "break-word",
+            }}
+          >
+            {reviewText}
+          </div>
 
           <div className="mt-5 text-center text-[12px] lowercase tracking-[0.08em] text-zinc-500">
             rateanyday.com

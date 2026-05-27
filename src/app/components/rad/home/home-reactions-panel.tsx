@@ -15,6 +15,18 @@ import type { CurrentUser } from "@/app/lib/home-page-auth";
 
 type ReviewItem = DayResponse["reviews"][number];
 
+const COLLAPSED_REVIEW_CHARS = 100;
+
+function getCollapsedReviewText(text: string) {
+  const trimmed = text.trim();
+
+  if (trimmed.length <= COLLAPSED_REVIEW_CHARS) {
+    return trimmed;
+  }
+
+  return `${trimmed.slice(0, COLLAPSED_REVIEW_CHARS).trimEnd()}…`;
+}
+
 type HomeReactionsPanelProps = {
   rateBoxRef: React.RefObject<HTMLDivElement | null>;
   myReviewBlockRef: React.RefObject<HTMLDivElement | null>;
@@ -125,6 +137,10 @@ export default function HomeReactionsPanel({
     const { mine = false, showSectionLabel } = options;
     const compact = !hasReviewText(item.review);
     const isTargetReview = !!targetReviewId && item.id === targetReviewId;
+    const reviewExpanded = !!expandedReviews[item.id];
+    const visibleReviewText = reviewExpanded
+      ? item.review
+      : getCollapsedReviewText(item.review);
 
     return (
       <div
@@ -198,15 +214,11 @@ export default function HomeReactionsPanel({
 
           {!compact ? (
             <div>
-              <div
-                className={`break-all text-sm leading-7 text-zinc-200 [overflow-wrap:anywhere] ${
-                  expandedReviews[item.id] ? "" : "line-clamp-3"
-                }`}
-              >
-                {item.review}
+              <div className="whitespace-pre-wrap break-words text-sm leading-7 text-zinc-200 [overflow-wrap:anywhere]">
+                {visibleReviewText}
               </div>
 
-              {isLongReview(item.review) ? (
+              {isLongReview(item.review, COLLAPSED_REVIEW_CHARS) ? (
                 <button
                   type="button"
                   onClick={() =>
@@ -217,12 +229,11 @@ export default function HomeReactionsPanel({
                   }
                   className="mt-2 inline-flex items-center rounded-lg border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs font-medium text-zinc-300 transition hover:bg-white/[0.08] hover:text-white"
                 >
-                  {expandedReviews[item.id] ? "Show less" : "Show more"}
+                  {reviewExpanded ? "Show less" : "Show more"}
                 </button>
               ) : null}
             </div>
           ) : null}
-
           <div className="flex flex-wrap items-center gap-4 text-sm">
             <button
               type="button"

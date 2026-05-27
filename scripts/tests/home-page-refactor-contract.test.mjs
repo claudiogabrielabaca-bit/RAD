@@ -17,6 +17,8 @@ const replyComposerHook = fs.readFileSync("src/app/hooks/use-home-reply-composer
 const deleteMutationsHook = fs.readFileSync("src/app/hooks/use-home-delete-mutations.ts", "utf8");
 const reviewLikeHook = fs.readFileSync("src/app/hooks/use-home-review-like.ts", "utf8");
 const ratingSubmitHook = fs.readFileSync("src/app/hooks/use-home-rating-submit.ts", "utf8");
+const socialShareCard = fs.readFileSync("src/app/components/rad/social-share-card.tsx", "utf8");
+const homeReactionsPanel = fs.readFileSync("src/app/components/rad/home/home-reactions-panel.tsx", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(homePage, /useHomeAuthState\(\{ router, pathname, searchParams \}\)/);
@@ -228,4 +230,27 @@ test("home page delegates rating submit behavior to a dedicated hook", () => {
   assert.match(ratingSubmitHook, /withUpdatedReviews/);
   assert.match(ratingSubmitHook, /const s = clamp/);
   assert.match(ratingSubmitHook, /refreshDayCommunity\(day\)/);
+});
+
+test("social share card preserves image framing and review wrapping", () => {
+  assert.match(socialShareCard, /object-contain/);
+  assert.match(socialShareCard, /function normalizeReviewText/);
+  assert.match(socialShareCard, /normalizeReviewText\(review\?\.review\)/);
+  assert.match(socialShareCard, /whiteSpace: "pre-wrap"/);
+  assert.match(socialShareCard, /overflowWrap: "anywhere"/);
+  assert.match(socialShareCard, /wordBreak: "break-word"/);
+});
+
+test("social share card avoids hard black bars while preserving full image", () => {
+  assert.match(socialShareCard, /object-contain/);
+  assert.match(socialShareCard, /opacity-80 blur-md/);
+  assert.match(socialShareCard, /bg-black\/28/);
+});
+
+test("home reactions panel uses deterministic review preview length", () => {
+  assert.match(homeReactionsPanel, /COLLAPSED_REVIEW_CHARS = 100/);
+  assert.match(homeReactionsPanel, /function getCollapsedReviewText/);
+  assert.match(homeReactionsPanel, /visibleReviewText/);
+  assert.match(homeReactionsPanel, /isLongReview\(item\.review, COLLAPSED_REVIEW_CHARS\)/);
+  assert.doesNotMatch(homeReactionsPanel, /line-clamp-3/);
 });
