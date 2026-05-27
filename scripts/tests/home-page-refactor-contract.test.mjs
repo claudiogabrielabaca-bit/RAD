@@ -18,6 +18,7 @@ const deleteMutationsHook = fs.readFileSync("src/app/hooks/use-home-delete-mutat
 const reviewLikeHook = fs.readFileSync("src/app/hooks/use-home-review-like.ts", "utf8");
 const ratingSubmitHook = fs.readFileSync("src/app/hooks/use-home-rating-submit.ts", "utf8");
 const socialShareCard = fs.readFileSync("src/app/components/rad/social-share-card.tsx", "utf8");
+const socialPostModal = fs.readFileSync("src/app/components/rad/social-post-modal.tsx", "utf8");
 const homeReactionsPanel = fs.readFileSync("src/app/components/rad/home/home-reactions-panel.tsx", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
@@ -253,4 +254,16 @@ test("home reactions panel uses deterministic review preview length", () => {
   assert.match(homeReactionsPanel, /visibleReviewText/);
   assert.match(homeReactionsPanel, /isLongReview\(item\.review, COLLAPSED_REVIEW_CHARS\)/);
   assert.doesNotMatch(homeReactionsPanel, /line-clamp-3/);
+});
+
+test("social post modal keeps selected highlight stable while open", () => {
+  assert.match(socialPostModal, /selectionInitializedRef/);
+  assert.match(socialPostModal, /selectionInitializedRef\.current = false/);
+  assert.match(socialPostModal, /selectionInitializedRef\.current = true/);
+  assert.match(socialPostModal, /setSelectedHighlightIndex\(activeIndex >= 0 \? activeIndex : 0\)/);
+});
+
+test("home page passes all highlights to social post modal", () => {
+  assert.match(homePage, /<SocialPostModal/);
+  assert.match(homePage, /highlights=\{highlights\}/);
 });

@@ -2040,6 +2040,7 @@ export default function Page({
         open={socialPostOpen}
         day={day}
         highlight={highlight}
+        highlights={highlights}
         review={myReview ?? null}
         username={currentUser?.username ?? null}
         onClose={() => setSocialPostOpen(false)}
