@@ -12,6 +12,7 @@ import { useHomeReviewReport } from "@/app/hooks/use-home-review-report";
 import { useHomeSuggestEvent } from "@/app/hooks/use-home-suggest-event";
 import { useHomeReplyComposer } from "@/app/hooks/use-home-reply-composer";
 import { useHomeDeleteMutations } from "@/app/hooks/use-home-delete-mutations";
+import { useHomeReviewLike } from "@/app/hooks/use-home-review-like";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -1384,6 +1385,16 @@ export default function Page({
     deleteReply,
   });
 
+  const { toggleLike } = useHomeReviewLike({
+    data,
+    currentUser,
+    openAuthModal,
+    requireVerifiedEmail,
+    handleProtectedActionStatus,
+    setData,
+    showToast,
+  });
+
   async function submit() {
     if (!currentUser) {
       openAuthModal("login");
@@ -1458,115 +1469,6 @@ export default function Page({
       showToast("Error guardando.");
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function toggleLike(ratingId: string) {
-    if (!currentUser) {
-      openAuthModal("login");
-      return;
-    }
-
-    if (requireVerifiedEmail()) return;
-    if (!data) return;
-
-    const targetReview = data.reviews.find((item) => item.id === ratingId);
-
-    if (!targetReview) return;
-
-    const previousReviews = data.reviews.map((item) => ({
-      ...item,
-      replies: item.replies,
-    }));
-
-    const optimisticLiked = !targetReview.likedByMe;
-    const optimisticLikesCount = Math.max(
-      0,
-      targetReview.likesCount + (optimisticLiked ? 1 : -1)
-    );
-
-    setData((prev) => {
-      if (!prev) return prev;
-
-      return {
-        ...prev,
-        reviews: prev.reviews.map((item) =>
-          item.id === ratingId
-            ? {
-                ...item,
-                likedByMe: optimisticLiked,
-                likesCount: optimisticLikesCount,
-              }
-            : item
-        ),
-      };
-    });
-
-    try {
-      const res = await fetch("/api/review-like", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ratingId,
-          liked: optimisticLiked,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        setData((prev) => {
-          if (!prev) return prev;
-
-          return {
-            ...prev,
-            reviews: previousReviews,
-          };
-        });
-
-        if (handleProtectedActionStatus(res.status)) {
-          return;
-        }
-
-        showToast(json?.error ?? "Error giving like.");
-        return;
-      }
-
-      setData((prev) => {
-        if (!prev) return prev;
-
-        return {
-          ...prev,
-          reviews: prev.reviews.map((item) =>
-            item.id === ratingId
-              ? {
-                  ...item,
-                  likedByMe:
-                    typeof json?.liked === "boolean"
-                      ? json.liked
-                      : optimisticLiked,
-                  likesCount:
-                    typeof json?.likesCount === "number"
-                      ? json.likesCount
-                      : optimisticLikesCount,
-                }
-              : item
-          ),
-        };
-      });
-    } catch {
-      setData((prev) => {
-        if (!prev) return prev;
-
-        return {
-          ...prev,
-          reviews: previousReviews,
-        };
-      });
-
-      showToast("Error dando like.");
     }
   }
 

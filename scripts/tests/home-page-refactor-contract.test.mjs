@@ -15,6 +15,7 @@ const reviewReportHook = fs.readFileSync("src/app/hooks/use-home-review-report.t
 const suggestEventHook = fs.readFileSync("src/app/hooks/use-home-suggest-event.ts", "utf8");
 const replyComposerHook = fs.readFileSync("src/app/hooks/use-home-reply-composer.ts", "utf8");
 const deleteMutationsHook = fs.readFileSync("src/app/hooks/use-home-delete-mutations.ts", "utf8");
+const reviewLikeHook = fs.readFileSync("src/app/hooks/use-home-review-like.ts", "utf8");
 
 test("home page delegates auth modal/session state to a dedicated hook", () => {
   assert.match(homePage, /useHomeAuthState\(\{ router, pathname, searchParams \}\)/);
@@ -193,4 +194,18 @@ test("home page delegates delete mutations to a dedicated hook", () => {
   assert.match(deleteMutationsHook, /fetch\("\/api\/review-delete"/);
   assert.match(deleteMutationsHook, /fetch\("\/api\/reply-delete"/);
   assert.match(deleteMutationsHook, /removeReplyFromTree/);
+});
+
+test("home page delegates review like behavior to a dedicated hook", () => {
+  assert.match(homePage, /useHomeReviewLike\(\{/);
+  assert.match(homePage, /onToggleLike=\{toggleLike\}/);
+  assert.doesNotMatch(homePage, /async function toggleLike/);
+  assert.doesNotMatch(homePage, /fetch\("\/api\/review-like"/);
+  assert.doesNotMatch(homePage, /optimisticLiked/);
+  assert.doesNotMatch(homePage, /optimisticLikesCount/);
+  assert.match(reviewLikeHook, /export function useHomeReviewLike/);
+  assert.match(reviewLikeHook, /const toggleLike = useCallback/);
+  assert.match(reviewLikeHook, /fetch\("\/api\/review-like"/);
+  assert.match(reviewLikeHook, /optimisticLiked/);
+  assert.match(reviewLikeHook, /optimisticLikesCount/);
 });
