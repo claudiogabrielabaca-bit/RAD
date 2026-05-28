@@ -535,7 +535,7 @@ export default function Page({
     dayBundleCacheRef.current.clear();
     prefetchingDaysRef.current.clear();
     setTodayHistoryNotice("");
-  }, [dayBundleCacheRef, prefetchingDaysRef]);
+  }, [dayBundleCacheRef, prefetchingDaysRef, setTodayHistoryNotice]);
 
   useEffect(() => {
     resetUserScopedNavigationState();
@@ -1128,6 +1128,7 @@ export default function Page({
     initialBundle?.day,
     initialBundle?.publicInitialOnly,
     pathname,
+    showToast,
     transitionIdRef,
   ]);
 
@@ -1227,6 +1228,7 @@ export default function Page({
     hasPickedInitialDay,
     initialBundle,
     pathname,
+    showToast,
   ]);
 
   useEffect(() => {
