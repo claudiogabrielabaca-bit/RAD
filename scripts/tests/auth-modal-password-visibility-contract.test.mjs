@@ -3,6 +3,7 @@ import fs from "node:fs";
 import test from "node:test";
 
 const authModal = fs.readFileSync("src/app/components/rad/auth-modal.tsx", "utf8");
+const lifecycleHook = fs.readFileSync("src/app/hooks/use-auth-modal-effects.ts", "utf8");
 const hook = fs.readFileSync("src/app/hooks/use-auth-password-visibility.ts", "utf8");
 
 test("auth modal delegates password visibility state to a dedicated hook", () => {
@@ -14,7 +15,8 @@ test("auth modal delegates password visibility state to a dedicated hook", () =>
   assert.match(hook, /toggleConfirmPassword/);
 
   assert.match(authModal, /useAuthPasswordVisibility\(\)/);
-  assert.match(authModal, /resetPasswordVisibility\(\)/);
+  assert.match(authModal, /resetPasswordVisibility/);
+  assert.match(lifecycleHook, /resetPasswordVisibility\(\)/);
   assert.match(authModal, /onToggle=\{toggleLoginPassword\}/);
   assert.match(authModal, /onToggle=\{toggleRegisterPassword\}/);
   assert.match(authModal, /onToggle=\{toggleNewPassword\}/);

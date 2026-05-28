@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React from "react";
 import TurnstileWidget from "@/app/components/rad/turnstile-widget";
 import { ContextLink, PasswordField } from "@/app/components/rad/auth-modal-parts";
 import { useAuthPasswordVisibility } from "@/app/hooks/use-auth-password-visibility";
@@ -9,6 +9,7 @@ import { useAuthEmailVerificationStatus } from "@/app/hooks/use-auth-email-verif
 import { useAuthFeedbackState } from "@/app/hooks/use-auth-feedback-state";
 import { useAuthFormFields } from "@/app/hooks/use-auth-form-fields";
 import { useAuthRefreshUser } from "@/app/hooks/use-auth-refresh-user";
+import { useAuthModalEscapeClose, useAuthModalLifecycle } from "@/app/hooks/use-auth-modal-effects";
 import {
   submitForgotPassword,
   submitLogin,
@@ -124,72 +125,28 @@ export default function AuthModal({
     return true;
   }
 
-  useEffect(() => {
-    if (!open) {
-      setEmail(initialEmail || "");
-      setUsername("");
-      setPassword("");
-      setCode("");
-      setNewPassword("");
-      setConfirmPassword("");
-      resetAuthFeedback();
-      resetAuthLoading();
-      resetCurrentUserEmailVerified();
-      clearTurnstileToken();
-      resetPasswordVisibility();
-      return;
-    }
+  useAuthModalLifecycle({
+    open,
+    view,
+    initialEmail,
+    setEmail,
+    setUsername,
+    setPassword,
+    setCode,
+    setNewPassword,
+    setConfirmPassword,
+    resetAuthFeedback,
+    resetAuthLoading,
+    resetCurrentUserEmailVerified,
+    clearTurnstileToken,
+    resetTurnstile,
+    resetPasswordVisibility,
+  });
 
-    setEmail(initialEmail || "");
-    resetAuthLoading();
-    resetCurrentUserEmailVerified();
-    resetTurnstile();
-      resetPasswordVisibility();
-
-    if (view === "login") {
-      setPassword("");
-      setCode("");
-    }
-
-    if (view === "login-code") {
-      setCode("");
-    }
-
-    if (view === "register") {
-      setUsername("");
-      setPassword("");
-      setCode("");
-    }
-
-    if (view === "forgot-password") {
-      setCode("");
-      setNewPassword("");
-      setConfirmPassword("");
-    }
-
-    if (view === "reset-password") {
-      setCode("");
-      setNewPassword("");
-      setConfirmPassword("");
-    }
-
-    if (view === "verify-email") {
-      setCode("");
-    }
-  }, [open, view, initialEmail, clearTurnstileToken, resetAuthFeedback, resetAuthLoading, resetCurrentUserEmailVerified, resetPasswordVisibility, resetTurnstile, setCode, setConfirmPassword, setEmail, setNewPassword, setPassword, setUsername]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        onClose();
-      }
-    }
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [open, onClose]);
+  useAuthModalEscapeClose({
+    open,
+    onClose,
+  });
 
   const { title, subtitle } = getAuthViewContent(view);
 
