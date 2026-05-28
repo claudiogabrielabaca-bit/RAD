@@ -1,25 +1,20 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   FEATURED_MOMENTS,
   type FeaturedMoment,
 } from "@/app/lib/featured-moments";
 import { formatAvg, formatCompactViews } from "@/app/lib/home-page-utils";
+import {
+  EMPTY_IMPORTANT_DAY_STATS,
+  useImportantDaysStats,
+  type MomentStats,
+} from "@/app/hooks/use-important-days-stats";
 
 type ImportantDaysStripProps = {
   onSelectDay: (day: string) => void;
-};
-
-type MomentStats = {
-  avg: number;
-  count: number;
-  views: number;
-};
-
-type DayStatsBatchResponse = {
-  stats?: Record<string, MomentStats>;
 };
 
 type FilterKey = "all" | "war" | "science" | "politics" | "culture";
@@ -40,12 +35,6 @@ const ALL_FEATURED_DAYS = [
   "1969-07-20",
 ];
 
-const FALLBACK_STATS: MomentStats = {
-  avg: 0,
-  count: 0,
-  views: 0,
-};
-
 const BADGE_CLASSES: Record<string, string> = {
   war: "border-amber-400/25 bg-amber-500/18 text-amber-200",
   science: "border-cyan-400/25 bg-cyan-500/18 text-cyan-200",
@@ -56,10 +45,6 @@ const BADGE_CLASSES: Record<string, string> = {
   selected: "border-white/12 bg-white/[0.08] text-white",
   general: "border-zinc-400/25 bg-zinc-500/18 text-zinc-200",
 };
-
-let importantDaysStatsCache: Record<string, MomentStats> | null = null;
-let importantDaysStatsRequest: Promise<Record<string, MomentStats>> | null =
-  null;
 
 function cleanText(value?: string | null) {
   return value?.replace(/\s+/g, " ").trim() || "";
@@ -102,82 +87,6 @@ function getAllFeaturedMoments() {
   if (curated.length >= 5) return curated.slice(0, 5);
 
   return FEATURED_MOMENTS.slice(0, 5);
-}
-
-function buildFallbackStatsMap(days: string[]) {
-  return Object.fromEntries(
-    days.map((day) => [day, { ...FALLBACK_STATS }])
-  ) as Record<string, MomentStats>;
-}
-
-function normalizeStatsMap(
-  payload: DayStatsBatchResponse | null,
-  days: string[]
-) {
-  const fallback = buildFallbackStatsMap(days);
-  const stats = payload?.stats;
-
-  if (!stats || typeof stats !== "object") {
-    return fallback;
-  }
-
-  for (const day of days) {
-    const item = stats[day];
-
-    fallback[day] = {
-      avg: typeof item?.avg === "number" ? item.avg : 0,
-      count: typeof item?.count === "number" ? item.count : 0,
-      views: typeof item?.views === "number" ? item.views : 0,
-    };
-  }
-
-  return fallback;
-}
-
-async function loadImportantDaysStats(days: string[]) {
-  const uniqueDays = Array.from(new Set(days));
-
-  if (importantDaysStatsCache) {
-    return importantDaysStatsCache;
-  }
-
-  if (importantDaysStatsRequest) {
-    return importantDaysStatsRequest;
-  }
-
-  importantDaysStatsRequest = (async () => {
-    try {
-      const res = await fetch("/api/day-stats-batch", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-        body: JSON.stringify({
-          days: uniqueDays,
-        }),
-      });
-
-      if (!res.ok) {
-        return buildFallbackStatsMap(uniqueDays);
-      }
-
-      const json = (await res.json().catch(() => null)) as
-        | DayStatsBatchResponse
-        | null;
-
-      const stats = normalizeStatsMap(json, uniqueDays);
-      importantDaysStatsCache = stats;
-
-      return stats;
-    } catch {
-      return buildFallbackStatsMap(uniqueDays);
-    } finally {
-      importantDaysStatsRequest = null;
-    }
-  })();
-
-  return importantDaysStatsRequest;
 }
 
 function MomentImage({ moment }: { moment: FeaturedMoment }) {
@@ -301,26 +210,7 @@ export default function ImportantDaysStrip({
   onSelectDay,
 }: ImportantDaysStripProps) {
   const [activeFilter, setActiveFilter] = useState<FilterKey>("all");
-  const [statsByDay, setStatsByDay] = useState<Record<string, MomentStats>>({});
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadStats() {
-      const days = FEATURED_MOMENTS.map((moment) => moment.day);
-      const stats = await loadImportantDaysStats(days);
-
-      if (!cancelled) {
-        setStatsByDay(stats);
-      }
-    }
-
-    void loadStats();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const statsByDay = useImportantDaysStats();
 
   const filteredMoments = useMemo(() => {
     if (activeFilter === "all") {
@@ -381,7 +271,7 @@ export default function ImportantDaysStrip({
           <MomentCard
             key={moment.day}
             moment={moment}
-            stats={statsByDay[moment.day] ?? FALLBACK_STATS}
+            stats={statsByDay[moment.day] ?? EMPTY_IMPORTANT_DAY_STATS}
             onSelect={onSelectDay}
           />
         ))}
