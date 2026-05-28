@@ -9,12 +9,12 @@ import {
   countAllReplies,
   countDescendantReplies,
   formatReviewDate,
-  insertNestedReply,
   isLongReply,
   updateReplyNode,
 } from "@/app/components/rad/reply-list-utils";
 import { ReplyItem } from "@/app/lib/rad-types";
 import { useReplyReport } from "@/app/hooks/use-reply-report";
+import { useReplyListComposer } from "@/app/hooks/use-reply-list-composer";
 
 function Chevron({
   expanded,
@@ -256,11 +256,6 @@ export default function ReplyList({
   const searchParams = useSearchParams();
 
   const [localReplies, setLocalReplies] = useState<ReplyItem[]>(replies ?? []);
-  const [replyingToReplyId, setReplyingToReplyId] = useState<string | null>(null);
-  const [replyDraftByReplyId, setReplyDraftByReplyId] = useState<
-    Record<string, string>
-  >({});
-  const [sendingReplyId, setSendingReplyId] = useState<string | null>(null);
   const [pendingLikeReplyIds, setPendingLikeReplyIds] = useState<Set<string>>(
     () => new Set()
   );
@@ -286,6 +281,24 @@ export default function ReplyList({
     {}
   );
   const [topLevelExpanded, setTopLevelExpanded] = useState(false);
+
+
+  const {
+    replyingToReplyId,
+    replyDraftByReplyId,
+    sendingReplyId,
+    requestReply,
+    updateReplyDraft,
+    cancelReply,
+    submitReplyToReply,
+  } = useReplyListComposer({
+    onRequireInteraction,
+    onProtectedActionStatus,
+    setLocalReplies,
+    setFeedbackMessage,
+    setTopLevelExpanded,
+    setExpandedThreads,
+  });
 
   const targetReplyId = searchParams.get("replyId");
 
@@ -351,68 +364,6 @@ export default function ReplyList({
   );
 
   if (!localReplies?.length) return null;
-
-  async function submitReplyToReply(parentReply: ReplyItem) {
-    if (onRequireInteraction()) return;
-
-    const text = (replyDraftByReplyId[parentReply.id] ?? "").trim();
-
-    if (!text) {
-      setFeedbackMessage("Reply cannot be empty.");
-      return;
-    }
-
-    if (parentReply.parentReplyId) {
-      setFeedbackMessage("Only one nested reply level is allowed.");
-      return;
-    }
-
-    setSendingReplyId(parentReply.id);
-    setFeedbackMessage("");
-
-    try {
-      const res = await fetch("/api/review-reply", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ratingId: parentReply.ratingId,
-          parentReplyId: parentReply.id,
-          text,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (onProtectedActionStatus(res.status)) {
-        return;
-      }
-
-      if (!res.ok || !json?.reply) {
-        setFeedbackMessage(json?.error ?? "Could not send reply.");
-        return;
-      }
-
-      setLocalReplies((prev) =>
-        insertNestedReply(prev, parentReply.id, json.reply as ReplyItem)
-      );
-      setTopLevelExpanded(true);
-      setExpandedThreads((prev) => ({
-        ...prev,
-        [parentReply.id]: true,
-      }));
-      setReplyDraftByReplyId((prev) => ({
-        ...prev,
-        [parentReply.id]: "",
-      }));
-      setReplyingToReplyId(null);
-    } catch {
-      setFeedbackMessage("Could not send reply.");
-    } finally {
-      setSendingReplyId(null);
-    }
-  }
 
   async function toggleLike(reply: ReplyItem) {
     if (onRequireInteraction()) return;
@@ -548,23 +499,11 @@ export default function ReplyList({
                 deletingReplyId={deletingReplyId}
                 onDeleteReply={onDeleteReply}
                 replyingToReplyId={replyingToReplyId}
-                onRequestReply={(targetReply) => {
-                  if (onRequireInteraction()) return;
-
-                  setFeedbackMessage("");
-                  setReplyingToReplyId((prev) =>
-                    prev === targetReply.id ? null : targetReply.id
-                  );
-                }}
+                onRequestReply={requestReply}
                 replyDraftByReplyId={replyDraftByReplyId}
-                onReplyDraftChange={(replyId, value) =>
-                  setReplyDraftByReplyId((prev) => ({
-                    ...prev,
-                    [replyId]: value,
-                  }))
-                }
+                onReplyDraftChange={updateReplyDraft}
                 onSubmitReplyToReply={submitReplyToReply}
-                onCancelReply={() => setReplyingToReplyId(null)}
+                onCancelReply={cancelReply}
                 sendingReplyId={sendingReplyId}
                 pendingLikeReplyIds={pendingLikeReplyIds}
                 onToggleLike={toggleLike}
