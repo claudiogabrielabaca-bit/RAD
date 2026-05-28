@@ -6,6 +6,7 @@ import { ContextLink, PasswordField } from "@/app/components/rad/auth-modal-part
 import { useAuthPasswordVisibility } from "@/app/hooks/use-auth-password-visibility";
 import { useAuthTurnstile } from "@/app/hooks/use-auth-turnstile";
 import { useAuthEmailVerificationStatus } from "@/app/hooks/use-auth-email-verification-status";
+import { useAuthFeedbackState } from "@/app/hooks/use-auth-feedback-state";
 import { AUTH_JSON_HEADERS, getAuthViewContent, normalizeEmail, readAuthJson } from "@/app/components/rad/auth-modal-utils";
 
 export type AuthView =
@@ -68,12 +69,20 @@ export default function AuthModal({
     resetPasswordVisibility,
   } = useAuthPasswordVisibility();
 
-  const [loading, setLoading] = useState(false);
-  const [secondaryLoading, setSecondaryLoading] = useState(false);
-
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [devCode, setDevCode] = useState("");
+  const {
+    loading,
+    setLoading,
+    secondaryLoading,
+    setSecondaryLoading,
+    message,
+    setMessage,
+    error,
+    setError,
+    devCode,
+    setDevCode,
+    resetAuthFeedback,
+    resetAuthLoading,
+  } = useAuthFeedbackState();
 
   const {
     turnstileToken,
@@ -113,11 +122,8 @@ export default function AuthModal({
       setCode("");
       setNewPassword("");
       setConfirmPassword("");
-      setMessage("");
-      setError("");
-      setDevCode("");
-      setLoading(false);
-      setSecondaryLoading(false);
+      resetAuthFeedback();
+      resetAuthLoading();
       resetCurrentUserEmailVerified();
       clearTurnstileToken();
       resetPasswordVisibility();
@@ -125,8 +131,7 @@ export default function AuthModal({
     }
 
     setEmail(initialEmail || "");
-    setLoading(false);
-    setSecondaryLoading(false);
+    resetAuthLoading();
     resetCurrentUserEmailVerified();
     resetTurnstile();
       resetPasswordVisibility();
@@ -161,7 +166,7 @@ export default function AuthModal({
     if (view === "verify-email") {
       setCode("");
     }
-  }, [open, view, initialEmail, clearTurnstileToken, resetCurrentUserEmailVerified, resetPasswordVisibility, resetTurnstile]);
+  }, [open, view, initialEmail, clearTurnstileToken, resetAuthFeedback, resetAuthLoading, resetCurrentUserEmailVerified, resetPasswordVisibility, resetTurnstile]);
 
   useEffect(() => {
     if (!open) return;
