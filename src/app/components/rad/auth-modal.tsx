@@ -9,7 +9,17 @@ import { useAuthEmailVerificationStatus } from "@/app/hooks/use-auth-email-verif
 import { useAuthFeedbackState } from "@/app/hooks/use-auth-feedback-state";
 import { useAuthFormFields } from "@/app/hooks/use-auth-form-fields";
 import { useAuthRefreshUser } from "@/app/hooks/use-auth-refresh-user";
-import { AUTH_JSON_HEADERS, getAuthViewContent, normalizeEmail, readAuthJson } from "@/app/components/rad/auth-modal-utils";
+import {
+  submitForgotPassword,
+  submitLogin,
+  submitLoginCode,
+  submitRegister,
+  submitResendLoginCode,
+  submitResendVerification,
+  submitResetPassword,
+  submitVerifyEmail,
+} from "@/app/components/rad/auth-modal-api";
+import { getAuthViewContent, normalizeEmail } from "@/app/components/rad/auth-modal-utils";
 
 export type AuthView =
   | "login"
@@ -24,16 +34,6 @@ type MeUser = {
   email: string;
   username: string;
   emailVerified?: boolean;
-};
-
-type AuthEndpointResponse = {
-  error?: string;
-  message?: string;
-  email?: string;
-  devCode?: string;
-  requiresCode?: boolean;
-  requiresVerification?: boolean;
-  user?: MeUser | null;
 };
 
 
@@ -231,19 +231,13 @@ export default function AuthModal({
     try {
       const normalized = normalizeEmail(email);
 
-      const res = await fetch("/api/login", {
-        method: "POST",
-        headers: AUTH_JSON_HEADERS,
-        body: JSON.stringify({
-          email: normalized,
-          password,
-          turnstileToken,
-        }),
+      const { res, json } = await submitLogin({
+        email: normalized,
+        password,
+        turnstileToken,
       });
 
       resetTurnstile();
-
-      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         if (json?.requiresVerification) {
@@ -292,15 +286,9 @@ export default function AuthModal({
     setError("");
 
     try {
-      const res = await fetch("/api/login-code", {
-        method: "POST",
-        headers: AUTH_JSON_HEADERS,
-        body: JSON.stringify({
-          code: code.trim(),
-        }),
+      const { res, json } = await submitLoginCode({
+        code: code.trim(),
       });
-
-      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not validate login code.");
@@ -327,11 +315,7 @@ export default function AuthModal({
     setDevCode("");
 
     try {
-      const res = await fetch("/api/resend-login-code", {
-        method: "POST",
-      });
-
-      const json = await readAuthJson<AuthEndpointResponse>(res);
+      const { res, json } = await submitResendLoginCode();
 
       if (!res.ok) {
         setError(json?.error ?? "Could not resend login code.");
@@ -366,20 +350,14 @@ export default function AuthModal({
     try {
       const normalized = normalizeEmail(email);
 
-      const res = await fetch("/api/register", {
-        method: "POST",
-        headers: AUTH_JSON_HEADERS,
-        body: JSON.stringify({
-          email: normalized,
-          username: username.trim().toLowerCase(),
-          password,
-          turnstileToken,
-        }),
+      const { res, json } = await submitRegister({
+        email: normalized,
+        username: username.trim().toLowerCase(),
+        password,
+        turnstileToken,
       });
 
       resetTurnstile();
-
-      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not create account.");
@@ -418,18 +396,12 @@ export default function AuthModal({
     try {
       const normalized = normalizeEmail(email);
 
-      const res = await fetch("/api/forgot-password", {
-        method: "POST",
-        headers: AUTH_JSON_HEADERS,
-        body: JSON.stringify({
-          email: normalized,
-          turnstileToken,
-        }),
+      const { res, json } = await submitForgotPassword({
+        email: normalized,
+        turnstileToken,
       });
 
       resetTurnstile();
-
-      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not process request.");
@@ -475,20 +447,14 @@ export default function AuthModal({
     try {
       const normalized = normalizeEmail(email);
 
-      const res = await fetch("/api/reset-password", {
-        method: "POST",
-        headers: AUTH_JSON_HEADERS,
-        body: JSON.stringify({
-          email: normalized,
-          code: code.trim(),
-          newPassword,
-          turnstileToken,
-        }),
+      const { res, json } = await submitResetPassword({
+        email: normalized,
+        code: code.trim(),
+        newPassword,
+        turnstileToken,
       });
 
       resetTurnstile();
-
-      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not reset password.");
@@ -529,19 +495,13 @@ export default function AuthModal({
     try {
       const normalized = normalizeEmail(email);
 
-      const res = await fetch("/api/verify-email", {
-        method: "POST",
-        headers: AUTH_JSON_HEADERS,
-        body: JSON.stringify({
-          email: normalized,
-          code: code.trim(),
-          turnstileToken,
-        }),
+      const { res, json } = await submitVerifyEmail({
+        email: normalized,
+        code: code.trim(),
+        turnstileToken,
       });
 
       resetTurnstile();
-
-      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not verify email.");
@@ -581,18 +541,12 @@ export default function AuthModal({
     }
 
     try {
-      const res = await fetch("/api/resend-verification", {
-        method: "POST",
-        headers: AUTH_JSON_HEADERS,
-        body: JSON.stringify({
-          email: normalizeEmail(email),
-          turnstileToken,
-        }),
+      const { res, json } = await submitResendVerification({
+        email: normalizeEmail(email),
+        turnstileToken,
       });
 
       resetTurnstile();
-
-      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not resend verification code.");
