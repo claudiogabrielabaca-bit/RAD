@@ -115,7 +115,7 @@ test("admin report resolve accepts explicit reportType and handles both report t
 });
 
 test("rad control room consumes the new admin API contract", () => {
-  const page = `${read("src/app/rad-control-room/page.tsx")}\n${read("src/app/hooks/use-rad-control-room-data.ts")}`;
+  const page = `${read("src/app/rad-control-room/page.tsx")}\n${read("src/app/hooks/use-rad-control-room-data.ts")}\n${read("src/app/hooks/use-rad-control-room-actions.ts")}`;
 
   assert.match(
     page,

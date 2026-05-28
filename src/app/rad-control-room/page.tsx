@@ -1,11 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
-import type { AdminReportItem, AdminReportStatus } from "@/app/lib/admin-control-room";
 import {
   formatDateTime,
-  isObject,
   normalizeDisplayText,
   reportTypeClassName,
   statusClassName,
@@ -13,103 +10,19 @@ import {
   type StatusFilter,
 } from "@/app/rad-control-room/control-room-utils";
 import { useRadControlRoomData } from "@/app/hooks/use-rad-control-room-data";
+import { useRadControlRoomActions } from "@/app/hooks/use-rad-control-room-actions";
 
 export default function RadControlRoomPage() {
-  const router = useRouter();
-
   const { reports, recentReviews, stats, loading, toast, setToast, loadAll } =
     useRadControlRoomData();
   const [filter, setFilter] = useState<StatusFilter>("pending");
   const [search, setSearch] = useState("");
   const [reviewSearch, setReviewSearch] = useState("");
-  const [actionKey, setActionKey] = useState<string | null>(null);
-
-  async function updateReportStatus(
-    report: AdminReportItem,
-    status: AdminReportStatus
-  ) {
-    const key = `report:${report.id}:${status}`;
-    setActionKey(key);
-    setToast("");
-
-    try {
-      const res = await fetch("/api/admin/report-resolve", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          reportId: report.id,
-          reportType: report.reportType,
-          status,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        setToast(
-          isObject(json) && typeof json.error === "string"
-            ? json.error
-            : "Could not update report"
-        );
-        return;
-      }
-
-      await loadAll();
-      setToast(`Report marked as ${statusLabel(status).toLowerCase()}`);
-    } catch {
-      setToast("Could not update report");
-    } finally {
-      setActionKey(null);
-    }
-  }
-
-  async function deleteReviewAsAdmin(ratingId: string) {
-    const confirmed = window.confirm(
-      "Are you sure you want to permanently delete this review?"
-    );
-
-    if (!confirmed) return;
-
-    const key = `delete:${ratingId}`;
-    setActionKey(key);
-    setToast("");
-
-    try {
-      const res = await fetch("/api/admin/delete-review", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ ratingId }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        setToast(
-          isObject(json) && typeof json.error === "string"
-            ? json.error
-            : "Could not delete review"
-        );
-        return;
-      }
-
-      await loadAll();
-      setToast("Review deleted");
-    } catch {
-      setToast("Could not delete review");
-    } finally {
-      setActionKey(null);
-    }
-  }
-
-  async function logout() {
-    await fetch("/api/admin/logout", { method: "POST" }).catch(() => {});
-    router.push("/");
-    router.refresh();
-  }
+  const { actionKey, updateReportStatus, deleteReviewAsAdmin, logout } =
+    useRadControlRoomActions({
+      loadAll,
+      setToast,
+    });
 
   const filteredReports = useMemo(() => {
     const q = search.trim().toLowerCase();
