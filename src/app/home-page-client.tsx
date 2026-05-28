@@ -14,6 +14,7 @@ import { useHomeReplyComposer } from "@/app/hooks/use-home-reply-composer";
 import { useHomeDeleteMutations } from "@/app/hooks/use-home-delete-mutations";
 import { useHomeReviewLike } from "@/app/hooks/use-home-review-like";
 import { useHomeRatingSubmit } from "@/app/hooks/use-home-rating-submit";
+import { useHomeNotices } from "@/app/hooks/use-home-notices";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -106,9 +107,6 @@ export default function Page({
   const communityPanelRef = useRef<HTMLDivElement | null>(null);
   const highlightBlockRef = useRef<HTMLDivElement | null>(null);
   const pendingScrollToHighlightRef = useRef(false);
-  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const todayHistoryNoticeTimeoutRef =
-    useRef<ReturnType<typeof setTimeout> | null>(null);
   const minTransitionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null
   );
@@ -173,7 +171,6 @@ export default function Page({
   const [hoverStars, setHoverStars] = useState<number>(0);
   const [review, setReview] = useState<string>("");
 
-  const [toast, setToast] = useState<string>("");
 
   const [expandedReviews, setExpandedReviews] = useState<
     Record<string, boolean>
@@ -188,7 +185,15 @@ export default function Page({
   const [isDayTransitioning, setIsDayTransitioning] = useState(false);
   const [minimumTransitionDone, setMinimumTransitionDone] = useState(true);
   const [, setHeroImageLoading] = useState(false);
-  const [todayHistoryNotice, setTodayHistoryNotice] = useState("");
+
+  const {
+    toast,
+    setToast,
+    todayHistoryNotice,
+    setTodayHistoryNotice,
+    showToast,
+    showTodayHistoryNotice,
+  } = useHomeNotices();
 
   const daysInSelectedMonth = getDaysInMonth(
     Number(selectedYear),
@@ -365,32 +370,6 @@ export default function Page({
     prefetchRelatedDays,
   ]);
 
-  function showToast(message: string, duration = 2500) {
-    setToast(message);
-
-    if (toastTimeoutRef.current) {
-      clearTimeout(toastTimeoutRef.current);
-    }
-
-    toastTimeoutRef.current = setTimeout(() => {
-      setToast("");
-      toastTimeoutRef.current = null;
-    }, duration);
-  }
-
-  function showTodayHistoryNotice(message: string, duration = 4200) {
-    setTodayHistoryNotice(message);
-
-    if (todayHistoryNoticeTimeoutRef.current) {
-      clearTimeout(todayHistoryNoticeTimeoutRef.current);
-    }
-
-    todayHistoryNoticeTimeoutRef.current = setTimeout(() => {
-      setTodayHistoryNotice("");
-      todayHistoryNoticeTimeoutRef.current = null;
-    }, duration);
-  }
-
   function scrollToHighlightBlock(offset = HIGHLIGHT_SCROLL_OFFSET) {
     if (!highlightBlockRef.current) return;
 
@@ -509,14 +488,6 @@ export default function Page({
 
   useEffect(() => {
     return () => {
-      if (toastTimeoutRef.current) {
-        clearTimeout(toastTimeoutRef.current);
-      }
-
-      if (todayHistoryNoticeTimeoutRef.current) {
-        clearTimeout(todayHistoryNoticeTimeoutRef.current);
-      }
-
       clearMinTransitionTimer();
     };
   }, []);
