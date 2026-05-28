@@ -2,6 +2,11 @@ import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/app/lib/current-user";
 import { invalidateNotificationsCache } from "@/app/lib/notifications-cache";
+import {
+  createSoftRateLimiter,
+  createTimingLogger,
+  isPrismaError,
+} from "@/app/lib/like-route-utils";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -15,13 +20,6 @@ const SOFT_RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000;
 const SOFT_RATE_LIMIT_LIMIT = 240;
 const MAX_REPLY_ID_LENGTH = 80;
 
-type PrismaErrorCode = "P2002" | "P2003";
-
-type SoftRateLimitBucket = {
-  count: number;
-  expiresAt: number;
-};
-
 type ReplyForNotification = {
   id: string;
   userId: string | null;
@@ -30,36 +28,6 @@ type ReplyForNotification = {
     day: string;
   };
 };
-
-const softRateLimitBuckets = new Map<string, SoftRateLimitBucket>();
-let softRateLimitSweepCounter = 0;
-
-function createTimingLogger(label: string) {
-  const startedAt = Date.now();
-  let lastAt = startedAt;
-  const parts: string[] = [];
-
-  function mark(step: string) {
-    if (!SHOULD_LOG_REPLY_LIKE_TIMINGS) return;
-
-    const now = Date.now();
-    parts.push(`${step}=${now - lastAt}ms`);
-    lastAt = now;
-  }
-
-  function log(extra = "") {
-    if (!SHOULD_LOG_REPLY_LIKE_TIMINGS) return;
-
-    const total = Date.now() - startedAt;
-    const suffix = extra ? ` ${extra}` : "";
-    console.log(`[${label}] ${parts.join(" ")} total=${total}ms${suffix}`);
-  }
-
-  return {
-    mark,
-    log,
-  };
-}
 
 function logDeferredTask(label: string, startedAt: number, status: string) {
   if (!SHOULD_LOG_REPLY_LIKE_TIMINGS) return;
@@ -86,68 +54,10 @@ function runDeferredReplyLikeTask(
   })();
 }
 
-function getPrismaErrorCode(error: unknown): string | null {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof (error as { code?: unknown }).code === "string"
-  ) {
-    return (error as { code: string }).code;
-  }
-
-  return null;
-}
-
-function isPrismaError(error: unknown, code: PrismaErrorCode) {
-  return getPrismaErrorCode(error) === code;
-}
-
-function consumeSoftRateLimit(key: string) {
-  const now = Date.now();
-
-  softRateLimitSweepCounter += 1;
-
-  if (softRateLimitSweepCounter % 250 === 0) {
-    for (const [bucketKey, bucket] of softRateLimitBuckets.entries()) {
-      if (bucket.expiresAt <= now) {
-        softRateLimitBuckets.delete(bucketKey);
-      }
-    }
-  }
-
-  const existing = softRateLimitBuckets.get(key);
-
-  if (!existing || existing.expiresAt <= now) {
-    softRateLimitBuckets.set(key, {
-      count: 1,
-      expiresAt: now + SOFT_RATE_LIMIT_WINDOW_MS,
-    });
-
-    return {
-      ok: true,
-      retryAfterSec: 0,
-    };
-  }
-
-  if (existing.count >= SOFT_RATE_LIMIT_LIMIT) {
-    return {
-      ok: false,
-      retryAfterSec: Math.max(
-        1,
-        Math.ceil((existing.expiresAt - now) / 1000)
-      ),
-    };
-  }
-
-  existing.count += 1;
-  softRateLimitBuckets.set(key, existing);
-
-  return {
-    ok: true,
-    retryAfterSec: 0,
-  };
-}
+const consumeSoftRateLimit = createSoftRateLimiter({
+  windowMs: SOFT_RATE_LIMIT_WINDOW_MS,
+  limit: SOFT_RATE_LIMIT_LIMIT,
+});
 
 async function findReplyForNotification(replyId: string) {
   return prisma.ratingReply.findUnique({
@@ -347,7 +257,7 @@ async function applyReplyUnlike({
 }
 
 export async function POST(req: Request) {
-  const timing = createTimingLogger("reply-like");
+  const timing = createTimingLogger("reply-like", SHOULD_LOG_REPLY_LIKE_TIMINGS);
 
   try {
     const body = await req.json().catch(() => null);
