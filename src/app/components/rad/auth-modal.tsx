@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import TurnstileWidget from "@/app/components/rad/turnstile-widget";
 import { ContextLink, PasswordField } from "@/app/components/rad/auth-modal-parts";
+import { AUTH_JSON_HEADERS, normalizeEmail, readAuthJson } from "@/app/components/rad/auth-modal-utils";
 
 export type AuthView =
   | "login"
@@ -19,9 +20,16 @@ type MeUser = {
   emailVerified?: boolean;
 };
 
-function normalizeEmail(value: string) {
-  return value.trim().toLowerCase();
-}
+type AuthEndpointResponse = {
+  error?: string;
+  message?: string;
+  email?: string;
+  devCode?: string;
+  requiresCode?: boolean;
+  requiresVerification?: boolean;
+  user?: MeUser | null;
+};
+
 
 export default function AuthModal({
   open,
@@ -151,7 +159,7 @@ export default function AuthModal({
           cache: "no-store",
         });
 
-        const json = await res.json().catch(() => null);
+        const json = await readAuthJson<AuthEndpointResponse>(res);
 
         if (!res.ok) {
           setCurrentUserEmailVerified(null);
@@ -253,7 +261,7 @@ export default function AuthModal({
         cache: "no-store",
       });
 
-      const json = await res.json().catch(() => null);
+      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (res.ok) {
         const user = json?.user ?? null;
@@ -302,9 +310,7 @@ export default function AuthModal({
 
       const res = await fetch("/api/login", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: AUTH_JSON_HEADERS,
         body: JSON.stringify({
           email: normalized,
           password,
@@ -314,7 +320,7 @@ export default function AuthModal({
 
       resetTurnstile();
 
-      const json = await res.json().catch(() => null);
+      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         if (json?.requiresVerification) {
@@ -365,15 +371,13 @@ export default function AuthModal({
     try {
       const res = await fetch("/api/login-code", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: AUTH_JSON_HEADERS,
         body: JSON.stringify({
           code: code.trim(),
         }),
       });
 
-      const json = await res.json().catch(() => null);
+      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not validate login code.");
@@ -404,7 +408,7 @@ export default function AuthModal({
         method: "POST",
       });
 
-      const json = await res.json().catch(() => null);
+      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not resend login code.");
@@ -441,9 +445,7 @@ export default function AuthModal({
 
       const res = await fetch("/api/register", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: AUTH_JSON_HEADERS,
         body: JSON.stringify({
           email: normalized,
           username: username.trim().toLowerCase(),
@@ -454,7 +456,7 @@ export default function AuthModal({
 
       resetTurnstile();
 
-      const json = await res.json().catch(() => null);
+      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not create account.");
@@ -495,9 +497,7 @@ export default function AuthModal({
 
       const res = await fetch("/api/forgot-password", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: AUTH_JSON_HEADERS,
         body: JSON.stringify({
           email: normalized,
           turnstileToken,
@@ -506,7 +506,7 @@ export default function AuthModal({
 
       resetTurnstile();
 
-      const json = await res.json().catch(() => null);
+      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not process request.");
@@ -554,9 +554,7 @@ export default function AuthModal({
 
       const res = await fetch("/api/reset-password", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: AUTH_JSON_HEADERS,
         body: JSON.stringify({
           email: normalized,
           code: code.trim(),
@@ -567,7 +565,7 @@ export default function AuthModal({
 
       resetTurnstile();
 
-      const json = await res.json().catch(() => null);
+      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not reset password.");
@@ -610,9 +608,7 @@ export default function AuthModal({
 
       const res = await fetch("/api/verify-email", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: AUTH_JSON_HEADERS,
         body: JSON.stringify({
           email: normalized,
           code: code.trim(),
@@ -622,7 +618,7 @@ export default function AuthModal({
 
       resetTurnstile();
 
-      const json = await res.json().catch(() => null);
+      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not verify email.");
@@ -664,9 +660,7 @@ export default function AuthModal({
     try {
       const res = await fetch("/api/resend-verification", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: AUTH_JSON_HEADERS,
         body: JSON.stringify({
           email: normalizeEmail(email),
           turnstileToken,
@@ -675,7 +669,7 @@ export default function AuthModal({
 
       resetTurnstile();
 
-      const json = await res.json().catch(() => null);
+      const json = await readAuthJson<AuthEndpointResponse>(res);
 
       if (!res.ok) {
         setError(json?.error ?? "Could not resend verification code.");
