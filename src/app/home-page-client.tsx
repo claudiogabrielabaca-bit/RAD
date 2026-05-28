@@ -17,6 +17,7 @@ import { useHomeRatingSubmit } from "@/app/hooks/use-home-rating-submit";
 import { useHomeNotices } from "@/app/hooks/use-home-notices";
 import { useHomeDatePicker } from "@/app/hooks/use-home-date-picker";
 import { useHomeShareCurrentDay } from "@/app/hooks/use-home-share-current-day";
+import { useHomeDayControls } from "@/app/hooks/use-home-day-controls";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -33,8 +34,6 @@ import {
   getBadgeLabel,
   getHighlightBadges,
   formatAvg,
-  pad2,
-  getDaysInMonth,
   formatDisplayDate,
   formatCompactViews,
   isValidDayString,
@@ -55,8 +54,6 @@ import {
   clearTodayHistory,
   buildRandomRequestUrl,
   buildTodayInHistoryRequestUrl,
-  getDayWithOffset,
-  getDayWithYearShift,
 } from "@/app/lib/home-page-history";
 import { YEARS, MONTHS } from "@/app/lib/home-page-discover";
 import {
@@ -1234,71 +1231,24 @@ export default function Page({
     void openPickDate(nextDay, { scrollToHighlight: true });
   }
 
-  function goToToday() {
-    void openDay(today, { scrollToHighlight: true });
-  }
+  const {
+    goToToday,
+    goToPreviousDay,
+    goToNextDay,
+    goToPreviousYear,
+    goToNextYear,
+    isAtMinDay,
+    isAtToday,
+    isAtMinYear,
+    isAtMaxYear,
+  } = useHomeDayControls({
+    day,
+    navigationDay,
+    minDay,
+    today,
+    openDay,
+  });
 
-  function goToPreviousDay() {
-    const prev = getDayWithOffset(navigationDay, -1);
-
-    if (prev && prev >= minDay) {
-      void openDay(prev, { scrollToHighlight: false });
-    }
-  }
-
-  function goToNextDay() {
-    const next = getDayWithOffset(navigationDay, 1);
-
-    if (next && next <= today) {
-      void openDay(next, { scrollToHighlight: false });
-    }
-  }
-
-  function shiftYearBy(delta: number) {
-    const nextDay = getDayWithYearShift(navigationDay, delta, minDay, today);
-
-    if (!nextDay) return;
-
-    void openDay(nextDay, { scrollToHighlight: false });
-  }
-
-  function goToPreviousYear() {
-    shiftYearBy(-1);
-  }
-
-  function goToNextYear() {
-    shiftYearBy(1);
-  }
-
-  const isAtMinDay = !isValidDayString(day) || navigationDay <= minDay;
-  const isAtToday = !isValidDayString(day) || navigationDay >= today;
-
-  const [currentYear] = today.split("-").map(Number);
-  const [selectedYearNum, selectedMonthNum, selectedDayNum] = navigationDay
-    .split("-")
-    .map(Number);
-
-  const prevYearCandidate = `${selectedYearNum - 1}-${pad2(
-    selectedMonthNum
-  )}-${pad2(
-    Math.min(
-      selectedDayNum,
-      getDaysInMonth(selectedYearNum - 1, selectedMonthNum)
-    )
-  )}`;
-
-  const nextYearCandidate = `${selectedYearNum + 1}-${pad2(
-    selectedMonthNum
-  )}-${pad2(
-    Math.min(
-      selectedDayNum,
-      getDaysInMonth(selectedYearNum + 1, selectedMonthNum)
-    )
-  )}`;
-
-  const isAtMinYear = selectedYearNum <= 1800 || prevYearCandidate < minDay;
-  const isAtMaxYear =
-    selectedYearNum >= currentYear || nextYearCandidate > today;
 
   const shownStars = hoverStars || stars;
   const activeBadges = getHighlightBadges(highlight);
