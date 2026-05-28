@@ -4,96 +4,16 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ReplyComposer from "@/app/components/rad/reply-composer";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
+import {
+  containsReplyId,
+  countAllReplies,
+  countDescendantReplies,
+  formatReviewDate,
+  insertNestedReply,
+  isLongReply,
+  updateReplyNode,
+} from "@/app/components/rad/reply-list-utils";
 import { ReplyItem } from "@/app/lib/rad-types";
-
-function formatReviewDate(date?: string) {
-  if (!date) return "";
-
-  try {
-    return new Intl.DateTimeFormat("es-AR", {
-      timeZone: "America/Argentina/Buenos_Aires",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    }).format(new Date(date));
-  } catch {
-    return date;
-  }
-}
-
-function isLongReply(text?: string, limit = 140) {
-  return !!text && text.trim().length > limit;
-}
-
-function countDescendantReplies(reply: ReplyItem): number {
-  if (!reply.replies?.length) return 0;
-
-  return reply.replies.reduce(
-    (total, child) => total + 1 + countDescendantReplies(child),
-    0
-  );
-}
-
-function countAllReplies(replies: ReplyItem[]): number {
-  return replies.reduce(
-    (total, reply) => total + 1 + countDescendantReplies(reply),
-    0
-  );
-}
-
-function containsReplyId(reply: ReplyItem, replyId: string): boolean {
-  if (reply.id === replyId) return true;
-  return (reply.replies ?? []).some((child) => containsReplyId(child, replyId));
-}
-
-function insertNestedReply(
-  replies: ReplyItem[],
-  parentReplyId: string,
-  nextReply: ReplyItem
-): ReplyItem[] {
-  return replies.map((reply) => {
-    if (reply.id === parentReplyId) {
-      return {
-        ...reply,
-        replies: [...(reply.replies ?? []), nextReply],
-      };
-    }
-
-    if (!reply.replies?.length) {
-      return reply;
-    }
-
-    return {
-      ...reply,
-      replies: insertNestedReply(reply.replies, parentReplyId, nextReply),
-    };
-  });
-}
-
-function updateReplyNode(
-  replies: ReplyItem[],
-  targetReplyId: string,
-  updater: (reply: ReplyItem) => ReplyItem
-): ReplyItem[] {
-  return replies.map((reply) => {
-    if (reply.id === targetReplyId) {
-      return updater(reply);
-    }
-
-    if (!reply.replies?.length) {
-      return reply;
-    }
-
-    return {
-      ...reply,
-      replies: updateReplyNode(reply.replies, targetReplyId, updater),
-    };
-  });
-}
 
 function Chevron({
   expanded,
