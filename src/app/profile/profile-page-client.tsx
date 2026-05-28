@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import RatingDistribution from "@/app/components/rad/rating-distribution";
+import { useProfileBioEditor } from "@/app/hooks/use-profile-bio-editor";
 import { PencilIcon, renderStars } from "@/app/profile/profile-page-parts";
 import {
   BIO_MAX_LENGTH,
@@ -40,11 +41,23 @@ export default function ProfilePageClient() {
   const [showAllRatings, setShowAllRatings] = useState(false);
   const [showAllFavoriteDays, setShowAllFavoriteDays] = useState(false);
 
-  const [bioModalOpen, setBioModalOpen] = useState(false);
-  const [bioDraft, setBioDraft] = useState("");
-  const [bioSaving, setBioSaving] = useState(false);
-  const [bioError, setBioError] = useState("");
   const [expandedFavoriteCards, setExpandedFavoriteCards] = useState<Record<string, boolean>>({});
+
+
+  const {
+    bioModalOpen,
+    bioDraft,
+    bioSaving,
+    bioError,
+    displayedBio,
+    openBioModal,
+    closeBioModal,
+    updateBioDraft,
+    saveBio,
+  } = useProfileBioEditor({
+    data,
+    setData,
+  });
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -79,69 +92,9 @@ export default function ProfilePageClient() {
     loadProfile();
   }, [loadProfile]);
 
-  function getDisplayedBio() {
-    const raw = data?.user?.bio?.trim();
-    if (raw) return raw;
-    return `@${data?.user.username ?? "user"} is building a personal archive of favorite moments in history.`;
-  }
-
-  function openBioModal() {
-    setBioDraft(data?.user?.bio ?? "");
-    setBioError("");
-    setBioModalOpen(true);
-  }
-
-  function closeBioModal() {
-    if (bioSaving) return;
-    setBioModalOpen(false);
-    setBioError("");
-  }
-
   function goToVerifyEmail() {
     const email = data?.user?.email ?? "";
     router.push(buildVerifyEmailRedirectPath(email));
-  }
-
-  async function saveBio() {
-    setBioSaving(true);
-    setBioError("");
-
-    try {
-      const res = await fetch("/api/profile/bio", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          bio: bioDraft,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        setBioError(json?.error ?? "Could not save bio.");
-        return;
-      }
-
-      setData((prev) => {
-        if (!prev) return prev;
-
-        return {
-          ...prev,
-          user: {
-            ...prev.user,
-            bio: json?.bio ?? "",
-          },
-        };
-      });
-
-      setBioModalOpen(false);
-    } catch {
-      setBioError("Could not save bio.");
-    } finally {
-      setBioSaving(false);
-    }
   }
 
   if (loading) {
@@ -242,7 +195,7 @@ export default function ProfilePageClient() {
 
                 <div className="mt-7 flex max-w-2xl items-start gap-3">
                   <p className="min-w-0 text-base leading-7 text-zinc-300">
-                    {getDisplayedBio()}
+                    {displayedBio}
                   </p>
 
                   <button
@@ -634,9 +587,7 @@ export default function ProfilePageClient() {
                 <label className="mb-2 block text-sm text-zinc-300">Bio</label>
                 <textarea
                   value={bioDraft}
-                  onChange={(e) =>
-                    setBioDraft(e.target.value.slice(0, BIO_MAX_LENGTH))
-                  }
+                  onChange={(e) => updateBioDraft(e.target.value)}
                   maxLength={BIO_MAX_LENGTH}
                   placeholder={`@${user.username} is building a personal archive of favorite moments in history.`}
                   className="h-36 w-full resize-none rounded-2xl border border-white/10 bg-[#181818]/90 px-4 py-3 text-sm text-white outline-none transition placeholder:text-zinc-500 focus:border-white/20 focus:ring-2 focus:ring-white/10"
