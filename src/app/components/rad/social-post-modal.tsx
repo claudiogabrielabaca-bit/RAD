@@ -9,6 +9,8 @@ import SocialShareCard, {
   SOCIAL_POST_WIDTH,
 } from "@/app/components/rad/social-share-card";
 
+type ImageLoadStatus = "loading" | "ready" | "error";
+
 function getHighlightPreviewLabel(item: HighlightItem, fallbackIndex: number) {
   const title = item.title?.trim();
   if (title) return title;
@@ -21,6 +23,25 @@ function getSocialImageProxyUrl(image: string) {
   if (image.startsWith("/api/social-image-proxy?")) return image;
 
   return `/api/social-image-proxy?url=${encodeURIComponent(image)}`;
+}
+
+function withProxiedImage(item: HighlightItem): HighlightItem {
+  if (!item.image) return item;
+
+  return {
+    ...item,
+    image: getSocialImageProxyUrl(item.image),
+  };
+}
+
+function preloadImage(url: string) {
+  return new Promise<ImageLoadStatus>((resolve) => {
+    const img = new window.Image();
+
+    img.onload = () => resolve("ready");
+    img.onerror = () => resolve("error");
+    img.src = url;
+  });
 }
 
 async function waitForImages(root: HTMLElement) {
@@ -83,6 +104,9 @@ export default function SocialPostModal({
   const [downloading, setDownloading] = useState(false);
   const [scale, setScale] = useState(0.42);
   const [selectedHighlightIndex, setSelectedHighlightIndex] = useState(0);
+  const [imageStatusByUrl, setImageStatusByUrl] = useState<
+    Record<string, ImageLoadStatus>
+  >({});
 
   const availableHighlights = useMemo(() => {
     const filtered = highlights.filter(
@@ -92,6 +116,53 @@ export default function SocialPostModal({
     if (filtered.length > 0) return filtered;
     return highlight ? [highlight] : [];
   }, [highlight, highlights]);
+
+  const proxiedHighlights = useMemo(
+    () => availableHighlights.map(withProxiedImage),
+    [availableHighlights]
+  );
+
+  const imageUrlsToPreload = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          proxiedHighlights
+            .map((item) => item.image)
+            .filter((image): image is string => !!image)
+        )
+      ),
+    [proxiedHighlights]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
+    for (const url of imageUrlsToPreload) {
+      setImageStatusByUrl((prev) =>
+        prev[url]
+          ? prev
+          : {
+              ...prev,
+              [url]: "loading",
+            }
+      );
+
+      void preloadImage(url).then((status) => {
+        if (cancelled) return;
+
+        setImageStatusByUrl((prev) => ({
+          ...prev,
+          [url]: status,
+        }));
+      });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, imageUrlsToPreload]);
 
   useEffect(() => {
     if (!open) {
@@ -169,18 +240,14 @@ export default function SocialPostModal({
   );
 
   const activeHighlight =
-    availableHighlights[selectedHighlightIndex] ??
-    availableHighlights[0] ??
-    null;
+    proxiedHighlights[selectedHighlightIndex] ?? proxiedHighlights[0] ?? null;
 
-  const exportHighlight = useMemo(() => {
-    if (!activeHighlight?.image) return activeHighlight;
+  const selectedImageStatus = activeHighlight?.image
+    ? imageStatusByUrl[activeHighlight.image]
+    : "ready";
 
-    return {
-      ...activeHighlight,
-      image: getSocialImageProxyUrl(activeHighlight.image),
-    };
-  }, [activeHighlight]);
+  const selectedImageLoading =
+    !!activeHighlight?.image && selectedImageStatus !== "ready";
 
   if (!open || !activeHighlight) return null;
 
@@ -241,7 +308,7 @@ export default function SocialPostModal({
             <div className="min-w-0">
               <div
                 ref={previewOuterRef}
-                className="flex max-h-[76vh] min-h-[320px] items-start justify-center overflow-auto"
+                className="relative flex max-h-[76vh] min-h-[320px] items-start justify-center overflow-auto"
               >
                 <div
                   style={{
@@ -259,12 +326,20 @@ export default function SocialPostModal({
                   >
                     <SocialShareCard
                       day={day}
-                      highlight={exportHighlight ?? activeHighlight}
+                      highlight={activeHighlight}
                       review={review}
                       username={username}
                     />
                   </div>
                 </div>
+
+                {selectedImageLoading ? (
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/35">
+                    <div className="border border-white/10 bg-black/70 px-4 py-2 text-xs font-medium uppercase tracking-[0.14em] text-zinc-300">
+                      Loading image
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div
@@ -277,20 +352,28 @@ export default function SocialPostModal({
                 <button
                   type="button"
                   onClick={handleDownload}
-                  disabled={downloading}
-                  className="w-full rounded-2xl bg-white px-5 py-3.5 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:opacity-60"
+                  disabled={downloading || selectedImageLoading}
+                  className="w-full rounded-2xl bg-white px-5 py-3.5 text-sm font-semibold text-black transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {downloading ? "Generating..." : "Download PNG"}
+                  {downloading
+                    ? "Generating..."
+                    : selectedImageLoading
+                      ? "Loading image..."
+                      : "Download PNG"}
                 </button>
               </div>
             </div>
 
-            {availableHighlights.length > 1 ? (
+            {proxiedHighlights.length > 1 ? (
               <aside className="w-[150px] shrink-0">
                 <div className="flex max-h-[76vh] flex-col gap-2 overflow-y-auto pr-1">
-                  {availableHighlights.map((item, index) => {
+                  {proxiedHighlights.map((item, index) => {
                     const selected = index === selectedHighlightIndex;
                     const label = getHighlightPreviewLabel(item, index);
+                    const imageStatus = item.image
+                      ? imageStatusByUrl[item.image]
+                      : "ready";
+                    const imageLoading = !!item.image && imageStatus !== "ready";
 
                     return (
                       <button
@@ -314,7 +397,9 @@ export default function SocialPostModal({
                               fill
                               unoptimized
                               sizes="150px"
-                              className="object-cover"
+                              className={`object-cover transition-opacity duration-200 ${
+                                imageLoading ? "opacity-45" : "opacity-100"
+                              }`}
                               draggable={false}
                             />
                           ) : (
@@ -322,6 +407,10 @@ export default function SocialPostModal({
                           )}
 
                           <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent" />
+
+                          {imageLoading ? (
+                            <div className="absolute right-1 top-1 h-1.5 w-1.5 animate-pulse rounded-full bg-white/70" />
+                          ) : null}
                         </div>
 
                         <div className="px-2 py-1.5">
@@ -346,7 +435,7 @@ export default function SocialPostModal({
           <div ref={exportRef}>
             <SocialShareCard
               day={day}
-              highlight={exportHighlight ?? activeHighlight}
+              highlight={activeHighlight}
               review={review}
               username={username}
             />
