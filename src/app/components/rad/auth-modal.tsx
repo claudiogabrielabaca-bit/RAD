@@ -175,7 +175,7 @@ export default function AuthModal({
     if (view === "verify-email") {
       setCode("");
     }
-  }, [open, view, initialEmail, clearTurnstileToken, resetAuthFeedback, resetAuthLoading, resetCurrentUserEmailVerified, resetPasswordVisibility, resetTurnstile]);
+  }, [open, view, initialEmail, clearTurnstileToken, resetAuthFeedback, resetAuthLoading, resetCurrentUserEmailVerified, resetPasswordVisibility, resetTurnstile, setCode, setConfirmPassword, setEmail, setNewPassword, setPassword, setUsername]);
 
   useEffect(() => {
     if (!open) return;
