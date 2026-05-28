@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import TurnstileWidget from "@/app/components/rad/turnstile-widget";
 import { ContextLink, PasswordField } from "@/app/components/rad/auth-modal-parts";
-import { AUTH_JSON_HEADERS, normalizeEmail, readAuthJson } from "@/app/components/rad/auth-modal-utils";
+import { AUTH_JSON_HEADERS, getAuthViewContent, normalizeEmail, readAuthJson } from "@/app/components/rad/auth-modal-utils";
 
 export type AuthView =
   | "login"
@@ -215,43 +215,8 @@ export default function AuthModal({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
 
-  const title = useMemo(() => {
-    switch (view) {
-      case "login":
-        return "Log in";
-      case "login-code":
-        return "Enter login code";
-      case "register":
-        return "Create account";
-      case "forgot-password":
-        return "Forgot password";
-      case "reset-password":
-        return "Reset password";
-      case "verify-email":
-        return "Verify your email";
-      default:
-        return "Account";
-    }
-  }, [view]);
+  const { title, subtitle } = getAuthViewContent(view);
 
-  const subtitle = useMemo(() => {
-    switch (view) {
-      case "login":
-        return "Enter your email and password to access your account.";
-      case "login-code":
-        return "Enter the access code sent to your email.";
-      case "register":
-        return "Create your RAD account and start saving ratings and favorites.";
-      case "forgot-password":
-        return "Enter your email and request a recovery code.";
-      case "reset-password":
-        return "Use your recovery code and choose a new password.";
-      case "verify-email":
-        return "Confirm that this email belongs to you.";
-      default:
-        return "";
-    }
-  }, [view]);
 
   const codeIsComplete = code.trim().length === 6;
 

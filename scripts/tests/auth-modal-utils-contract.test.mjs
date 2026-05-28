@@ -18,3 +18,11 @@ test("auth modal centralizes low-level request parsing helpers", () => {
   assert.doesNotMatch(authModal, /res\.json\(\)\.catch\(\(\) => null\)/);
   assert.doesNotMatch(authModal, /"Content-Type": "application\/json"/);
 });
+
+test("auth modal keeps view title and subtitle outside the main component", () => {
+  assert.match(authModalUtils, /export function getAuthViewContent/);
+  assert.match(authModal, /getAuthViewContent\(view\)/);
+  assert.doesNotMatch(authModal, /const title = useMemo/);
+  assert.doesNotMatch(authModal, /const subtitle = useMemo/);
+  assert.doesNotMatch(authModal, /useMemo/);
+});
