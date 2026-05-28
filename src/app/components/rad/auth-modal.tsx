@@ -8,6 +8,7 @@ import { useAuthTurnstile } from "@/app/hooks/use-auth-turnstile";
 import { useAuthEmailVerificationStatus } from "@/app/hooks/use-auth-email-verification-status";
 import { useAuthFeedbackState } from "@/app/hooks/use-auth-feedback-state";
 import { useAuthFormFields } from "@/app/hooks/use-auth-form-fields";
+import { useAuthRefreshUser } from "@/app/hooks/use-auth-refresh-user";
 import { AUTH_JSON_HEADERS, getAuthViewContent, normalizeEmail, readAuthJson } from "@/app/components/rad/auth-modal-utils";
 
 export type AuthView =
@@ -195,27 +196,9 @@ export default function AuthModal({
 
   const codeIsComplete = code.trim().length === 6;
 
-  async function refreshUserAndNotify() {
-    try {
-      const res = await fetch("/api/me", {
-        cache: "no-store",
-      });
-
-      const json = await readAuthJson<AuthEndpointResponse>(res);
-
-      if (res.ok) {
-        const user = json?.user ?? null;
-        onAuthSuccess?.(user);
-        return user as MeUser | null;
-      }
-
-      onAuthSuccess?.(null);
-      return null;
-    } catch {
-      onAuthSuccess?.(null);
-      return null;
-    }
-  }
+  const { refreshUserAndNotify } = useAuthRefreshUser({
+    onAuthSuccess,
+  });
 
   function goToView(
     nextView: AuthView,
