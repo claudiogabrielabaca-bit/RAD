@@ -127,7 +127,7 @@ export default function SiteHeader() {
   useEffect(() => {
     setMenuOpen(false);
     setNotificationsOpen(false);
-  }, [pathname]);
+  }, [pathname, setNotificationsOpen]);
 
   useEffect(() => {
     if (!menuOpen && !notificationsOpen) return;
@@ -161,7 +161,7 @@ export default function SiteHeader() {
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleEscape);
     };
-  }, [menuOpen, notificationsOpen]);
+  }, [menuOpen, notificationsOpen, notificationsRef, setNotificationsOpen]);
 
   const openLogin = () => {
     setAuthView("login");
