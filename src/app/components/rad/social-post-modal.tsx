@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { toPng } from "html-to-image";
 import type { HighlightItem, ReviewItem } from "@/app/lib/rad-types";
 import SocialShareCard, {
   SOCIAL_POST_HEIGHT,
@@ -11,10 +10,10 @@ import SocialShareCard, {
 import {
   getHighlightPreviewLabel,
   preloadImage,
-  waitForImages,
   withProxiedImage,
   type ImageLoadStatus,
 } from "@/app/components/rad/social-post-modal-utils";
+import { useSocialPostDownload } from "@/app/hooks/use-social-post-download";
 
 export default function SocialPostModal({
   open,
@@ -37,7 +36,10 @@ export default function SocialPostModal({
   const previewOuterRef = useRef<HTMLDivElement | null>(null);
   const selectionInitializedRef = useRef(false);
 
-  const [downloading, setDownloading] = useState(false);
+  const { downloading, handleDownload } = useSocialPostDownload({
+    exportRef,
+    day,
+  });
   const [scale, setScale] = useState(0.42);
   const [selectedHighlightIndex, setSelectedHighlightIndex] = useState(0);
   const [imageStatusByUrl, setImageStatusByUrl] = useState<
@@ -75,28 +77,31 @@ export default function SocialPostModal({
 
     let cancelled = false;
 
-    for (const url of imageUrlsToPreload) {
-      setImageStatusByUrl((prev) =>
-        prev[url]
-          ? prev
-          : {
-              ...prev,
-              [url]: "loading",
-            }
-      );
+    const timeout = window.setTimeout(() => {
+      for (const url of imageUrlsToPreload) {
+        setImageStatusByUrl((prev) =>
+          prev[url]
+            ? prev
+            : {
+                ...prev,
+                [url]: "loading",
+              }
+        );
 
-      void preloadImage(url).then((status) => {
-        if (cancelled) return;
+        void preloadImage(url).then((status) => {
+          if (cancelled) return;
 
-        setImageStatusByUrl((prev) => ({
-          ...prev,
-          [url]: status,
-        }));
-      });
-    }
+          setImageStatusByUrl((prev) => ({
+            ...prev,
+            [url]: status,
+          }));
+        });
+      }
+    }, 0);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
     };
   }, [open, imageUrlsToPreload]);
 
@@ -122,7 +127,11 @@ export default function SocialPostModal({
         )
       : -1;
 
-    setSelectedHighlightIndex(activeIndex >= 0 ? activeIndex : 0);
+    const timeout = window.setTimeout(() => {
+      setSelectedHighlightIndex(activeIndex >= 0 ? activeIndex : 0);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [open, highlight, availableHighlights]);
 
   useEffect(() => {
@@ -186,31 +195,6 @@ export default function SocialPostModal({
     !!activeHighlight?.image && selectedImageStatus !== "ready";
 
   if (!open || !activeHighlight) return null;
-
-  async function handleDownload() {
-    if (!exportRef.current) return;
-
-    try {
-      setDownloading(true);
-      await waitForImages(exportRef.current);
-
-      const dataUrl = await toPng(exportRef.current, {
-        cacheBust: true,
-        pixelRatio: 1,
-        canvasWidth: SOCIAL_POST_WIDTH,
-        canvasHeight: SOCIAL_POST_HEIGHT,
-      });
-
-      const link = document.createElement("a");
-      link.download = `rad-post-${day}.png`;
-      link.href = dataUrl;
-      link.click();
-    } catch (error) {
-      console.error("Could not export social post:", error);
-    } finally {
-      setDownloading(false);
-    }
-  }
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
