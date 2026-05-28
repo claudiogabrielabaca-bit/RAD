@@ -46,6 +46,13 @@ import type {
   SurpriseResponse,
 } from "@/app/lib/rad-types";
 import {
+  fetchPickDateBundle,
+  fetchRandomDayCandidate,
+  fetchSurpriseBundle,
+  fetchTodayHistoryRequest,
+  type TodayInHistoryResponse,
+} from "@/app/lib/home-page-client-requests";
+import {
   SURPRISE_HISTORY_MAX,
   getRecentSurpriseHistory,
   rememberSurpriseDay,
@@ -64,10 +71,6 @@ import {
   MIN_DAY_TRANSITION_MS,
   REVIEW_MAX_LENGTH,
 } from "@/app/lib/home-page-client-constants";
-
-type TodayInHistoryResponse = SurpriseResponse & {
-  restartedRound?: boolean;
-};
 
 type InitialBundle = SurpriseResponse & {
   publicInitialOnly?: boolean;
@@ -411,25 +414,6 @@ export default function Page({
     [day]
   );
 
-  async function fetchPickDateBundle(targetDay: string) {
-    const res = await fetch(
-      `/api/pick-date-bundle?day=${encodeURIComponent(targetDay)}`,
-      {
-        cache: "no-store",
-      }
-    );
-
-    const json = (await res.json().catch(() => null)) as
-      | SurpriseResponse
-      | null;
-
-    if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
-      throw new Error("Failed to load pick date bundle");
-    }
-
-    return json;
-  }
-
   async function openPickDate(
     nextDay: string,
     options?: { scrollToHighlight?: boolean }
@@ -457,7 +441,7 @@ export default function Page({
 
       /*
        * Pick a Date must load dayData + highlightData together from
-       * /api/pick-date-bundle. This intentionally skips the automatic
+       * the pick-date bundle helper. This intentionally skips the automatic
        * /api/day-bundle reload that normally runs when `day` changes.
        */
       skipNextAutoDayLoadRef.current = true;
@@ -663,18 +647,11 @@ export default function Page({
       }
 
       try {
-        const res = await fetch(
-          buildSurpriseRequestUrl({
-            fresh: FORCE_FRESH_MODE,
-          }),
-          {
-            cache: "no-store",
-          }
-        );
-
-        const json = (await res.json().catch(() => null)) as
-          | SurpriseResponse
-          | null;
+        const { res, json } = await fetchSurpriseBundle(
+        buildSurpriseRequestUrl({
+          fresh: FORCE_FRESH_MODE,
+        })
+      );
 
         if (
           !cancelled &&
@@ -690,16 +667,12 @@ export default function Page({
           return;
         }
 
-        const fallbackRes = await fetch(
-          buildRandomRequestUrl({
-            fresh: FORCE_FRESH_MODE,
-          }),
-          {
-            cache: "no-store",
-          }
-        );
-
-        const fallbackJson = await fallbackRes.json().catch(() => null);
+        const { res: fallbackRes, json: fallbackJson } =
+          await fetchRandomDayCandidate(
+            buildRandomRequestUrl({
+              fresh: FORCE_FRESH_MODE,
+            })
+          );
 
         if (!cancelled && fallbackRes.ok && fallbackJson?.day) {
           setDay(fallbackJson.day);
@@ -855,18 +828,11 @@ export default function Page({
     const transitionId = transitionIdRef.current;
 
     try {
-      const res = await fetch(
+      const { res, json } = await fetchSurpriseBundle(
         buildSurpriseRequestUrl({
           fresh: FORCE_FRESH_MODE,
-        }),
-        {
-          cache: "no-store",
-        }
+        })
       );
-
-      const json = (await res.json().catch(() => null)) as
-        | SurpriseResponse
-        | null;
 
       if (transitionIdRef.current !== transitionId) return;
 
@@ -930,26 +896,16 @@ export default function Page({
       excludedDays.add(currentDayForRequest);
     }
 
-    async function requestTodayHistory(fresh: boolean) {
-      const res = await fetch(
+    function requestTodayHistory(fresh: boolean) {
+      return fetchTodayHistoryRequest(
         buildTodayInHistoryRequestUrl({
           bundle: true,
           fresh,
           monthDay,
           currentDay: currentDayForRequest,
           excludeDays: Array.from(excludedDays),
-        }),
-        {
-          cache: "no-store",
-        }
+        })
       );
-
-      const json = (await res.json().catch(() => null)) as
-        | TodayInHistoryResponse
-        | { error?: string }
-        | null;
-
-      return { res, json };
     }
 
     try {
