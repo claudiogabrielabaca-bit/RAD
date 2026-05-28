@@ -14,6 +14,7 @@ import {
   updateReplyNode,
 } from "@/app/components/rad/reply-list-utils";
 import { ReplyItem } from "@/app/lib/rad-types";
+import { useReplyReport } from "@/app/hooks/use-reply-report";
 
 function Chevron({
   expanded,
@@ -267,14 +268,20 @@ export default function ReplyList({
   const replyLikeLatestSeqByIdRef = useRef<Map<string, number>>(new Map());
   const [feedbackMessage, setFeedbackMessage] = useState<string>("");
 
-  const [reportReplyModalOpen, setReportReplyModalOpen] = useState(false);
-  const [reportReplyTargetId, setReportReplyTargetId] = useState<string | null>(
-    null
-  );
-  const [reportReplyReason, setReportReplyReason] = useState(
-    "Spam or abusive content"
-  );
-  const [reportReplySubmitting, setReportReplySubmitting] = useState(false);
+  const {
+    reportReplyModalOpen,
+    reportReplyReason,
+    setReportReplyReason,
+    reportReplySubmitting,
+    reportReply,
+    closeReplyReport,
+    submitReplyReport,
+  } = useReplyReport({
+    onRequireInteraction,
+    onProtectedActionStatus,
+    setLocalReplies,
+    setFeedbackMessage,
+  });
   const [expandedThreads, setExpandedThreads] = useState<Record<string, boolean>>(
     {}
   );
@@ -506,73 +513,6 @@ export default function ReplyList({
     }
   }
 
-  function reportReply(reply: ReplyItem) {
-    if (reply.reportedByMe) return;
-    if (onRequireInteraction()) return;
-
-    setReportReplyTargetId(reply.id);
-    setReportReplyReason("Spam or abusive content");
-    setFeedbackMessage("");
-    setReportReplyModalOpen(true);
-  }
-
-  async function submitReplyReport() {
-    if (!reportReplyTargetId) return;
-
-    const reason = reportReplyReason.trim();
-
-    if (reason.length < 3) {
-      setFeedbackMessage("Report reason must be at least 3 characters.");
-      return;
-    }
-
-    setReportReplySubmitting(true);
-    setFeedbackMessage("");
-
-    try {
-      const res = await fetch("/api/reply-report", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          replyId: reportReplyTargetId,
-          reason,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (onProtectedActionStatus(res.status)) {
-        return;
-      }
-
-      if (!res.ok) {
-        setFeedbackMessage(json?.error ?? "Could not report reply.");
-        return;
-      }
-
-      setLocalReplies((prev) =>
-        updateReplyNode(prev, reportReplyTargetId, (current) => ({
-          ...current,
-          reportedByMe: true,
-        }))
-      );
-
-      setReportReplyModalOpen(false);
-      setReportReplyTargetId(null);
-      setReportReplyReason("Spam or abusive content");
-
-      if (!json?.alreadyReported) {
-        setFeedbackMessage("Reply reported.");
-      }
-    } catch {
-      setFeedbackMessage("Could not report reply.");
-    } finally {
-      setReportReplySubmitting(false);
-    }
-  }
-
   function toggleThread(replyId: string) {
     setExpandedThreads((prev) => ({
       ...prev,
@@ -647,11 +587,7 @@ export default function ReplyList({
         subtitle="Tell us why you are reporting this reply."
         value={reportReplyReason}
         onChange={setReportReplyReason}
-        onClose={() => {
-          if (reportReplySubmitting) return;
-          setReportReplyModalOpen(false);
-          setReportReplyTargetId(null);
-        }}
+        onClose={closeReplyReport}
         onSubmit={submitReplyReport}
         submitting={reportReplySubmitting}
         error={feedbackMessage}
