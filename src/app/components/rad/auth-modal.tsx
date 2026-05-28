@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import TurnstileWidget from "@/app/components/rad/turnstile-widget";
 import { ContextLink, PasswordField } from "@/app/components/rad/auth-modal-parts";
 import { useAuthPasswordVisibility } from "@/app/hooks/use-auth-password-visibility";
+import { useAuthTurnstile } from "@/app/hooks/use-auth-turnstile";
 import { AUTH_JSON_HEADERS, getAuthViewContent, normalizeEmail, readAuthJson } from "@/app/components/rad/auth-modal-utils";
 
 export type AuthView =
@@ -77,13 +78,13 @@ export default function AuthModal({
     boolean | null
   >(null);
 
-  const [turnstileToken, setTurnstileToken] = useState("");
-  const [turnstileResetKey, setTurnstileResetKey] = useState(0);
-
-  function resetTurnstile() {
-    setTurnstileToken("");
-    setTurnstileResetKey((prev) => prev + 1);
-  }
+  const {
+    turnstileToken,
+    turnstileResetKey,
+    setTurnstileToken,
+    clearTurnstileToken,
+    resetTurnstile,
+  } = useAuthTurnstile();
 
   function requireTurnstile(actionLabel = "continue") {
     if (!turnstileToken) {
@@ -108,7 +109,7 @@ export default function AuthModal({
       setLoading(false);
       setSecondaryLoading(false);
       setCurrentUserEmailVerified(null);
-      setTurnstileToken("");
+      clearTurnstileToken();
       resetPasswordVisibility();
       return;
     }
@@ -150,7 +151,7 @@ export default function AuthModal({
     if (view === "verify-email") {
       setCode("");
     }
-  }, [open, view, initialEmail, resetPasswordVisibility]);
+  }, [open, view, initialEmail, clearTurnstileToken, resetPasswordVisibility, resetTurnstile]);
 
   useEffect(() => {
     if (!open) return;
