@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ReplyComposer from "@/app/components/rad/reply-composer";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
@@ -10,11 +10,11 @@ import {
   countDescendantReplies,
   formatReviewDate,
   isLongReply,
-  updateReplyNode,
 } from "@/app/components/rad/reply-list-utils";
 import { ReplyItem } from "@/app/lib/rad-types";
 import { useReplyReport } from "@/app/hooks/use-reply-report";
 import { useReplyListComposer } from "@/app/hooks/use-reply-list-composer";
+import { useReplyLike } from "@/app/hooks/use-reply-like";
 
 function Chevron({
   expanded,
@@ -256,12 +256,16 @@ export default function ReplyList({
   const searchParams = useSearchParams();
 
   const [localReplies, setLocalReplies] = useState<ReplyItem[]>(replies ?? []);
-  const [pendingLikeReplyIds, setPendingLikeReplyIds] = useState<Set<string>>(
-    () => new Set()
-  );
-  const replyLikeRequestSeqRef = useRef(0);
-  const replyLikeLatestSeqByIdRef = useRef<Map<string, number>>(new Map());
-  const [feedbackMessage, setFeedbackMessage] = useState<string>("");
+  const {
+    pendingLikeReplyIds,
+    feedbackMessage,
+    setFeedbackMessage,
+    toggleLike,
+  } = useReplyLike({
+    onRequireInteraction,
+    onProtectedActionStatus,
+    setLocalReplies,
+  });
 
   const {
     reportReplyModalOpen,
@@ -303,7 +307,11 @@ export default function ReplyList({
   const targetReplyId = searchParams.get("replyId");
 
   useEffect(() => {
-    setLocalReplies(replies ?? []);
+    const timeout = window.setTimeout(() => {
+      setLocalReplies(replies ?? []);
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [replies]);
 
   useEffect(() => {
@@ -316,27 +324,31 @@ export default function ReplyList({
 
     if (!targetExists) return;
 
-    setTopLevelExpanded(true);
+    const timeout = window.setTimeout(() => {
+      setTopLevelExpanded(true);
 
-    setExpandedThreads((prev) => {
-      const next = { ...prev };
-      let changed = false;
+      setExpandedThreads((prev) => {
+        const next = { ...prev };
+        let changed = false;
 
-      const visit = (reply: ReplyItem) => {
-        if (reply.replies?.length && containsReplyId(reply, targetReplyId)) {
-          if (!next[reply.id]) {
-            next[reply.id] = true;
-            changed = true;
+        const visit = (reply: ReplyItem) => {
+          if (reply.replies?.length && containsReplyId(reply, targetReplyId)) {
+            if (!next[reply.id]) {
+              next[reply.id] = true;
+              changed = true;
+            }
           }
-        }
 
-        (reply.replies ?? []).forEach(visit);
-      };
+          (reply.replies ?? []).forEach(visit);
+        };
 
-      localReplies.forEach(visit);
+        localReplies.forEach(visit);
 
-      return changed ? next : prev;
-    });
+        return changed ? next : prev;
+      });
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
   }, [localReplies, targetReplyId]);
 
   useEffect(() => {
@@ -364,105 +376,6 @@ export default function ReplyList({
   );
 
   if (!localReplies?.length) return null;
-
-  async function toggleLike(reply: ReplyItem) {
-    if (onRequireInteraction()) return;
-
-    const previousLiked = !!reply.likedByMe;
-    const previousCount = reply.likesCount;
-    const nextLiked = !previousLiked;
-    const nextCount = Math.max(0, previousCount + (nextLiked ? 1 : -1));
-    const requestSeq = replyLikeRequestSeqRef.current + 1;
-
-    replyLikeRequestSeqRef.current = requestSeq;
-    replyLikeLatestSeqByIdRef.current.set(reply.id, requestSeq);
-
-    const isLatestRequest = () =>
-      replyLikeLatestSeqByIdRef.current.get(reply.id) === requestSeq;
-
-    const rollback = () => {
-      if (!isLatestRequest()) return;
-
-      setLocalReplies((prev) =>
-        updateReplyNode(prev, reply.id, (current) => ({
-          ...current,
-          likedByMe: previousLiked,
-          likesCount: previousCount,
-        }))
-      );
-    };
-
-    setFeedbackMessage("");
-    setPendingLikeReplyIds((prev) => {
-      const next = new Set(prev);
-      next.add(reply.id);
-      return next;
-    });
-
-    setLocalReplies((prev) =>
-      updateReplyNode(prev, reply.id, (current) => ({
-        ...current,
-        likedByMe: nextLiked,
-        likesCount: nextCount,
-      }))
-    );
-
-    try {
-      const res = await fetch("/api/reply-like", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          replyId: reply.id,
-          liked: nextLiked,
-        }),
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!isLatestRequest()) {
-        return;
-      }
-
-      if (onProtectedActionStatus(res.status)) {
-        rollback();
-        return;
-      }
-
-      if (!res.ok) {
-        rollback();
-        setFeedbackMessage(json?.error ?? "Could not like reply.");
-        return;
-      }
-
-      setLocalReplies((prev) =>
-        updateReplyNode(prev, reply.id, (current) => ({
-          ...current,
-          likedByMe:
-            typeof json?.liked === "boolean" ? json.liked : nextLiked,
-          likesCount:
-            typeof json?.likesCount === "number" ? json.likesCount : nextCount,
-        }))
-      );
-    } catch {
-      rollback();
-
-      if (isLatestRequest()) {
-        setFeedbackMessage("Could not like reply.");
-      }
-    } finally {
-      if (isLatestRequest()) {
-        replyLikeLatestSeqByIdRef.current.delete(reply.id);
-
-        setPendingLikeReplyIds((prev) => {
-          const next = new Set(prev);
-          next.delete(reply.id);
-          return next;
-        });
-      }
-    }
-  }
 
   function toggleThread(replyId: string) {
     setExpandedThreads((prev) => ({
