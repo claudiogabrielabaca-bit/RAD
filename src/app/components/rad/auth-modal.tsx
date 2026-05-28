@@ -5,6 +5,7 @@ import TurnstileWidget from "@/app/components/rad/turnstile-widget";
 import { ContextLink, PasswordField } from "@/app/components/rad/auth-modal-parts";
 import { useAuthPasswordVisibility } from "@/app/hooks/use-auth-password-visibility";
 import { useAuthTurnstile } from "@/app/hooks/use-auth-turnstile";
+import { useAuthEmailVerificationStatus } from "@/app/hooks/use-auth-email-verification-status";
 import { AUTH_JSON_HEADERS, getAuthViewContent, normalizeEmail, readAuthJson } from "@/app/components/rad/auth-modal-utils";
 
 export type AuthView =
@@ -74,10 +75,6 @@ export default function AuthModal({
   const [error, setError] = useState("");
   const [devCode, setDevCode] = useState("");
 
-  const [currentUserEmailVerified, setCurrentUserEmailVerified] = useState<
-    boolean | null
-  >(null);
-
   const {
     turnstileToken,
     turnstileResetKey,
@@ -85,6 +82,19 @@ export default function AuthModal({
     clearTurnstileToken,
     resetTurnstile,
   } = useAuthTurnstile();
+
+  const {
+    currentUserEmailVerified,
+    resetCurrentUserEmailVerified,
+    markCurrentUserEmailVerified,
+    markCurrentUserEmailUnverified,
+  } = useAuthEmailVerificationStatus({
+      open,
+      view,
+      initialEmail,
+      email,
+      setEmail,
+    });
 
   function requireTurnstile(actionLabel = "continue") {
     if (!turnstileToken) {
@@ -108,7 +118,7 @@ export default function AuthModal({
       setDevCode("");
       setLoading(false);
       setSecondaryLoading(false);
-      setCurrentUserEmailVerified(null);
+      resetCurrentUserEmailVerified();
       clearTurnstileToken();
       resetPasswordVisibility();
       return;
@@ -117,7 +127,7 @@ export default function AuthModal({
     setEmail(initialEmail || "");
     setLoading(false);
     setSecondaryLoading(false);
-    setCurrentUserEmailVerified(null);
+    resetCurrentUserEmailVerified();
     resetTurnstile();
       resetPasswordVisibility();
 
@@ -151,59 +161,7 @@ export default function AuthModal({
     if (view === "verify-email") {
       setCode("");
     }
-  }, [open, view, initialEmail, clearTurnstileToken, resetPasswordVisibility, resetTurnstile]);
-
-  useEffect(() => {
-    if (!open) return;
-
-    async function loadMe() {
-      try {
-        const res = await fetch("/api/me", {
-          cache: "no-store",
-        });
-
-        const json = await readAuthJson<AuthEndpointResponse>(res);
-
-        if (!res.ok) {
-          setCurrentUserEmailVerified(null);
-          return;
-        }
-
-        const meEmail =
-          typeof json?.user?.email === "string"
-            ? normalizeEmail(json.user.email)
-            : "";
-
-        const formEmail = normalizeEmail(initialEmail || email);
-
-        if (meEmail && !formEmail) {
-          setEmail(meEmail);
-          setCurrentUserEmailVerified(
-            typeof json?.user?.emailVerified === "boolean"
-              ? json.user.emailVerified
-              : null
-          );
-          return;
-        }
-
-        if (meEmail && formEmail && meEmail === formEmail) {
-          setCurrentUserEmailVerified(
-            typeof json?.user?.emailVerified === "boolean"
-              ? json.user.emailVerified
-              : null
-          );
-        } else {
-          setCurrentUserEmailVerified(null);
-        }
-      } catch {
-        setCurrentUserEmailVerified(null);
-      }
-    }
-
-    if (view === "verify-email") {
-      loadMe();
-    }
-  }, [open, view, initialEmail, email]);
+  }, [open, view, initialEmail, clearTurnstileToken, resetCurrentUserEmailVerified, resetPasswordVisibility, resetTurnstile]);
 
   useEffect(() => {
     if (!open) return;
@@ -432,7 +390,7 @@ export default function AuthModal({
       }
 
       await refreshUserAndNotify();
-      setCurrentUserEmailVerified(false);
+      markCurrentUserEmailUnverified();
 
       goToView("verify-email", json?.user?.email ?? normalized, {
         nextMessage:
@@ -594,7 +552,7 @@ export default function AuthModal({
       }
 
       setMessage(json?.message ?? "Email verified successfully.");
-      setCurrentUserEmailVerified(true);
+      markCurrentUserEmailVerified();
       setCode("");
 
       const nextUser = await refreshUserAndNotify();
