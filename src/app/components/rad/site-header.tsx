@@ -25,16 +25,9 @@ import {
   SearchIcon,
 } from "@/app/components/rad/site-header-parts";
 import { formatNotificationTime } from "@/app/components/rad/site-header-notifications";
-import { fetchCurrentUserClientCached } from "@/app/lib/current-user-client";
 import { useSiteHeaderNotifications } from "@/app/hooks/use-site-header-notifications";
 import { useSiteHeaderBugReport } from "@/app/hooks/use-site-header-bug-report";
-
-type HeaderUser = {
-  id: string;
-  email: string;
-  username: string;
-  emailVerified?: boolean;
-} | null;
+import { useSiteHeaderSession } from "@/app/hooks/use-site-header-session";
 
 export default function SiteHeader() {
   const pathname = usePathname();
@@ -42,8 +35,8 @@ export default function SiteHeader() {
 
   const [authView, setAuthView] = useState<AuthView>("login");
   const [isAuthOpen, setIsAuthOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<HeaderUser>(null);
-  const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const { currentUser, setCurrentUser, isLoadingUser } =
+    useSiteHeaderSession();
 
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -90,50 +83,6 @@ export default function SiteHeader() {
   const isFeedActive = pathname === "/feed";
   const isImportantDaysActive = pathname === "/important-days";
   const isRankedActive = pathname === "/ranked-days";
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadMe(options: { force?: boolean } = {}) {
-      try {
-        setIsLoadingUser(true);
-
-        const user = await fetchCurrentUserClientCached({
-          force: options.force,
-        });
-
-        if (!cancelled) {
-          setCurrentUser(user);
-
-          if (!user) {
-            resetNotifications();
-          }
-        }
-      } catch {
-        if (!cancelled) {
-          setCurrentUser(null);
-          resetNotifications();
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingUser(false);
-        }
-      }
-    }
-
-    void loadMe();
-
-    const handleAuthChanged = () => {
-      void loadMe({ force: true });
-    };
-
-    window.addEventListener("rad-auth-changed", handleAuthChanged);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener("rad-auth-changed", handleAuthChanged);
-    };
-  }, [resetNotifications]);
 
   useEffect(() => {
     setMenuOpen(false);
