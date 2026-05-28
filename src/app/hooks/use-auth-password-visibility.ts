@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 export function useAuthPasswordVisibility() {
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -6,22 +6,22 @@ export function useAuthPasswordVisibility() {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  function resetPasswordVisibility() {
+  const resetPasswordVisibility = useCallback(() => {
     setShowLoginPassword(false);
     setShowRegisterPassword(false);
     setShowNewPassword(false);
     setShowConfirmPassword(false);
-  }
+  }, []);
 
   return {
     showLoginPassword,
     showRegisterPassword,
     showNewPassword,
     showConfirmPassword,
-    toggleLoginPassword: () => setShowLoginPassword((prev) => !prev),
-    toggleRegisterPassword: () => setShowRegisterPassword((prev) => !prev),
-    toggleNewPassword: () => setShowNewPassword((prev) => !prev),
-    toggleConfirmPassword: () => setShowConfirmPassword((prev) => !prev),
+    toggleLoginPassword: useCallback(() => setShowLoginPassword((prev) => !prev), []),
+    toggleRegisterPassword: useCallback(() => setShowRegisterPassword((prev) => !prev), []),
+    toggleNewPassword: useCallback(() => setShowNewPassword((prev) => !prev), []),
+    toggleConfirmPassword: useCallback(() => setShowConfirmPassword((prev) => !prev), []),
     resetPasswordVisibility,
   };
 }

@@ -150,7 +150,7 @@ export default function AuthModal({
     if (view === "verify-email") {
       setCode("");
     }
-  }, [open, view, initialEmail]);
+  }, [open, view, initialEmail, resetPasswordVisibility]);
 
   useEffect(() => {
     if (!open) return;
