@@ -123,7 +123,9 @@ This code expires in 15 minutes.`,
           `,
         });
 
-        console.log("forgot-password email sent:", mailResult?.id);
+        if (process.env.NODE_ENV === "development") {
+          console.log("forgot-password email sent:", mailResult?.id);
+        }
       } catch (mailError) {
         console.error("forgot-password mail send error:", mailError);
       }

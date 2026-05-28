@@ -155,7 +155,9 @@ This code expires in 10 minutes.`,
         `,
       });
 
-      console.log("resend-login-code email sent:", mailResult?.id);
+      if (process.env.NODE_ENV === "development") {
+          console.log("resend-login-code email sent:", mailResult?.id);
+        }
     } catch (mailError) {
       console.error("resend-login-code mail send error:", mailError);
     }

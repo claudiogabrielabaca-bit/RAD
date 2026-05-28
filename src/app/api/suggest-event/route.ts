@@ -277,7 +277,9 @@ export async function POST(req: Request) {
         `,
       });
 
-      console.log("suggest-event email sent:", mailResult?.id);
+      if (process.env.NODE_ENV === "development") {
+          console.log("suggest-event email sent:", mailResult?.id);
+        }
     } catch (mailError) {
       console.error("suggest-event mail send error:", mailError);
 

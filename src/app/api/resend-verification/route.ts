@@ -121,7 +121,9 @@ This code expires in 15 minutes.`,
           `,
         });
 
-        console.log("resend-verification email sent:", mailResult?.id);
+        if (process.env.NODE_ENV === "development") {
+          console.log("resend-verification email sent:", mailResult?.id);
+        }
       } catch (mailError) {
         console.error("resend-verification mail send error:", mailError);
       }

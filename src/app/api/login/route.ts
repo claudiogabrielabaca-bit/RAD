@@ -181,7 +181,9 @@ This code expires in 15 minutes.`,
           `,
         });
 
-        console.log("login verification email sent:", mailResult?.id);
+        if (process.env.NODE_ENV === "development") {
+          console.log("login verification email sent:", mailResult?.id);
+        }
         emailSent = true;
       } catch (mailError) {
         console.error("login verification mail send error:", mailError);
@@ -245,7 +247,9 @@ This code expires in 10 minutes.`,
         `,
       });
 
-      console.log("login code email sent:", mailResult?.id);
+      if (process.env.NODE_ENV === "development") {
+          console.log("login code email sent:", mailResult?.id);
+        }
       emailSent = true;
     } catch (mailError) {
       console.error("login code mail send error:", mailError);

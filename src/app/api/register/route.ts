@@ -200,7 +200,9 @@ This code expires in ${EMAIL_VERIFY_TTL_MINUTES} minutes.`,
         `,
       });
 
-      console.log("register verification email sent:", mailResult?.id);
+      if (process.env.NODE_ENV === "development") {
+          console.log("register verification email sent:", mailResult?.id);
+        }
       mailSent = true;
     } catch (mailError) {
       console.error("register verification mail send error:", mailError);
