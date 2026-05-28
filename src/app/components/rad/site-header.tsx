@@ -27,6 +27,7 @@ import {
 import { formatNotificationTime } from "@/app/components/rad/site-header-notifications";
 import { fetchCurrentUserClientCached } from "@/app/lib/current-user-client";
 import { useSiteHeaderNotifications } from "@/app/hooks/use-site-header-notifications";
+import { useSiteHeaderBugReport } from "@/app/hooks/use-site-header-bug-report";
 
 type HeaderUser = {
   id: string;
@@ -66,12 +67,22 @@ export default function SiteHeader() {
     onCloseMenu: () => setMenuOpen(false),
   });
 
-  const [reportBugOpen, setReportBugOpen] = useState(false);
-  const [bugDescription, setBugDescription] = useState("");
-  const [bugScreenshot, setBugScreenshot] = useState<File | null>(null);
-  const [reportBugSubmitting, setReportBugSubmitting] = useState(false);
-  const [reportBugError, setReportBugError] = useState("");
-  const [reportBugSuccess, setReportBugSuccess] = useState("");
+  const {
+    reportBugOpen,
+    bugDescription,
+    setBugDescription,
+    bugScreenshot,
+    setBugScreenshot,
+    reportBugSubmitting,
+    reportBugError,
+    reportBugSuccess,
+    openBugReport,
+    closeBugReport,
+    submitBugReport,
+  } = useSiteHeaderBugReport({
+    pathname,
+    onCloseMenu: () => setMenuOpen(false),
+  });
 
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -193,66 +204,6 @@ export default function SiteHeader() {
       window.dispatchEvent(new Event("rad-auth-changed"));
       router.push("/");
       router.refresh();
-    }
-  }
-
-  function openBugReport() {
-    setMenuOpen(false);
-    setReportBugError("");
-    setReportBugSuccess("");
-    setBugDescription("");
-    setBugScreenshot(null);
-    setReportBugOpen(true);
-  }
-
-  async function submitBugReport() {
-    const trimmed = bugDescription.trim();
-
-    if (trimmed.length < 10) {
-      setReportBugError("Bug description must be at least 10 characters.");
-      return;
-    }
-
-    setReportBugSubmitting(true);
-    setReportBugError("");
-    setReportBugSuccess("");
-
-    try {
-      const formData = new FormData();
-      formData.append("description", trimmed);
-      formData.append("pagePath", pathname || "");
-      formData.append("pageUrl", window.location.href);
-      formData.append("userAgent", navigator.userAgent);
-
-      if (bugScreenshot) {
-        formData.append("screenshot", bugScreenshot);
-      }
-
-      const res = await fetch("/api/report-bug", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-
-      const json = await res.json().catch(() => null);
-
-      if (!res.ok) {
-        setReportBugError(json?.error ?? "Could not send bug report.");
-        return;
-      }
-
-      setReportBugSuccess("Bug report sent.");
-      setBugDescription("");
-      setBugScreenshot(null);
-
-      window.setTimeout(() => {
-        setReportBugOpen(false);
-        setReportBugSuccess("");
-      }, 900);
-    } catch {
-      setReportBugError("Could not send bug report.");
-    } finally {
-      setReportBugSubmitting(false);
     }
   }
 
@@ -492,12 +443,7 @@ export default function SiteHeader() {
         onDescriptionChange={setBugDescription}
         screenshot={bugScreenshot}
         onScreenshotChange={setBugScreenshot}
-        onClose={() => {
-          if (reportBugSubmitting) return;
-          setReportBugOpen(false);
-          setReportBugError("");
-          setReportBugSuccess("");
-        }}
+        onClose={closeBugReport}
         onSubmit={submitBugReport}
         submitting={reportBugSubmitting}
         error={reportBugError}
