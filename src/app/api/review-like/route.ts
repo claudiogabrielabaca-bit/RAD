@@ -6,6 +6,7 @@ import {
   createSoftRateLimiter,
   createTimingLogger,
   isPrismaError,
+  runDeferredTask,
 } from "@/app/lib/like-route-utils";
 
 export const dynamic = "force-dynamic";
@@ -26,27 +27,17 @@ type ReviewForNotification = {
   day: string;
 };
 
-function logDeferredTask(label: string, startedAt: number, status: string) {
-  if (!SHOULD_LOG_REVIEW_LIKE_TIMINGS) return;
-
-  console.log(
-    `[review-like-deferred] ${label}=${Date.now() - startedAt}ms status=${status}`
-  );
-}
-
-function runDeferredReviewLikeTask(label: string, task: () => Promise<void>) {
-  const startedAt = Date.now();
-
-  void (async () => {
-    try {
-      await task();
-      logDeferredTask(label, startedAt, "ok");
-    } catch (error) {
-      logDeferredTask(label, startedAt, "error");
-      console.error(`review-like deferred ${label} error:`, error);
-    }
-  })();
-}
+const runDeferredReviewLikeTask = (
+  label: string,
+  task: () => Promise<void>
+) =>
+  runDeferredTask({
+    label,
+    logLabel: "review-like-deferred",
+    errorLabel: "review-like deferred",
+    enabled: SHOULD_LOG_REVIEW_LIKE_TIMINGS,
+    task,
+  });
 
 const consumeSoftRateLimit = createSoftRateLimiter({
   windowMs: SOFT_RATE_LIMIT_WINDOW_MS,

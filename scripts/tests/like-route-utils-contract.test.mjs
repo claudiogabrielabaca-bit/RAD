@@ -10,12 +10,16 @@ test("like routes share low-level timing, prisma error, and soft rate-limit help
   assert.match(helper, /export function createTimingLogger/);
   assert.match(helper, /export function isPrismaError/);
   assert.match(helper, /export function createSoftRateLimiter/);
+  assert.match(helper, /export function runDeferredTask/);
 
   for (const source of [reviewLikeRoute, replyLikeRoute]) {
     assert.match(source, /from "@\/app\/lib\/like-route-utils"/);
     assert.match(source, /createSoftRateLimiter\(\{/);
+    assert.match(source, /runDeferredTask\(\{/);
     assert.doesNotMatch(source, /function createTimingLogger\(label: string\)/);
     assert.doesNotMatch(source, /function getPrismaErrorCode/);
     assert.doesNotMatch(source, /type SoftRateLimitBucket/);
+    assert.doesNotMatch(source, /function logDeferredTask/);
+    assert.doesNotMatch(source, /function runDeferred(?:Review|Reply)LikeTask/);
   }
 });

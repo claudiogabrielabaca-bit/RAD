@@ -107,3 +107,39 @@ export function createSoftRateLimiter({
     };
   };
 }
+
+export function runDeferredTask({
+  label,
+  logLabel,
+  errorLabel,
+  enabled,
+  task,
+}: {
+  label: string;
+  logLabel: string;
+  errorLabel: string;
+  enabled: boolean;
+  task: () => Promise<void>;
+}) {
+  const startedAt = Date.now();
+
+  void (async () => {
+    try {
+      await task();
+
+      if (enabled) {
+        console.log(
+          `[${logLabel}] ${label}=${Date.now() - startedAt}ms status=ok`
+        );
+      }
+    } catch (error) {
+      if (enabled) {
+        console.log(
+          `[${logLabel}] ${label}=${Date.now() - startedAt}ms status=error`
+        );
+      }
+
+      console.error(`${errorLabel} ${label} error:`, error);
+    }
+  })();
+}
