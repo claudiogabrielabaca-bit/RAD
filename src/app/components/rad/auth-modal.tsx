@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import TurnstileWidget from "@/app/components/rad/turnstile-widget";
 import { ContextLink, PasswordField } from "@/app/components/rad/auth-modal-parts";
+import { useAuthPasswordVisibility } from "@/app/hooks/use-auth-password-visibility";
 import { AUTH_JSON_HEADERS, getAuthViewContent, normalizeEmail, readAuthJson } from "@/app/components/rad/auth-modal-utils";
 
 export type AuthView =
@@ -53,10 +54,17 @@ export default function AuthModal({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-  const [showLoginPassword, setShowLoginPassword] = useState(false);
-  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const {
+    showLoginPassword,
+    showRegisterPassword,
+    showNewPassword,
+    showConfirmPassword,
+    toggleLoginPassword,
+    toggleRegisterPassword,
+    toggleNewPassword,
+    toggleConfirmPassword,
+    resetPasswordVisibility,
+  } = useAuthPasswordVisibility();
 
   const [loading, setLoading] = useState(false);
   const [secondaryLoading, setSecondaryLoading] = useState(false);
@@ -101,10 +109,7 @@ export default function AuthModal({
       setSecondaryLoading(false);
       setCurrentUserEmailVerified(null);
       setTurnstileToken("");
-      setShowLoginPassword(false);
-      setShowRegisterPassword(false);
-      setShowNewPassword(false);
-      setShowConfirmPassword(false);
+      resetPasswordVisibility();
       return;
     }
 
@@ -113,10 +118,7 @@ export default function AuthModal({
     setSecondaryLoading(false);
     setCurrentUserEmailVerified(null);
     resetTurnstile();
-    setShowLoginPassword(false);
-    setShowRegisterPassword(false);
-    setShowNewPassword(false);
-    setShowConfirmPassword(false);
+      resetPasswordVisibility();
 
     if (view === "login") {
       setPassword("");
@@ -765,7 +767,7 @@ export default function AuthModal({
                 onChange={setPassword}
                 placeholder="Your password"
                 visible={showLoginPassword}
-                onToggle={() => setShowLoginPassword((prev) => !prev)}
+                onToggle={toggleLoginPassword}
               />
 
               <TurnstileWidget
@@ -880,7 +882,7 @@ export default function AuthModal({
                 onChange={setPassword}
                 placeholder="At least 8 characters"
                 visible={showRegisterPassword}
-                onToggle={() => setShowRegisterPassword((prev) => !prev)}
+                onToggle={toggleRegisterPassword}
               />
 
               <TurnstileWidget
@@ -966,7 +968,7 @@ export default function AuthModal({
                 onChange={setNewPassword}
                 placeholder="At least 8 characters"
                 visible={showNewPassword}
-                onToggle={() => setShowNewPassword((prev) => !prev)}
+                onToggle={toggleNewPassword}
               />
 
               <PasswordField
@@ -975,7 +977,7 @@ export default function AuthModal({
                 onChange={setConfirmPassword}
                 placeholder="Repeat password"
                 visible={showConfirmPassword}
-                onToggle={() => setShowConfirmPassword((prev) => !prev)}
+                onToggle={toggleConfirmPassword}
               />
 
               <TurnstileWidget
