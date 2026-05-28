@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import {
-  useCallback,
   useEffect,
   useRef,
   useState,
@@ -25,16 +24,9 @@ import {
   RankedDaysIcon,
   SearchIcon,
 } from "@/app/components/rad/site-header-parts";
-import {
-  NOTIFICATIONS_MUTED_STORAGE_KEY,
-  NOTIFICATIONS_POLL_INTERVAL_MS,
-  buildNotificationHref,
-  clearNotificationsClientCache,
-  fetchNotificationsClientCached,
-  formatNotificationTime,
-  type HeaderNotification,
-} from "@/app/components/rad/site-header-notifications";
+import { formatNotificationTime } from "@/app/components/rad/site-header-notifications";
 import { fetchCurrentUserClientCached } from "@/app/lib/current-user-client";
+import { useSiteHeaderNotifications } from "@/app/hooks/use-site-header-notifications";
 
 type HeaderUser = {
   id: string;
@@ -53,13 +45,26 @@ export default function SiteHeader() {
   const [isLoadingUser, setIsLoadingUser] = useState(true);
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
 
-  const [notifications, setNotifications] = useState<HeaderNotification[]>([]);
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const [loadingNotifications, setLoadingNotifications] = useState(false);
-  const [notificationsMuted, setNotificationsMuted] = useState(false);
-  const [clearingNotifications, setClearingNotifications] = useState(false);
+  const {
+    notificationsOpen,
+    setNotificationsOpen,
+    notifications,
+    unreadNotifications,
+    loadingNotifications,
+    notificationsMuted,
+    clearingNotifications,
+    notificationsRef,
+    resetNotifications,
+    toggleNotificationsMuted,
+    handleOpenNotifications,
+    handleNotificationClick,
+    handleClearNotifications,
+  } = useSiteHeaderNotifications({
+    currentUser,
+    onNavigate: (href) => router.push(href),
+    onCloseMenu: () => setMenuOpen(false),
+  });
 
   const [reportBugOpen, setReportBugOpen] = useState(false);
   const [bugDescription, setBugDescription] = useState("");
@@ -69,85 +74,11 @@ export default function SiteHeader() {
   const [reportBugSuccess, setReportBugSuccess] = useState("");
 
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const notificationsRef = useRef<HTMLDivElement | null>(null);
-  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
-  const previousUnreadCountRef = useRef(0);
-  const notificationsBootedRef = useRef(false);
 
   const isDiscoverActive = pathname === "/";
   const isFeedActive = pathname === "/feed";
   const isImportantDaysActive = pathname === "/important-days";
   const isRankedActive = pathname === "/ranked-days";
-
-  const loadNotifications = useCallback(
-    async (options: { force?: boolean } = {}) => {
-      const userId = currentUser?.id;
-
-      if (!userId) return;
-
-      try {
-        setLoadingNotifications(true);
-
-        const data = await fetchNotificationsClientCached(userId, {
-          force: options.force,
-        });
-
-        if (!data) {
-          return;
-        }
-
-        setNotifications(data.items);
-        setUnreadNotifications(data.unreadCount);
-      } catch {
-        // Notification refresh failures are intentionally silent.
-      } finally {
-        setLoadingNotifications(false);
-      }
-    },
-    [currentUser?.id]
-  );
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(NOTIFICATIONS_MUTED_STORAGE_KEY);
-      setNotificationsMuted(raw === "1");
-    } catch {
-      setNotificationsMuted(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const audio = new Audio("/sounds/notification.mp3");
-    audio.preload = "auto";
-    notificationAudioRef.current = audio;
-
-    return () => {
-      notificationAudioRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const previousUnread = previousUnreadCountRef.current;
-
-    if (!notificationsBootedRef.current) {
-      previousUnreadCountRef.current = unreadNotifications;
-      notificationsBootedRef.current = true;
-      return;
-    }
-
-    const hasNewNotifications = unreadNotifications > previousUnread;
-
-    if (hasNewNotifications && !notificationsMuted && currentUser) {
-      const audio = notificationAudioRef.current;
-
-      if (audio) {
-        audio.currentTime = 0;
-        audio.play().catch(() => {});
-      }
-    }
-
-    previousUnreadCountRef.current = unreadNotifications;
-  }, [unreadNotifications, notificationsMuted, currentUser]);
 
   useEffect(() => {
     let cancelled = false;
@@ -164,15 +95,13 @@ export default function SiteHeader() {
           setCurrentUser(user);
 
           if (!user) {
-            setNotifications([]);
-            setUnreadNotifications(0);
+            resetNotifications();
           }
         }
       } catch {
         if (!cancelled) {
           setCurrentUser(null);
-          setNotifications([]);
-          setUnreadNotifications(0);
+          resetNotifications();
         }
       } finally {
         if (!cancelled) {
@@ -193,33 +122,12 @@ export default function SiteHeader() {
       cancelled = true;
       window.removeEventListener("rad-auth-changed", handleAuthChanged);
     };
-  }, []);
+  }, [resetNotifications]);
 
   useEffect(() => {
     setMenuOpen(false);
     setNotificationsOpen(false);
   }, [pathname]);
-
-  useEffect(() => {
-    if (currentUser?.id) return;
-
-    setNotifications([]);
-    setUnreadNotifications(0);
-  }, [currentUser?.id]);
-
-  useEffect(() => {
-    if (!currentUser?.id) return;
-
-    void loadNotifications({ force: true });
-
-    const interval = window.setInterval(() => {
-      void loadNotifications({ force: true });
-    }, NOTIFICATIONS_POLL_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, [currentUser?.id, loadNotifications]);
 
   useEffect(() => {
     if (!menuOpen && !notificationsOpen) return;
@@ -269,89 +177,6 @@ export default function SiteHeader() {
     setIsAuthOpen(false);
   };
 
-  function toggleNotificationsMuted() {
-    setNotificationsMuted((prev) => {
-      const next = !prev;
-
-      try {
-        window.localStorage.setItem(
-          NOTIFICATIONS_MUTED_STORAGE_KEY,
-          next ? "1" : "0"
-        );
-      } catch {
-        //
-      }
-
-      return next;
-    });
-  }
-
-  async function handleOpenNotifications() {
-    const nextOpen = !notificationsOpen;
-    setNotificationsOpen(nextOpen);
-    setMenuOpen(false);
-
-    if (!nextOpen || !currentUser) return;
-
-    await loadNotifications({ force: true });
-  }
-
-  async function handleNotificationClick(item: HeaderNotification) {
-    setNotificationsOpen(false);
-
-    if (!item.isRead) {
-      setUnreadNotifications((prev) => Math.max(0, prev - 1));
-      setNotifications((prev) =>
-        prev.map((entry) =>
-          entry.id === item.id ? { ...entry, isRead: true } : entry
-        )
-      );
-
-      clearNotificationsClientCache();
-
-      try {
-        await fetch("/api/notifications/read", {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            notificationId: item.id,
-          }),
-        });
-      } catch {
-        //
-      }
-    }
-
-    router.push(buildNotificationHref(item));
-  }
-
-  async function handleClearNotifications() {
-    try {
-      setClearingNotifications(true);
-      clearNotificationsClientCache();
-
-      const res = await fetch("/api/notifications/clear", {
-        method: "POST",
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        return;
-      }
-
-      setNotifications([]);
-      setUnreadNotifications(0);
-      previousUnreadCountRef.current = 0;
-    } catch {
-      //
-    } finally {
-      setClearingNotifications(false);
-    }
-  }
-
   async function handleLogout() {
     try {
       await fetch("/api/logout", {
@@ -364,10 +189,7 @@ export default function SiteHeader() {
       setMenuOpen(false);
       setNotificationsOpen(false);
       setCurrentUser(null);
-      setNotifications([]);
-      setUnreadNotifications(0);
-      previousUnreadCountRef.current = 0;
-      notificationsBootedRef.current = false;
+      resetNotifications();
       window.dispatchEvent(new Event("rad-auth-changed"));
       router.push("/");
       router.refresh();
