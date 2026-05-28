@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { getDayWithOffset } from "@/app/lib/home-page-history";
 import { isValidDayString } from "@/app/lib/home-page-utils";
 import type { DayResponse, HighlightItem, SurpriseResponse } from "@/app/lib/rad-types";
+import { fetchDayBundleRequest } from "@/app/lib/home-day-navigation-requests";
 
 type SetBoolean = React.Dispatch<React.SetStateAction<boolean>>;
 type SetString = React.Dispatch<React.SetStateAction<string>>;
@@ -195,30 +196,11 @@ export function useHomeDayNavigation(params: {
     const controller = new AbortController();
     dayBundleAbortControllersRef.current.add(controller);
 
-    const params = new URLSearchParams({ day: targetDay });
-
-    if (options?.communityOnly) {
-      params.set("communityOnly", "1");
-    }
-
     try {
-      const res = await fetch(
-        "/api/day-bundle?" + params.toString(),
-        {
-          cache: "no-store",
-          signal: controller.signal,
-        }
-      );
-
-      const json = (await res.json().catch(() => null)) as
-        | SurpriseResponse
-        | null;
-
-      if (!res.ok || !json?.day || !json?.dayData || !json?.highlightData) {
-        throw new Error("Failed to load day bundle");
-      }
-
-      return json;
+      return await fetchDayBundleRequest(targetDay, {
+        communityOnly: !!options?.communityOnly,
+        signal: controller.signal,
+      });
     } finally {
       dayBundleAbortControllersRef.current.delete(controller);
     }
