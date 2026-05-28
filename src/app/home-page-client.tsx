@@ -15,6 +15,7 @@ import { useHomeDeleteMutations } from "@/app/hooks/use-home-delete-mutations";
 import { useHomeReviewLike } from "@/app/hooks/use-home-review-like";
 import { useHomeRatingSubmit } from "@/app/hooks/use-home-rating-submit";
 import { useHomeNotices } from "@/app/hooks/use-home-notices";
+import { useHomeDatePicker } from "@/app/hooks/use-home-date-picker";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -137,15 +138,19 @@ export default function Page({
   const [hasPickedInitialDay, setHasPickedInitialDay] = useState(
     !!initialBundle
   );
-  const [selectedYear, setSelectedYear] = useState(
-    initialBundle?.day?.slice(0, 4) ?? today.slice(0, 4)
-  );
-  const [selectedMonth, setSelectedMonth] = useState(
-    initialBundle?.day?.slice(5, 7) ?? today.slice(5, 7)
-  );
-  const [selectedDay, setSelectedDay] = useState(
-    initialBundle?.day?.slice(8, 10) ?? today.slice(8, 10)
-  );
+  const {
+    selectedYear,
+    setSelectedYear,
+    selectedMonth,
+    setSelectedMonth,
+    selectedDay,
+    setSelectedDay,
+    days: DAYS,
+  } = useHomeDatePicker({
+    day,
+    initialDay: initialBundle?.day ?? "",
+    today,
+  });
 
 
   const [data, setData] = useState<DayResponse | null>(
@@ -195,14 +200,6 @@ export default function Page({
     showTodayHistoryNotice,
   } = useHomeNotices();
 
-  const daysInSelectedMonth = getDaysInMonth(
-    Number(selectedYear),
-    Number(selectedMonth)
-  );
-
-  const DAYS = Array.from({ length: daysInSelectedMonth }, (_, i) =>
-    pad2(i + 1)
-  );
 
   const navigationDay = isValidDayString(day) ? day : today;
   const visibleDayLabel =
@@ -724,20 +721,6 @@ export default function Page({
     };
   }, [initialBundle, searchParams, buildSurpriseRequestUrl]);
 
-  useEffect(() => {
-    const [y, m, d] = day.split("-");
-    if (y && m && d) {
-      setSelectedYear(y);
-      setSelectedMonth(m);
-      setSelectedDay(d);
-    }
-  }, [day]);
-
-  useEffect(() => {
-    if (Number(selectedDay) > daysInSelectedMonth) {
-      setSelectedDay(pad2(daysInSelectedMonth));
-    }
-  }, [daysInSelectedMonth, selectedDay]);
 
   useEffect(() => {
     const queryDay = searchParams.get("day");
