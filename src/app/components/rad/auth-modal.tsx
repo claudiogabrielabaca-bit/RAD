@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import TurnstileWidget from "@/app/components/rad/turnstile-widget";
 import { ContextLink, PasswordField } from "@/app/components/rad/auth-modal-parts";
 import { useAuthPasswordVisibility } from "@/app/hooks/use-auth-password-visibility";
 import { useAuthTurnstile } from "@/app/hooks/use-auth-turnstile";
 import { useAuthEmailVerificationStatus } from "@/app/hooks/use-auth-email-verification-status";
 import { useAuthFeedbackState } from "@/app/hooks/use-auth-feedback-state";
+import { useAuthFormFields } from "@/app/hooks/use-auth-form-fields";
 import { AUTH_JSON_HEADERS, getAuthViewContent, normalizeEmail, readAuthJson } from "@/app/components/rad/auth-modal-utils";
 
 export type AuthView =
@@ -50,12 +51,20 @@ export default function AuthModal({
   onChangeView: (view: AuthView, nextEmail?: string) => void;
   onAuthSuccess?: (user?: MeUser | null) => void;
 }) {
-  const [email, setEmail] = useState(initialEmail);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const {
+    email,
+    setEmail,
+    username,
+    setUsername,
+    password,
+    setPassword,
+    code,
+    setCode,
+    newPassword,
+    setNewPassword,
+    confirmPassword,
+    setConfirmPassword,
+  } = useAuthFormFields(initialEmail);
 
   const {
     showLoginPassword,
