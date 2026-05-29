@@ -206,13 +206,12 @@ export default function SocialShareCard({
   const title = normalizeText(highlight.title) || "Historical moment";
   const description =
     normalizeText(highlight.text) || "No description available.";
-  const reviewText =
-    normalizeReviewText(review?.review) || `Rated this day on ${SITE_LABEL}.`;
+  const reviewText = normalizeReviewText(review?.review);
   const author = review?.authorLabel || (username ? `@${username}` : "@you");
 
   const titleConfig = getTitleConfig(title.length);
   const descriptionConfig = getDescriptionConfig(description.length);
-  const reviewClass = getReviewClass(reviewText.length);
+  const reviewClass = reviewText ? getReviewClass(reviewText.length) : "";
 
   const badgeValues = [
     highlight.year ? String(highlight.year) : null,
@@ -323,16 +322,18 @@ export default function SocialShareCard({
             </span>
           </div>
 
-          <div
-            className={reviewClass}
-            style={{
-              whiteSpace: "pre-wrap",
-              overflowWrap: "anywhere",
-              wordBreak: "break-word",
-            }}
-          >
-            {reviewText}
-          </div>
+          {reviewText ? (
+            <div
+              className={reviewClass}
+              style={{
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
+              }}
+            >
+              {reviewText}
+            </div>
+          ) : null}
 
           <div className="mt-5 text-center text-[12px] lowercase tracking-[0.08em] text-zinc-500">
             {SITE_LABEL}

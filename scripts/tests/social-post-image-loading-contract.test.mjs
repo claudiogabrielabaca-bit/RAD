@@ -47,7 +47,7 @@ test("social image proxy retries transient Wikimedia failures", () => {
 
 test("social share card uses the exact lowercase site label", () => {
   assert.match(card, /const SITE_LABEL = "rateanyday\.com";/);
-  assert.match(card, /Rated this day on \$\{SITE_LABEL\}\./);
+  assert.doesNotMatch(card, /Rated this day on/);
   assert.match(card, /\{SITE_LABEL\}/);
   assert.doesNotMatch(card, /Rateanyday\.com/);
 });
