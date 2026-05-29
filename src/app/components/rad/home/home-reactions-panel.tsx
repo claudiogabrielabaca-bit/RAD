@@ -136,7 +136,6 @@ export default function HomeReactionsPanel({
   ) {
     const { mine = false, showSectionLabel } = options;
     const compact = !hasReviewText(item.review);
-    const isTargetReview = !!targetReviewId && item.id === targetReviewId;
     const reviewExpanded = !!expandedReviews[item.id];
     const visibleReviewText = reviewExpanded
       ? item.review
@@ -157,7 +156,7 @@ export default function HomeReactionsPanel({
           ref={mine ? myReviewBlockRef : undefined}
           id={`review-${item.id}`}
           data-review-id={item.id}
-          className={`space-y-3 rounded-2xl transition ${isTargetReview ? "border border-sky-400/25 bg-sky-500/10 p-4 shadow-[0_0_0_1px_rgba(56,189,248,0.08)]" : ""}`}
+          className="space-y-3 rounded-2xl transition"
         >
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-yellow-400">

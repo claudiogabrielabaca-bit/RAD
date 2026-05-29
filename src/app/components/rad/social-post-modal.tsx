@@ -188,13 +188,19 @@ export default function SocialPostModal({
     proxiedHighlights[selectedHighlightIndex] ?? proxiedHighlights[0] ?? null;
 
   const selectedImageStatus = activeHighlight?.image
-    ? imageStatusByUrl[activeHighlight.image]
+    ? imageStatusByUrl[activeHighlight.image] ?? "loading"
     : "ready";
 
   const selectedImageLoading =
-    !!activeHighlight?.image && selectedImageStatus !== "ready";
+    !!activeHighlight?.image && selectedImageStatus === "loading";
+  const selectedImageError =
+    !!activeHighlight?.image && selectedImageStatus === "error";
 
   if (!open || !activeHighlight) return null;
+
+  const shareHighlight = selectedImageError
+    ? { ...activeHighlight, image: null }
+    : activeHighlight;
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
@@ -246,7 +252,7 @@ export default function SocialPostModal({
                   >
                     <SocialShareCard
                       day={day}
-                      highlight={activeHighlight}
+                      highlight={shareHighlight}
                       review={review}
                       username={username}
                     />
@@ -291,9 +297,9 @@ export default function SocialPostModal({
                     const selected = index === selectedHighlightIndex;
                     const label = getHighlightPreviewLabel(item, index);
                     const imageStatus = item.image
-                      ? imageStatusByUrl[item.image]
+                      ? imageStatusByUrl[item.image] ?? "loading"
                       : "ready";
-                    const imageLoading = !!item.image && imageStatus !== "ready";
+                    const imageLoading = !!item.image && imageStatus === "loading";
 
                     return (
                       <button
@@ -310,7 +316,7 @@ export default function SocialPostModal({
                         }`}
                       >
                         <div className="relative h-[76px] w-full overflow-hidden bg-black">
-                          {item.image ? (
+                          {item.image && imageStatus !== "error" ? (
                             <Image
                               src={item.image}
                               alt={label}
@@ -355,7 +361,7 @@ export default function SocialPostModal({
           <div ref={exportRef}>
             <SocialShareCard
               day={day}
-              highlight={activeHighlight}
+              highlight={shareHighlight}
               review={review}
               username={username}
             />

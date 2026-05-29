@@ -25,13 +25,30 @@ export function withProxiedImage(item: HighlightItem): HighlightItem {
   };
 }
 
-export function preloadImage(url: string) {
+export function preloadImage(url: string, attempts = 3) {
   return new Promise<ImageLoadStatus>((resolve) => {
-    const img = new window.Image();
+    let attempt = 0;
 
-    img.onload = () => resolve("ready");
-    img.onerror = () => resolve("error");
-    img.src = url;
+    function tryLoad() {
+      const img = new window.Image();
+
+      img.onload = () => resolve("ready");
+
+      img.onerror = () => {
+        attempt += 1;
+
+        if (attempt >= attempts) {
+          resolve("error");
+          return;
+        }
+
+        window.setTimeout(tryLoad, 260 * attempt);
+      };
+
+      img.src = url;
+    }
+
+    tryLoad();
   });
 }
 

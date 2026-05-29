@@ -6,6 +6,8 @@ import type { HighlightItem, ReviewItem } from "@/app/lib/rad-types";
 export const SOCIAL_POST_WIDTH = 1080;
 export const SOCIAL_POST_HEIGHT = 1350;
 
+const SITE_LABEL = "rateanyday.com";
+
 function formatDisplayDate(date: string) {
   const [year, month, day] = date.split("-");
   const localDate = new Date(Number(year), Number(month) - 1, Number(day));
@@ -205,7 +207,7 @@ export default function SocialShareCard({
   const description =
     normalizeText(highlight.text) || "No description available.";
   const reviewText =
-    normalizeReviewText(review?.review) || "Rated this day on Rateanyday.com.";
+    normalizeReviewText(review?.review) || `Rated this day on ${SITE_LABEL}.`;
   const author = review?.authorLabel || (username ? `@${username}` : "@you");
 
   const titleConfig = getTitleConfig(title.length);
@@ -333,7 +335,7 @@ export default function SocialShareCard({
           </div>
 
           <div className="mt-5 text-center text-[12px] lowercase tracking-[0.08em] text-zinc-500">
-            rateanyday.com
+            {SITE_LABEL}
           </div>
         </div>
       </div>
