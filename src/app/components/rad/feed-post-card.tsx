@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Image from "next/image";
 
@@ -93,6 +93,17 @@ function formatTimestamp(value: string) {
   }
 }
 
+function wasFeedPostEdited(createdAt: string, updatedAt: string) {
+  const createdTime = new Date(createdAt).getTime();
+  const updatedTime = new Date(updatedAt).getTime();
+
+  if (!Number.isFinite(createdTime) || !Number.isFinite(updatedTime)) {
+    return false;
+  }
+
+  return updatedTime - createdTime > 60_000;
+}
+
 function normalizeBadgeKey(value?: string | null): FeedBadgeKey | null {
   if (!value) return null;
 
@@ -143,6 +154,7 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
   const reviewText = cleanText(item.review);
   const highlightTitle = cleanText(item.highlightTitle) || item.displayDate;
   const highlightText = cleanText(item.highlightText);
+  const edited = wasFeedPostEdited(item.createdAt, item.updatedAt);
 
   function openDay() {
     const params = new URLSearchParams();
@@ -197,8 +209,14 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
                 </span>
               </div>
 
-              <div className="mt-1.5 text-xs text-zinc-500">
-                {formatTimestamp(item.updatedAt)}
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+                <span>{formatTimestamp(item.createdAt)}</span>
+                {edited ? (
+                  <>
+                    <span className="text-zinc-700">?</span>
+                    <span>edited</span>
+                  </>
+                ) : null}
               </div>
             </div>
           </div>

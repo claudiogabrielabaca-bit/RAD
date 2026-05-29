@@ -97,9 +97,14 @@ export async function GET(req: Request) {
           not: "",
         },
       },
-      orderBy: {
-        updatedAt: "desc",
-      },
+      orderBy: [
+        {
+          createdAt: "desc",
+        },
+        {
+          id: "desc",
+        },
+      ],
       take: 60,
       select: {
         id: true,
