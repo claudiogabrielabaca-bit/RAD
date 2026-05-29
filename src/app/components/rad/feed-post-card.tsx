@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 
@@ -166,34 +166,30 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
           openDay();
         }
       }}
-      className="group relative border-b border-white/8 px-1 py-8 text-left transition last:border-b-0 sm:px-2 sm:py-9"
+      className="group relative overflow-hidden rounded-[28px] border border-white/10 bg-[linear-gradient(145deg,rgba(255,255,255,0.055),rgba(255,255,255,0.018)_42%,rgba(0,0,0,0.32))] p-5 text-left shadow-[0_24px_80px_rgba(0,0,0,0.34)] transition duration-300 hover:-translate-y-0.5 hover:border-white/16 hover:bg-white/[0.055] sm:p-6"
     >
-      <div className="grid gap-5 sm:grid-cols-[64px_minmax(0,1fr)]">
-        <div className="hidden sm:block">
-          <div className="sticky top-24 flex flex-col items-center">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/[0.035] text-lg font-semibold text-zinc-400 transition group-hover:border-white/16 group-hover:text-zinc-200">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.08),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(245,197,24,0.045),transparent_28%)] opacity-80" />
+
+      <div className="relative">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/35 text-lg font-semibold text-zinc-300 shadow-inner shadow-white/[0.03] transition group-hover:border-white/16 group-hover:text-white">
               @
             </div>
 
-            <div className="mt-4 h-full min-h-[150px] w-px bg-white/8" />
-          </div>
-        </div>
-
-        <div className="min-w-0">
-          <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span className="text-sm font-semibold text-white">
                   @{item.username}
                 </span>
 
-                <span className="text-xs text-zinc-500">•</span>
+                <span className="text-xs text-zinc-600">•</span>
 
                 <span className="text-[13px] tracking-[0.04em] text-yellow-400">
                   {renderStars(item.stars)}
                 </span>
 
-                <span className="text-xs text-zinc-500">•</span>
+                <span className="text-xs text-zinc-600">•</span>
 
                 <span className="inline-flex items-center gap-1 text-xs text-zinc-400">
                   <span>♥</span>
@@ -201,70 +197,70 @@ export default function FeedPostCard({ item }: { item: FeedPostItem }) {
                 </span>
               </div>
 
-              <div className="mt-2 text-xs text-zinc-500">
+              <div className="mt-1.5 text-xs text-zinc-500">
                 {formatTimestamp(item.updatedAt)}
               </div>
             </div>
+          </div>
 
-            <div className="shrink-0 rounded-full border border-white/8 bg-white/[0.035] px-3 py-1.5 text-[11px] font-medium tracking-[0.14em] text-zinc-300">
-              {item.day}
+          <div className="shrink-0 rounded-full border border-white/10 bg-black/30 px-3 py-1.5 text-[11px] font-semibold tracking-[0.14em] text-zinc-300 shadow-inner shadow-white/[0.03]">
+            {item.day}
+          </div>
+        </div>
+
+        <div className="mt-5">
+          <p className="break-words text-[1.45rem] font-semibold leading-snug tracking-[-0.02em] text-zinc-50 [overflow-wrap:anywhere] sm:text-[1.65rem]">
+            {reviewText || "No written review"}
+          </p>
+        </div>
+
+        <div className="mt-5 overflow-hidden rounded-3xl border border-white/10 bg-black/24 p-4 shadow-inner shadow-black/35 transition group-hover:border-white/14 sm:p-5">
+          <div className="grid gap-5 sm:grid-cols-[210px_minmax(0,1fr)] sm:items-start">
+            <div className="relative h-[132px] w-full overflow-hidden rounded-2xl border border-white/8 bg-black/45 sm:h-[142px]">
+              {item.highlightImage ? (
+                <Image
+                  src={item.highlightImage}
+                  alt={highlightTitle}
+                  fill
+                  unoptimized
+                  sizes="(min-width: 768px) 210px, 100vw"
+                  className="object-cover transition duration-500 group-hover:scale-[1.035]"
+                  draggable={false}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#1b1b1b_0%,#0e0e0e_100%)] text-[10px] uppercase tracking-[0.14em] text-zinc-500">
+                  No image
+                </div>
+              )}
             </div>
-          </div>
 
-          <div className="mt-7">
-            <p className="break-words text-xl font-semibold leading-snug tracking-[-0.01em] text-zinc-50 [overflow-wrap:anywhere] sm:text-2xl">
-              {reviewText || "No written review"}
-            </p>
-          </div>
-
-          <div className="mt-7 border-l border-white/12 pl-5 sm:pl-7">
-            <div className="grid gap-5 sm:grid-cols-[132px_minmax(0,1fr)] sm:items-start">
-              <div className="relative h-[96px] w-full max-w-[150px] overflow-hidden rounded-2xl border border-white/8 bg-black/40 sm:h-[104px]">
-                {item.highlightImage ? (
-                  <Image
-                    src={item.highlightImage}
-                    alt={highlightTitle}
-                    fill
-          unoptimized
-                    sizes="150px"
-                    className="object-cover transition duration-500 group-hover:scale-[1.04]"
-                    draggable={false}
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center bg-[linear-gradient(135deg,#1b1b1b_0%,#0e0e0e_100%)] text-[10px] uppercase tracking-[0.14em] text-zinc-500">
-                    No image
-                  </div>
-                )}
+            <div className="min-w-0">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500">
+                On this day
               </div>
 
-              <div className="min-w-0">
-                <div className="text-[11px] font-medium uppercase tracking-[0.22em] text-zinc-500">
-                  On this day
-                </div>
-
-                <div className="mt-2 line-clamp-2 break-words text-lg font-semibold leading-6 text-white [overflow-wrap:anywhere]">
-                  {highlightTitle}
-                </div>
-
-                {highlightText ? (
-                  <p className="mt-3 line-clamp-3 break-words text-sm leading-6 text-zinc-400 [overflow-wrap:anywhere] sm:text-[15px]">
-                    {highlightText}
-                  </p>
-                ) : null}
-
-                {badges.length > 0 ? (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {badges.map((badge) => (
-                      <span
-                        key={badge}
-                        className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${BADGE_CLASSES[badge]}`}
-                      >
-                        {BADGE_LABELS[badge]}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
+              <div className="mt-2 line-clamp-2 break-words text-xl font-semibold leading-7 text-white [overflow-wrap:anywhere]">
+                {highlightTitle}
               </div>
+
+              {highlightText ? (
+                <p className="mt-3 line-clamp-3 break-words text-[15px] leading-6 text-zinc-400 [overflow-wrap:anywhere]">
+                  {highlightText}
+                </p>
+              ) : null}
+
+              {badges.length > 0 ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {badges.map((badge) => (
+                    <span
+                      key={badge}
+                      className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] ${BADGE_CLASSES[badge]}`}
+                    >
+                      {BADGE_LABELS[badge]}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
