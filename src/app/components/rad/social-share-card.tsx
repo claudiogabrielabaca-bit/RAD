@@ -207,7 +207,7 @@ export default function SocialShareCard({
   const description =
     normalizeText(highlight.text) || "No description available.";
   const reviewText =
-    normalizeReviewText(review?.review) || `Rated this day on ${SITE_LABEL}.`;
+    normalizeReviewText(review?.review) || `Rated this day on ${SITE_LABEL}`;
   const author = review?.authorLabel || (username ? `@${username}` : "@you");
 
   const titleConfig = getTitleConfig(title.length);
