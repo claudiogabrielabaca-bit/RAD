@@ -35,7 +35,7 @@ test("/api/top reads aggregate rows instead of grouping Rating live", () => {
   assert.match(topRoute, /"ratingsCount" AS "count"/);
   assert.doesNotMatch(topRoute, /GROUP BY "day"/);
   assert.doesNotMatch(topRoute, /FROM "Rating"/);
-  assert.match(topRoute, /TOP_CACHE_TTL_MS = 60 \* 1000/);
+  assert.match(topRoute, /TOP_CACHE_TTL_MS = 5 \* 1000/);
   assert.match(topRoute, /consumeRateLimit/);
 });
 

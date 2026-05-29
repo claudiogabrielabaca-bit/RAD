@@ -1,4 +1,4 @@
-import { prisma } from "@/app/lib/prisma";
+﻿import { prisma } from "@/app/lib/prisma";
 import { NextResponse } from "next/server";
 import {
   buildRateLimitKey,
@@ -11,7 +11,7 @@ export const revalidate = 0;
 
 const NO_MATCH_LABEL = "No exact historical match";
 const EMPTY_HIGHLIGHT_TEXT = "No exact historical match was found for this date.";
-const TOP_CACHE_TTL_MS = 60 * 1000;
+const TOP_CACHE_TTL_MS = 5 * 1000;
 const MIN_RANKING_VOTES = 2;
 
 const NO_STORE_HEADERS = {
@@ -363,7 +363,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json(payload, {
       headers: {
-        "Cache-Control": "private, max-age=30, stale-while-revalidate=60",
+        "Cache-Control": "no-store",
       },
     });
   } catch (error) {
@@ -378,3 +378,4 @@ export async function GET(req: Request) {
     );
   }
 }
+
