@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-const homePage = fs.readFileSync("src/app/home-page-client.tsx", "utf8");
+const homePage = fs
+  .readFileSync("src/app/home-page-client.tsx", "utf8")
+  .replace(/\r\n/g, "\n");
 const legacyDayRoute = fs.readFileSync("src/app/api/day/route.ts", "utf8");
 const dayBundleLib = fs.readFileSync("src/app/lib/day-bundle.ts", "utf8");
 

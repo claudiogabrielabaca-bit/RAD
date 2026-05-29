@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 
-const homePage = fs.readFileSync("src/app/home-page-client.tsx", "utf8");
+const homePage = fs
+  .readFileSync("src/app/home-page-client.tsx", "utf8")
+  .replace(/\r\n/g, "\n");
 const authHook = fs.readFileSync("src/app/hooks/use-home-auth-state.ts", "utf8");
 const reviewState = fs.readFileSync("src/app/lib/home-page-review-state.ts", "utf8");
 const constants = fs.readFileSync("src/app/lib/home-page-client-constants.ts", "utf8");

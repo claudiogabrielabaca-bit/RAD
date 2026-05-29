@@ -9,7 +9,7 @@ const read = (relativePath) => readFileSync(join(root, relativePath), "utf8");
 test("today in history client does not force expensive fresh retries", () => {
   const homePage = read("src/app/home-page-client.tsx");
 
-  assert.match(homePage, /requestTodayHistory\(\n\s*FORCE_FRESH_MODE\n\s*\)/);
+  assert.match(homePage, /requestTodayHistory\(\r?\n\s*FORCE_FRESH_MODE\r?\n\s*\)/);
   assert.doesNotMatch(homePage, /FORCE_FRESH_MODE \|\| attempt > 0/);
 });
 

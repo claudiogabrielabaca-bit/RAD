@@ -18,6 +18,7 @@ import { useHomeNotices } from "@/app/hooks/use-home-notices";
 import { useHomeDatePicker } from "@/app/hooks/use-home-date-picker";
 import { useHomeShareCurrentDay } from "@/app/hooks/use-home-share-current-day";
 import { useHomeDayControls } from "@/app/hooks/use-home-day-controls";
+import { useHomeLazyCommunityBundle } from "@/app/hooks/use-home-lazy-community-bundle";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -117,7 +118,6 @@ export default function Page({
   const didInitDayRef = useRef(false);
   const dayRequestRef = useRef(0);
   const skipNextAutoDayLoadRef = useRef(false);
-  const communityBundleLoadedDayRef = useRef("");
 
   const currentVisibleDayRef = useRef(initialBundle?.day ?? "");
 
@@ -1069,104 +1069,18 @@ export default function Page({
     transitionIdRef,
   ]);
 
-  useEffect(() => {
-    if (!hasPickedInitialDay) return;
-
-    const shouldLazyLoadPublicCommunity =
-      initialBundle?.day === day &&
-      !!initialBundle.publicInitialOnly &&
-      pathname?.startsWith("/day/");
-
-    if (!shouldLazyLoadPublicCommunity) return;
-    if (communityBundleLoadedDayRef.current === day) return;
-
-    let cancelled = false;
-    let loadTimeout: ReturnType<typeof setTimeout> | null = null;
-
-    async function loadCommunityBundle() {
-      if (communityBundleLoadedDayRef.current === day) return;
-
-      const cachedPayload = dayBundleCacheRef.current.get(day);
-
-      if (cachedPayload) {
-        communityBundleLoadedDayRef.current = day;
-
-        if (!cancelled) {
-          navigationActionsRef.current.applyBundlePayload(cachedPayload);
-        }
-
-        return;
-      }
-
-      communityBundleLoadedDayRef.current = day;
-      setLoadingDay(true);
-
-      try {
-        const payload = await navigationActionsRef.current.fetchDayBundle(day);
-
-        if (cancelled) return;
-
-        navigationActionsRef.current.applyBundlePayload(payload);
-      } catch {
-        communityBundleLoadedDayRef.current = "";
-
-        if (!cancelled) {
-          showToast("Could not load community activity.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoadingDay(false);
-        }
-      }
-    }
-
-    function maybeLoadCommunityBundle() {
-      if (cancelled) return;
-      if (communityBundleLoadedDayRef.current === day) return;
-
-      const target = communityPanelRef.current;
-      if (!target) return;
-
-      const rect = target.getBoundingClientRect();
-      const hasScrollIntent = window.scrollY > 420;
-      const isNearCommunityPanel = rect.top < window.innerHeight * 0.95;
-
-      if (!hasScrollIntent || !isNearCommunityPanel) return;
-
-      if (loadTimeout) {
-        clearTimeout(loadTimeout);
-      }
-
-      loadTimeout = setTimeout(() => {
-        void loadCommunityBundle();
-      }, 250);
-    }
-
-    window.addEventListener("scroll", maybeLoadCommunityBundle, {
-      passive: true,
-    });
-    window.addEventListener("resize", maybeLoadCommunityBundle);
-
-    maybeLoadCommunityBundle();
-
-    return () => {
-      cancelled = true;
-
-      if (loadTimeout) {
-        clearTimeout(loadTimeout);
-      }
-
-      window.removeEventListener("scroll", maybeLoadCommunityBundle);
-      window.removeEventListener("resize", maybeLoadCommunityBundle);
-    };
-  }, [
+  useHomeLazyCommunityBundle({
     day,
-    dayBundleCacheRef,
     hasPickedInitialDay,
     initialBundle,
     pathname,
+    dayBundleCacheRef,
+    communityPanelRef,
+    navigationActionsRef,
     showToast,
-  ]);
+    setLoadingDay,
+  });
+
 
   useEffect(() => {
     if (
