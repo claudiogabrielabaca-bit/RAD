@@ -19,6 +19,7 @@ import { useHomeDatePicker } from "@/app/hooks/use-home-date-picker";
 import { useHomeShareCurrentDay } from "@/app/hooks/use-home-share-current-day";
 import { useHomeDayControls } from "@/app/hooks/use-home-day-controls";
 import { useHomeLazyCommunityBundle } from "@/app/hooks/use-home-lazy-community-bundle";
+import { useHydrated } from "@/app/hooks/use-hydrated";
 import ReportReasonModal from "@/app/components/rad/report-reason-modal";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -85,6 +86,7 @@ export default function Page({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const hydrated = useHydrated();
 
   const {
     currentUser,
@@ -227,6 +229,8 @@ export default function Page({
     setHighlight,
     setPreferImmediateHighlightImageSwap,
   });
+
+  const canUseHighlightControls = hydrated && canSwitchHighlights;
 
   const {
     transitionIdRef,
@@ -1566,7 +1570,7 @@ export default function Page({
                                 key={index}
                                 type="button"
                                 onClick={() => void transitionToHighlight(index)}
-                                disabled={!canSwitchHighlights}
+                                disabled={!canUseHighlightControls}
                                 className={`h-2.5 w-2.5 rounded-full transition disabled:cursor-not-allowed disabled:opacity-40 ${
                                   index === activeHighlightIndex
                                     ? "bg-white"
@@ -1581,7 +1585,7 @@ export default function Page({
                             <button
                               type="button"
                               onClick={goToPrevHighlight}
-                              disabled={!canSwitchHighlights}
+                              disabled={!canUseHighlightControls}
                               className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.055] text-sm text-white transition hover:border-white/16 hover:bg-white/[0.085] disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               ←
@@ -1590,7 +1594,7 @@ export default function Page({
                             <button
                               type="button"
                               onClick={goToNextHighlight}
-                              disabled={!canSwitchHighlights}
+                              disabled={!canUseHighlightControls}
                               className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.055] text-sm text-white transition hover:border-white/16 hover:bg-white/[0.085] disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               →
